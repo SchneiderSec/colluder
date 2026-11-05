@@ -4,7 +4,7 @@ import { useApp, loadDetail, lookupAsn, save, chatterOf } from "@/store";
 import type { Enrich } from "@/lib/types";
 import { byteCount, lineCount } from "@/lib/format";
 import { answeredBy, decode, evidence } from "@/lib/raw";
-import { ExactLine, HttpParsed, parseHttp } from "./HttpView";
+import { ExactLine, HttpParsed, parseHttp, type Parsed } from "./HttpView";
 import { copy, toast } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -16,9 +16,22 @@ import { cn } from "@/lib/utils";
 const MAX = 200_000;
 
 // Raw text is attacker-controlled: rendered only as React text nodes (escaped), never as HTML.
-function RawPane({ title, sub, text, exact, http, parsed, tag, domain }: { title: string; sub: string; text: string; exact: string; http: boolean; parsed?: boolean; tag: string | null; domain?: string }) {
-  const shown = text.length > MAX ? text.slice(0, MAX) : text;
-  const p = parsed && http ? parseHttp(shown) : null;
+// headers a proxy or the client used to say who the real caller is: the first thing to check on SSRF
+const FORWARDED = ["x-forwarded-for", "x-real-ip", "forwarded", "true-client-ip", "cf-connecting-ip", "x-client-ip", "x-originating-ip"];
+function forwardedFor(raw: string): [string, string][] {
+  const head = raw.split(/\r?\n\r?\n/)[0].split(/\r?\n/).slice(1);
+  const out: [string, string][] = [];
+  for (const ln of head) {
+    const m = /^([^:]+):[ \t]*(.*)$/.exec(ln);
+    if (m && FORWARDED.includes(m[1].toLowerCase()) && m[2]) out.push([m[1], m[2]]);
+  }
+  return out;
+}
+
+const cut = (t: string) => (t.length > MAX ? t.slice(0, MAX) : t);
+
+function RawPane({ title, sub, text, exact, http, p, tag, domain, capture, clientHttp2 }: { title: string; sub: string; text: string; exact: string; http: boolean; p?: Parsed | null; tag: string | null; domain?: string; capture: "edge" | "engine"; clientHttp2?: boolean }) {
+  const shown = cut(text);
   const box = useRef<HTMLDivElement>(null);
   const [below, setBelow] = useState(0); // lines hidden under the fold, so a cut-off pane never looks complete
   useEffect(() => {
@@ -41,7 +54,7 @@ function RawPane({ title, sub, text, exact, http, parsed, tag, domain }: { title
       </div>
       <div ref={box} tabIndex={0} className={cn("raw min-h-0 flex-1 overflow-auto px-3 font-mono text-[12.5px] leading-[18px] text-bone [tab-size:4]", p ? "py-2.5" : "py-2 whitespace-pre in-[.wrap]:break-all in-[.wrap]:whitespace-pre-wrap")}>
         {!shown && <span className="font-sans text-ash">Empty</span>}
-        {p ? <HttpParsed p={p} tag={tag} domain={domain} /> : lines.map((ln, idx) => {
+        {p ? <HttpParsed p={p} tag={tag} domain={domain} capture={capture} clientHttp2={clientHttp2} /> : lines.map((ln, idx) => {
           const head = inHead;
           if (inHead && ln === "" && idx > 0) inHead = false;
           return (
@@ -99,6 +112,14 @@ export function HitDetail({ id }: { id: number }) {
   const recvMs = Date.parse(d.receivedAt) - Date.parse(d.timestamp.replace(/(\.\d{3})\d+/, "$1"));
   const probe = d.tag ? s.probes.get(d.tag) : undefined;
   const chatter = chatterOf(s.list).get(d.id);
+  // who wrote the bytes: the edge records them off the socket; interactsh re-serialises them
+  const capture = d.answer ? "edge" as const : "engine" as const;
+  const reqP = web && parsed ? parseHttp(cut(d.rawRequest)) : null;
+  const resP = web && parsed ? parseHttp(cut(d.rawResponse)) : null;
+  const http2 = web && /^\S+ \S+ HTTP\/2/.test(d.rawRequest);
+  const reqWho = capture === "edge" ? "exact, as received by the edge" : "as logged by interactsh-client";
+  const size = (t: string) => `${lineCount(t)} lines · ${byteCount(t)} bytes`;
+  const webSub = (t: string, pp: Parsed | null, who: string) => (parsed ? (pp ? `parsed · ${byteCount(t)} bytes` : `couldn't parse as HTTP · exact lines · ${size(t)}`) : `${who} · ${size(t)}`);
 
   return (
     <article aria-label={`Hit ${d.id}`} className={cn(box, wrap && "wrap")}>
@@ -113,6 +134,11 @@ export function HitDetail({ id }: { id: number }) {
 
       <div className="flex flex-none flex-wrap items-center gap-x-[22px] gap-y-1 text-[12.5px] whitespace-nowrap max-[820px]:whitespace-normal">
         <span className="flex items-center gap-2"><span className="text-smoke">{d.protocol === "dns" ? "Resolver" : "Source"}</span><span className="font-mono text-[12.5px]">{d.remoteAddress}</span></span>
+        {web && forwardedFor(d.rawRequest).map(([h, v]) => (
+          <span key={h} className="flex min-w-0 items-center gap-2" title={`From the ${h} header. The sender sets it, so it may be spoofed.`}>
+            <span className="text-smoke">Forwarded for</span><span className="truncate font-mono text-[12.5px] text-bone">{v}</span>
+          </span>
+        ))}
         <span className="flex min-w-0 items-center gap-2"><span className="text-smoke">rDNS</span><span className="truncate font-mono text-[12.5px]">{e.rdnsAt ? e.rdns || "no PTR record" : "looking up…"}</span></span>
         <span className="flex flex-wrap items-center gap-2">
           <span className="text-smoke">ASN / owner</span>
@@ -158,11 +184,11 @@ export function HitDetail({ id }: { id: number }) {
       </div>
 
       <div className="grid min-h-[220px] flex-1 grid-cols-2 gap-3 @max-[900px]:flex-none @max-[900px]:grid-cols-1 @max-[900px]:[&>*]:max-h-[360px]">
-        <RawPane title={d.protocol === "dns" ? "Query" : "Request"} http={web} parsed={parsed} tag={d.tag} domain={s.status?.payload?.domain}
-          sub={web ? `${parsed ? "parsed" : "exact, as received"} · ${byteCount(d.rawRequest)} bytes` : decoded ? "decoded view · copy stays exact" : `exact, as received · ${lineCount(d.rawRequest)} lines · ${byteCount(d.rawRequest)} bytes`}
+        <RawPane title={d.protocol === "dns" ? "Query" : "Request"} http={web} p={reqP} tag={d.tag} domain={s.status?.payload?.domain} capture={capture}
+          sub={web ? webSub(d.rawRequest, reqP, reqWho) : decoded ? "decoded view · copy stays exact" : `as logged by interactsh-client · ${size(d.rawRequest)}`}
           text={!web && decoded ? decode(d.rawRequest, d.protocol) : d.rawRequest} exact={d.rawRequest} />
-        <RawPane title={d.protocol === "dns" ? "Answer" : "Response"} http={web} parsed={parsed} tag={d.tag} domain={s.status?.payload?.domain}
-          sub={d.protocol === "dns" ? "sent by interactsh-server" : `${answeredBy(d.answer)} · ${byteCount(d.rawResponse)} bytes`}
+        <RawPane title={d.protocol === "dns" ? "Answer" : "Response"} http={web} p={resP} tag={d.tag} domain={s.status?.payload?.domain} capture={capture} clientHttp2={http2}
+          sub={d.protocol === "dns" ? "sent by interactsh-server" : `${answeredBy(d.answer)} · ${parsed && !resP ? "couldn't parse · exact lines · " : ""}${byteCount(d.rawResponse)} bytes`}
           text={!web && decoded ? decode(d.rawResponse, d.protocol) : d.rawResponse} exact={d.rawResponse} />
       </div>
 

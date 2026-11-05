@@ -71,7 +71,7 @@ function Head({ s }: { s: AppState }) {
           {p.httpRule && (
             <label className="flex items-start gap-2 text-[12.5px] text-smoke">
               <input type="checkbox" className="mt-[3px] accent-bone" checked={resetRule} onChange={(e) => setResetRule(e.target.checked)} />
-              <span>Also reset its HTTP answer to the default reply, so it stops answering with <span className="font-mono text-bone">{p.httpRule.line}</span></span>
+              <span>Also reset its HTTP answer to the default reply, so it {s.status?.edge?.state === "running" ? "stops answering" : "won't answer after the cutover"} with <span className="font-mono text-bone">{p.httpRule.line}</span></span>
             </label>
           )}
           <AlertDialogFooter>

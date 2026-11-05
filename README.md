@@ -82,7 +82,9 @@ After changing UI code: `npm run build` here, then reload the browser (no restar
 After changing server code: `systemctl --user restart colluder`. After changing `edge.mjs` or
 `lib/`: `sudo systemctl restart colluder-edge` too.
 
-Discord alerts (first hit per probe, then a 60 s roll-up): put `DISCORD_WEBHOOK_URL=...` in
+Discord alerts (per probe: the first hit of an episode, the first HTTP hit after DNS-only traffic,
+an HTTP hit from a new source, late hits on retired probes; never resolver chatter; everything else
+in a once-a-minute count, never dropped. See PLAN-REVIEW3.md A1): put `DISCORD_WEBHOOK_URL=...` in
 `~/.config/colluder/colluder.env`, restart `colluder`, then switch alerts on in the UI.
 
 ## Configuration (environment, all optional)

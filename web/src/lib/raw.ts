@@ -57,7 +57,9 @@ export function evidence(d: InteractionDetail, e: Partial<Enrich>, probe: Probe 
     `Received by dashboard: ${d.receivedAt}`,
     `SHA-256 of raw request (UTF-8, as logged by the ${d.answer ? "edge" : "engine"}): ${d.reqSha256}`,
     "",
-    "--- Raw request ---",
+    d.answer ? "--- Raw request (exact bytes, recorded by Colluder's edge) ---"
+      : d.protocol === "http" || d.protocol === "https" ? "--- Raw request (as logged by interactsh-client; header order and name case normalised by interactsh) ---"
+      : "--- Raw request (as logged by interactsh-client) ---",
     d.rawRequest,
     `--- Raw response (${d.protocol === "dns" ? "sent by interactsh-server" : answeredBy(d.answer)}) ---`,
     d.rawResponse,

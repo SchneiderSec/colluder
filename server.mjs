@@ -72,7 +72,15 @@ function ingest(line, source = "engine") {
   if (probeCreated || row.tag) broadcast("probe", probeOut(row.tag));
   else broadcast("untagged", store.probes().untagged);
   enrichRdns(row.remoteAddress).then((rdns) => {
-    if (discordEnabled()) discord.onHit(row, store.priorHitForTag(row.tag, row.id), rdns);
+    if (!discordEnabled()) return;
+    discord.onHit(row, {
+      prevHitAt: store.priorHitForTag(row.tag, row.id),
+      rdns,
+      retired: Boolean(row.tag && store.probe(row.tag)?.retiredAt),
+      sourceSeen: store.sourceSeen(row.tag, row.remoteAddress, row.id),
+      bareId: row.fullId.toLowerCase() === row.uniqueId.toLowerCase(),
+      isChatter: () => store.taggedHitNear(row.timestamp, 10_000),
+    });
   });
 }
 

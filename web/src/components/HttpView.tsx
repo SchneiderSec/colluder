@@ -3,10 +3,12 @@
 // Display only: copies always come from the exact bytes.
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
+import { layoutJson } from "@/lib/jsonview";
+import { decodedQuery, showControls } from "@/lib/query";
 
 export const safeDecode = (s: string) => { try { return decodeURIComponent(s); } catch { return s; } };
 
-type Parsed = {
+export type Parsed = {
   kind: "request" | "response";
   method?: string; target?: string; version: string;
   status?: string; reason?: string;
@@ -57,6 +59,11 @@ function Host({ value, tag, domain }: { value: string; tag: string | null; domai
     </span>
   );
 }
+const Pill = ({ children, strong, title }: { children: ReactNode; strong?: boolean; title?: string }) => (
+  <span title={title} className={cn("ml-2 inline-block rounded-[9px] border border-rule px-1.5 align-[1px] font-sans text-[11px] leading-[15px] whitespace-nowrap", strong ? "text-bone" : "text-smoke")}>{children}</span>
+);
+// decoded text with control characters drawn as escapes in Ash, so nothing invisible slips by
+const Visible = ({ text }: { text: string }) => <>{showControls(text).map(([k, t], n) => (k === "ctl" ? <span key={n} className="text-ash">{t}</span> : t))}</>;
 const Tag = ({ children }: { children: ReactNode }) => <em className="bg-[#3a2f22] px-px text-bone not-italic">{children}</em>;
 
 // a request target: path (tag marked when it is the first segment), then ? key = value & …
@@ -97,7 +104,7 @@ function Pairs({ rows, note }: { rows: [string, ReactNode | null][]; note?: (nam
           <dt key={`k${n}`} className="min-w-0 text-syn-name [overflow-wrap:anywhere] @max-[440px]/pane:mt-1.5">{k}</dt>,
           <dd key={`v${n}`} className="m-0 min-w-0 [overflow-wrap:anywhere]">
             {v === "" || v === null ? <span className="font-sans text-ash">{v === null ? "no value" : "empty"}</span> : v}
-            {w && <span className={cn("ml-2 inline-block rounded-[9px] border border-rule px-1.5 align-[1px] font-sans text-[11px] leading-[15px] whitespace-nowrap", w === "credential" ? "text-bone" : "text-smoke")}>{w}</span>}
+            {w && <Pill strong={w === "credential"}>{w}</Pill>}
           </dd>,
         ];
       })}
@@ -105,22 +112,19 @@ function Pairs({ rows, note }: { rows: [string, ReactNode | null][]; note?: (nam
   );
 }
 
-// JSON, highlighted by token; anything that isn't valid JSON comes back null
+// JSON laid out token by token from the original text: nothing is re-encoded or merged
 function JsonBody({ text }: { text: string }) {
-  let pretty: string;
-  try { pretty = JSON.stringify(JSON.parse(text), null, 2); } catch { return null; }
-  const out: ReactNode[] = [];
-  const re = /("(?:\\.|[^"\\])*")(\s*:)?|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null)|([{}[\],])/g;
-  let last = 0, m: RegExpExecArray | null, n = 0;
-  while ((m = re.exec(pretty))) {
-    if (m.index > last) out.push(pretty.slice(last, m.index));
-    if (m[1]) out.push(m[2] ? <span key={n++}><span className="text-syn-name">{m[1]}</span><span className="text-ash">{m[2]}</span></span> : <span key={n++} className="text-syn-value">{m[1]}</span>);
-    else if (m[3]) out.push(<span key={n++} className="font-[650] text-bone">{m[3]}</span>);
-    else out.push(<span key={n++} className="text-ash">{m[4]}</span>);
-    last = re.lastIndex;
-  }
-  out.push(pretty.slice(last));
-  return <div className="whitespace-pre-wrap break-all">{out}</div>;
+  const segs = layoutJson(text);
+  if (!segs) return null;
+  return (
+    <div className="whitespace-pre-wrap [overflow-wrap:anywhere]">
+      {segs.map((g, n) => g.k === "ws" ? g.s
+        : g.k === "key" ? <span key={n}><span className="text-syn-name">{g.s}</span>{g.dup && <Pill strong title="This key already appeared in the same object. Parsers disagree on which value wins.">duplicate key</Pill>}</span>
+        : g.k === "str" ? <span key={n} className="text-syn-value">{g.s}</span>
+        : g.k === "punct" ? <span key={n} className="text-ash">{g.s}</span>
+        : <span key={n} className="font-[650] text-bone">{g.s}</span>)}
+    </div>
+  );
 }
 
 // markup bodies: tags quiet, text in bone
@@ -132,33 +136,41 @@ function MarkupBody({ text }: { text: string }) {
 function Body({ text, type }: { text: string; type: string }) {
   const t = type.toLowerCase();
   if (t.includes("x-www-form-urlencoded")) {
-    return <Pairs rows={text.split("&").filter(Boolean).map((kv) => { const e = kv.indexOf("="); const dec = (s: string) => safeDecode(s.replace(/\+/g, " ")); return [dec(e < 0 ? kv : kv.slice(0, e)), e < 0 ? null : <span className="text-syn-value">{dec(kv.slice(e + 1))}</span>]; })} />;
+    return <Pairs rows={text.split("&").filter(Boolean).map((kv) => { const e = kv.indexOf("="); const dec = (s: string) => safeDecode(s.replace(/\+/g, " ")); return [dec(e < 0 ? kv : kv.slice(0, e)), e < 0 ? null : <span className="text-syn-value"><Visible text={dec(kv.slice(e + 1))} /></span>]; })} />;
   }
   if (t.includes("json") || /^\s*[[{]/.test(text)) { const j = JsonBody({ text }); if (j) return j; }
   if (/html|xml|svg/.test(t) || /^\s*</.test(text)) return <MarkupBody text={text} />;
   return <div className="whitespace-pre-wrap break-all">{text}</div>;
 }
 
-export function HttpParsed({ p, tag, domain }: { p: Parsed; tag: string | null; domain?: string }) {
+// capture: who wrote these bytes. interactsh re-serialises requests (headers sorted after Host, names
+// normalised); the edge records them exactly as they came off the socket.
+export function HttpParsed({ p, tag, domain, capture, clientHttp2 }: { p: Parsed; tag: string | null; domain?: string; capture: "edge" | "engine"; clientHttp2?: boolean }) {
   const find = (n: string) => p.headers.find(([k]) => k.toLowerCase() === n)?.[1] ?? "";
   const type = find("content-type");
-  const q = p.target?.includes("?") ? p.target.slice(p.target.indexOf("?") + 1).split("&").filter(Boolean) : [];
+  const q = p.target?.includes("?") ? decodedQuery(p.target.slice(p.target.indexOf("?") + 1)) : [];
+  const order = p.kind === "response" ? "as sent" : capture === "edge" ? "in the order received" : "as logged by interactsh: sorted, names normalised";
   const bodyBytes = new TextEncoder().encode(p.body).length;
   return (
     <div className="font-mono text-[12.5px] leading-[18px] text-bone">
       <Section>
         {p.kind === "request" ? (
-          <div className="break-all"><b className="mr-[1ch] font-[650]">{p.method}</b><Target target={p.target!} tag={tag} split /><span className="ml-[1ch] text-ash">{p.version}</span></div>
+          <div className="[overflow-wrap:anywhere]"><b className="mr-[1ch] font-[650]">{p.method}</b><Target target={p.target!} tag={tag} /><span className="ml-[1ch] text-ash">{p.version}</span></div>
         ) : (
-          <div><span className="mr-[1ch] text-ash">{p.version}</span><b className={cn("mr-[1ch] font-[650]", statusInk(p.status!))}>{p.status}</b>{p.reason}</div>
+          <>
+            <div><span className="mr-[1ch] text-ash">{p.version}</span><b className={cn("mr-[1ch] font-[650]", statusInk(p.status!))}>{p.status}</b>{p.reason}</div>
+            {clientHttp2 && capture === "engine" && <p className="mt-1 font-sans text-[11px] text-ash">interactsh's rendering of its reply; the client spoke HTTP/2.</p>}
+          </>
         )}
       </Section>
       {q.length > 0 && (
         <Section title="Query" meta={`${q.length} ${q.length === 1 ? "parameter" : "parameters"}, decoded`}>
-          <Pairs rows={q.map((kv) => { const e = kv.indexOf("="); return [safeDecode(e < 0 ? kv : kv.slice(0, e)), e < 0 ? null : <span className="text-syn-value">{safeDecode(kv.slice(e + 1))}</span>]; })} />
+          <Pairs rows={q.map((x) => [x.name, x.value === null ? null : (
+            <span><span className="text-syn-value"><Visible text={x.value} /></span>{x.changed && <Pill title={`As sent: ${x.raw}`}>decoded</Pill>}</span>
+          )])} />
         </Section>
       )}
-      <Section title="Headers" meta={`${p.headers.length}, in the order received`}>
+      <Section title="Headers" meta={`${p.headers.length}, ${order}`}>
         <Pairs note={(k) => NOTE[k.toLowerCase()]} rows={p.headers.map(([k, v]) => [k, k.toLowerCase() === "host" ? <Host value={v} tag={tag} domain={domain} /> : v])} />
       </Section>
       {(p.body || bodyBytes > 0) && (

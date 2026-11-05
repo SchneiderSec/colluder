@@ -124,6 +124,14 @@ export function HttpRuleTab({ p }: { p: Probe }) {
   const [hop, setHop] = useState(1);
   const [preview, setPreview] = useState<{ raw?: string; error?: string; delayMs?: number }>({});
   const [saving, setSaving] = useState(false);
+  const [touched, setTouched] = useState<Set<string>>(new Set());
+  useEffect(() => setTouched(new Set()), [p.tag]);
+  const FIELD_OF: Record<string, string> = { Location: "location", Body: "body", Status: "status", "Delay in milliseconds": "delay", "Content type": "contentType" };
+  const onLeave = (e: React.FocusEvent) => {
+    const l = (e.target as HTMLElement).getAttribute("aria-label") ?? "";
+    const f = FIELD_OF[l] ?? (/^Header \d+/.test(l) ? "headers" : null);
+    if (f && !touched.has(f)) setTouched(new Set(touched).add(f));
+  };
 
   // load this probe's rule; a new active version (saved elsewhere) replaces an untouched draft
   const activeVersion = p.httpRule?.version ?? 0;
@@ -169,7 +177,9 @@ export function HttpRuleTab({ p }: { p: Probe }) {
   const tpl = templates(p.tag, host);
   const loop = draft.mode === "redirect" ? draft.loop ?? 0 : 0;
   const hops = loop ? loop + 1 : 1;
-  const errF = errorField(preview.error);
+  // a missing value isn't an error until you've left the field; a wrong value is shown right away
+  const pending = !!preview.error && /is required/.test(preview.error) && !touched.has(errorField(preview.error) ?? "");
+  const errF = pending ? null : errorField(preview.error);
   const errFor = (f: string) => (errF === f ? preview.error!.replace(/^Can't answer like this yet: /, "") : null);
   const bad = (f: string) => errF === f && "border-bad";
 
@@ -188,7 +198,7 @@ export function HttpRuleTab({ p }: { p: Probe }) {
           <b className="font-semibold">The edge isn't answering.</b> Your probes get no HTTP reply and their hits aren't captured until it's back (sudo systemctl restart colluder-edge).
         </p>
       )}
-      <dl className="m-0 grid grid-cols-[96px_minmax(0,1fr)] content-start gap-x-[18px] gap-y-4 pb-4 max-[820px]:grid-cols-1 max-[820px]:gap-y-1.5">
+      <dl onBlurCapture={onLeave} className="m-0 grid grid-cols-[96px_minmax(0,1fr)] content-start gap-x-[18px] gap-y-4 pb-4 max-[820px]:grid-cols-1 max-[820px]:gap-y-1.5">
         <Row label="Answer with" help={draft.mode === "default" ? `interactsh's standard reply: 200, CORS headers, the id reversed in the body.${live ? " Sent by Colluder's edge, so the hit records exactly what went out." : ""}` : "For HTTP and HTTPS hits on this probe. DNS lookups still get interactsh's answer."}>
           <Seg label="Answer with" value={draft.mode} onChange={setMode} items={MODES} />
         </Row>
@@ -207,7 +217,7 @@ export function HttpRuleTab({ p }: { p: Probe }) {
                 </Select>
               </div>
             </Row>
-            <Row label="Loop first" error={errFor("loop")} help={loop ? <>A blind SSRF that follows redirects shows up as a run of {loop + 1} hits: the first request, then <b className="font-[550] text-smoke">?hop=2</b> to <b className="font-[550] text-smoke">?hop={loop + 1}</b>. One that doesn't follow stops after the first. Each hop keeps the scheme it arrived on.</> : "Bounce the client back through this probe before the final redirect, so following redirects shows up as a run of hits."}>
+            <Row label="Loop first" error={errFor("loop")} help={loop ? <>A blind SSRF that follows redirects shows up as a run of {loop + 1} hits: the first request, then <b className="font-[550] text-smoke">?hop=2</b> to <b className="font-[550] text-smoke">?hop={loop + 1}</b>. One that doesn't follow stops after the first. Each hop keeps the scheme it arrived on.{loop >= 9 && <> <b className="font-[550] text-bone">Go's HTTP client stops after 10 redirects</b>, so with {loop} hops a Go client never reaches the final Location; use 8 or fewer to test past it.</>}</> : "Bounce the client back through this probe before the final redirect, so following redirects shows up as a run of hits."}>
               <div className="flex items-center gap-2">
                 <Switch aria-label="Loop through this probe first" checked={loop > 0} onCheckedChange={(on) => { set({ loop: on ? 9 : 0 }); setHop(1); }} />
                 {loop > 0 && <><Num label="Hops" value={loop} max={20} onChange={(n) => { set({ loop: Math.max(n, 1) }); setHop(1); }} /><span className="text-[12.5px] text-smoke">hops through this probe first</span></>}
@@ -278,7 +288,7 @@ export function HttpRuleTab({ p }: { p: Probe }) {
       <aside className="flex min-w-0 flex-col gap-3.5 pb-4" aria-label="Preview and history">
         <div className="flex flex-col rounded-[3px] border border-rule-2 bg-well">
           <div className="flex h-8 items-center gap-2 border-b border-rule-2 pr-1.5 pl-3 text-[12.5px] font-[650]">
-            <span className="whitespace-nowrap">Next answer</span>
+            <span className="whitespace-nowrap">{live ? "Next answer" : "Answer after cutover"}</span>
             <span className="truncate text-[11px] font-normal text-ash" title={dirty ? "Includes your unsaved changes" : undefined}>{scheme.toUpperCase()}{loop ? ` · hop ${hop}/${hops}` : ""}{dirty ? " · unsaved" : ""}{preview.delayMs ? ` · after ${preview.delayMs} ms` : ""}</span>
             <span className="ml-auto flex items-center gap-0.5">
               <Seg label="Preview scheme" value={scheme} onChange={setScheme} items={[["http", "HTTP"], ["https", "HTTPS"]]} />
@@ -288,7 +298,9 @@ export function HttpRuleTab({ p }: { p: Probe }) {
               </>}
             </span>
           </div>
-          {preview.error
+          {pending
+            ? <p className="px-3 py-2.5 text-[12.5px] text-ash">{preview.error!.replace(/ is required\.?$/, "")} needed to preview the answer.</p>
+            : preview.error
             ? <p className="px-3 py-2.5 text-[12.5px] text-bad">Can't answer like this yet: {preview.error}</p>
             : <pre className="m-0 max-h-[260px] overflow-auto px-3 py-2 font-mono text-[12.5px] leading-[18px] break-all whitespace-pre-wrap text-bone">{preview.raw ?? " "}</pre>}
         </div>
@@ -296,11 +308,13 @@ export function HttpRuleTab({ p }: { p: Probe }) {
         <div className="rounded-[3px] border border-rule bg-soot">
           <div className="flex h-7 items-center gap-2 border-b border-rule-2 px-3 text-[12.5px] font-[650]">Rule history<span className="truncate text-[11px] font-normal text-ash">each hit records the version that answered it</span></div>
           <ol className="m-0 list-none py-1">
-            {(rs?.history ?? []).map((v) => <HistoryRow key={v.version} v={v} current={v.version === rs?.active?.version} onLoad={() => { setDraft(norm(v.rule)); setHop(1); }} />)}
-            <li className="grid grid-cols-[22px_44px_minmax(0,1fr)_auto] items-baseline gap-2.5 px-3 py-[5px] text-[12.5px]">
-              <span /><span /><span className="truncate text-smoke">Default reply from Colluder (no rule)</span>
-              <span className="text-[11px] text-ash">answered {plural(rs?.defaultHits ?? 0, "hit")}</span>
-            </li>
+            {(rs?.history ?? []).map((v) => <HistoryRow key={v.version} v={v} live={live} current={v.version === rs?.active?.version} onLoad={() => { setDraft(norm(v.rule)); setHop(1); }} />)}
+            {(live || !!rs?.defaultHits) && (
+              <li className="grid grid-cols-[22px_44px_minmax(0,1fr)_auto] items-baseline gap-2.5 px-3 py-[5px] text-[12.5px]">
+                <span /><span /><span className="truncate text-smoke">Default reply from Colluder (no rule)</span>
+                <span className="text-[11px] text-ash">answered {plural(rs?.defaultHits ?? 0, "hit")}</span>
+              </li>
+            )}
             {!!rs?.interactshHits && (
               <li className="grid grid-cols-[22px_44px_minmax(0,1fr)_auto] items-baseline gap-2.5 px-3 py-[5px] text-[12.5px]">
                 <span /><span /><span className="truncate text-smoke">Answered by interactsh (before the edge)</span>
@@ -311,7 +325,7 @@ export function HttpRuleTab({ p }: { p: Probe }) {
         </div>
       </aside>
 
-      <div className="sticky bottom-0 col-span-full flex flex-wrap items-center gap-2 border-t border-rule-2 bg-soot py-3 max-[820px]:bottom-7">
+      <div className={cn("sticky bottom-0 col-span-full flex flex-wrap items-center gap-2 border-t border-rule-2 bg-soot py-3 max-[820px]:bottom-7", !dirty && "max-[820px]:static")}>
         {dirty && <span className="mr-1 flex items-center gap-1.5 text-[12.5px] text-smoke"><i className="inline-block size-1.5 rounded-full border-[1.5px] border-smoke" />Unsaved changes</span>}
         <Button disabled={!dirty || saving || !!preview.error} onClick={save}>Save as v{nextVersion}</Button>
         <Button variant="quiet" disabled={!dirty || saving} onClick={() => { setDraft(base); setHop(1); }}>Discard</Button>
@@ -339,7 +353,7 @@ function plantHint(template: string, tag: string, host: string) {
   return null;
 }
 
-function HistoryRow({ v, current, onLoad }: { v: RuleVersion; current: boolean; onLoad: () => void }) {
+function HistoryRow({ v, current, live, onLoad }: { v: RuleVersion; current: boolean; live: boolean; onLoad: () => void }) {
   const r = v.rule;
   const what = r.mode === "default" ? "Default reply" : r.mode === "redirect" ? `Redirect ${r.status} → ${r.location}${r.loop ? `, loop ×${r.loop}` : ""}`
     : r.mode === "file" ? `Hosted file, ${r.contentType}` : `Custom ${r.status}`;
@@ -348,7 +362,7 @@ function HistoryRow({ v, current, onLoad }: { v: RuleVersion; current: boolean; 
       <span className="text-[11px] text-smoke">v{v.version}</span>
       <span className="font-semibold">{dayOrTime(v.createdAt)}</span>
       <button type="button" className="cursor-pointer truncate text-left text-smoke hover:text-bone" title={`Load v${v.version} into the editor`} onClick={onLoad}>{what}</button>
-      <span className="text-[11px] whitespace-nowrap text-ash">{current ? "active · " : ""}answered {plural(v.hits ?? 0, "hit")}</span>
+      <span className="text-[11px] whitespace-nowrap text-ash">{current ? (live ? "active · " : "saved · not served yet · ") : ""}answered {plural(v.hits ?? 0, "hit")}</span>
     </li>
   );
 }

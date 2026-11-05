@@ -39,7 +39,7 @@ Built on the matched v1.4.1 CLI client that is known to capture DNS/HTTP/HTTPS f
 - Current payload shown prominently with copy, plus a payload builder: tag in, ready-to-copy DNS/HTTP/HTTPS variants out.
 - Filter by type and by probe tag.
 - Persistence in SQLite (survives restarts), with clear-all behind a confirm. JSONL from the engine stays the raw source of truth.
-- Attention: unread count in tab title + favicon; optional Discord webhook (`DISCORD_WEBHOOK_URL`) posting the first hit per probe tag, with follow-ups rolled into a count (~60s window).
+- Attention: unread count in tab title + favicon; optional Discord webhook (`DISCORD_WEBHOOK_URL`) posting the first hit per probe tag, the first HTTP hit and new sources after it, and late hits on retired probes; everything else rolled into a once-a-minute count, never dropped.
 - Access: the tailnet is the auth boundary; no login; every viewer has full access.
 - Secrets (`NUCLEI_INTERACTSH_TOKEN`, `DISCORD_WEBHOOK_URL`) are read from env at runtime, never printed, never in source, never sent to the browser.
 - Undecided: whether HTTPS is distinguishable from HTTP in v1.4.1 client output (to verify empirically); which enrichments (rDNS, ASN/owner of source) ship by default vs opt-in.

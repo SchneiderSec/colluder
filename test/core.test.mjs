@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { parseInteraction, correlationIdOf } from "../lib/tag.mjs";
 import { Tail } from "../lib/tail.mjs";
 import { Store } from "../lib/store.mjs";
-import { neutral } from "../lib/discord.mjs";
+import { neutral, Discord } from "../lib/discord.mjs";
 
 const ID = "cv7k2m9qx4hb8tn1wr6pe3yd0zfa5glsu";
 const D = "oob.example";
@@ -51,6 +51,67 @@ test("discord neutralises mentions, markdown and control chars", () => {
   assert.ok(!/(^|[^\\])@/.test(out));
   assert.ok(!/(^|[^\\])[`[\]()<]/.test(out));
   assert.ok(!out.includes("\n"));
+});
+
+// A1: the hit that matters is never dropped
+function fakeDiscord() {
+  let t = Date.parse("2026-11-05T10:00:00Z");
+  const posts = [], timers = [];
+  const d = new Discord({ url: "x", dashboardUrl: "http://dash/", log: () => {}, now: () => t, later: (fn) => timers.push(fn) });
+  d.post = (c) => posts.push(c);
+  return { d, posts, tick: (ms) => { t += ms; }, fire: () => { const f = timers.splice(0); for (const fn of f) fn(); } };
+}
+let hid = 0;
+const hit = (protocol, tag, ip = "1.2.3.4") => ({ id: ++hid, protocol, tag, remoteAddress: ip, qType: "A", summary: "GET /x HTTP/1.1", fullId: "x", uniqueId: "x" });
+
+test("discord: DNS first, then the HTTP fetch minutes later still posts", () => {
+  const { d, posts, tick, fire } = fakeDiscord();
+  d.onHit(hit("dns", "ssrf"));
+  tick(500); d.onHit(hit("dns", "ssrf", "8.8.8.8"));
+  tick(5 * 60_000); d.onHit(hit("http", "ssrf", "5.6.7.8"));
+  assert.equal(posts.length, 2);
+  assert.match(posts[0], /^DNS hit on probe ssrf/);
+  assert.match(posts[1], /^HTTP hit on probe ssrf after 2 DNS lookups from 5\.6\.7\.8/);
+  assert.match(posts[1], /#probes\/ssrf\/hits$/);
+  fire(); // the second DNS lookup was counted, not dropped
+  assert.match(posts[2], /^1 DNS more on probe ssrf/);
+});
+
+test("discord: same source rolls up, a new source posts", () => {
+  const { d, posts, tick } = fakeDiscord();
+  d.onHit(hit("http", "hook", "5.6.7.8"));
+  tick(1000); d.onHit(hit("http", "hook", "5.6.7.8"));
+  tick(1000); d.onHit(hit("http", "hook", "9.9.9.9"));
+  tick(1000); d.onHit(hit("http", "hook", "1.1.1.1"), { sourceSeen: true });
+  assert.equal(posts.length, 2);
+  assert.match(posts[1], /from a new source from 9\.9\.9\.9/);
+});
+
+test("discord: chatter never posts; a lone bare-id lookup does after the wait", () => {
+  const { d, posts, fire } = fakeDiscord();
+  d.onHit(hit("dns", null), { bareId: true, isChatter: () => true });
+  fire();
+  assert.equal(posts.length, 0);
+  d.onHit(hit("dns", null), { bareId: true, isChatter: () => false });
+  assert.equal(posts.length, 0, "waits for a tagged hit first");
+  fire();
+  assert.match(posts[0], /hit on an untagged payload/);
+});
+
+test("discord: retired probes post late hits at most every 10 minutes", () => {
+  const { d, posts, tick } = fakeDiscord();
+  d.onHit(hit("http", "old"), { retired: true });
+  tick(60_000); d.onHit(hit("http", "old", "7.7.7.7"), { retired: true });
+  tick(10 * 60_000); d.onHit(hit("dns", "old"), { retired: true });
+  assert.equal(posts.length, 2);
+  assert.match(posts[0], /^Late HTTP hit on retired probe old/);
+});
+
+test("discord: a quiet half hour starts a new episode", () => {
+  const { d, posts, tick } = fakeDiscord();
+  d.onHit(hit("dns", "p"));
+  tick(31 * 60_000); d.onHit(hit("dns", "p"));
+  assert.equal(posts.length, 2);
 });
 
 test("tail: backfill, resume after restart, partial lines, truncation", async () => {
