@@ -98,6 +98,7 @@ export interface Probe extends Counts {
   plantedAt: string;
   registered: number;
   retiredAt: string | null;
+  triggerBytes?: number; // C2: size of the saved triggering request (the text itself loads on demand)
   httpRule?: { version: number; mode: RuleMode; createdAt: string; short: string; line: string; scope: string } | null;
 }
 

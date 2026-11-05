@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronRight, Download, Search } from "lucide-react";
-import { useApp, keyOf, selectHit, patchProbe, saveRule, chatterOf, setTab, unreadFor, loadOlder, searchHits, exportUrl, PROBE_TABS, type AppState, type ProbeTab } from "@/store";
+import { ChevronRight, Download, FileText, Search } from "lucide-react";
+import { useApp, keyOf, selectHit, patchProbe, saveRule, fetchTrigger, fetchReport, chatterOf, setTab, unreadFor, loadOlder, searchHits, exportUrl, PROBE_TABS, type AppState, type ProbeTab } from "@/store";
 import { dnsSteps, mostSpecific } from "@/lib/dns";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { UNTAGGED, type Interaction, type Probe } from "@/lib/types";
 import { dayOrTime, hmsms, isoMs, plural } from "@/lib/format";
 import { groupHits } from "@/lib/raw";
-import { toast } from "@/lib/toast";
+import { copy, toast } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -20,16 +20,26 @@ import { cn } from "@/lib/utils";
 function EditDialog({ p, open, onOpenChange }: { p: Probe; open: boolean; onOpenChange: (v: boolean) => void }) {
   const [target, setTarget] = useState(p.target);
   const [note, setNote] = useState(p.note);
-  useEffect(() => { if (open) { setTarget(p.target); setNote(p.note); } }, [open, p.target, p.note]);
+  const [trigger, setTrigger] = useState<string | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    setTarget(p.target); setNote(p.note); setTrigger(null);
+    fetchTrigger(p.tag).then(setTrigger, () => setTrigger(""));
+  }, [open, p.tag, p.target, p.note]);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[440px] border-rule bg-soot-1">
+      <DialogContent className="max-w-[560px] border-rule bg-soot-1">
         <DialogHeader><DialogTitle>Edit {p.tag}</DialogTitle><DialogDescription>Where you planted it and anything worth remembering.</DialogDescription></DialogHeader>
         <label className="text-[12.5px] text-smoke">Target<Input className="mt-1.5" value={target} maxLength={300} onChange={(e) => setTarget(e.target.value)} /></label>
-        <label className="text-[12.5px] text-smoke">Note<Textarea className="mt-1.5" rows={4} value={note} maxLength={2000} onChange={(e) => setNote(e.target.value)} /></label>
+        <label className="text-[12.5px] text-smoke">Note<Textarea className="mt-1.5" rows={3} value={note} maxLength={2000} onChange={(e) => setNote(e.target.value)} /></label>
+        <label className="text-[12.5px] text-smoke">Trigger request
+          <span className="mt-0.5 block text-[11px] text-ash">The request that made the target call back, pasted from your proxy. It opens the probe report.</span>
+          <Textarea className="mt-1.5 max-h-[40vh] font-mono text-[12.5px] leading-[18px]" rows={7} spellCheck={false} maxLength={32768} disabled={trigger === null}
+            placeholder={trigger === null ? "Loading…" : "POST /api/webhooks HTTP/1.1\nHost: api.shop.example\n…"} value={trigger ?? ""} onChange={(e) => setTrigger(e.target.value)} />
+        </label>
         <DialogFooter>
           <Button variant="quiet" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button variant="default" onClick={() => patchProbe(p.tag, { target, note }).then(() => onOpenChange(false), (e) => toast((e as Error).message, true))}>Save</Button>
+          <Button variant="default" disabled={trigger === null} onClick={() => patchProbe(p.tag, { target, note, ...(trigger !== null ? { trigger } : {}) }).then(() => onOpenChange(false), (e) => toast((e as Error).message, true))}>Save</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -60,6 +70,8 @@ function Head({ s }: { s: AppState }) {
         {p.note && <span className="truncate text-ash" title={p.note}>Note: {p.note}</span>}
       </div>
       <div className="ml-auto flex gap-1.5">
+        <Button variant="quiet" title={`Markdown for a bug report: summary, ${p.triggerBytes ? "the triggering request, " : ""}timeline, sources, decoded exfil and the first web request`}
+          onClick={() => fetchReport(p.tag).then((md) => copy(md, `${p.tag} report`), (e) => toast((e as Error).message, true))}><FileText />Copy report</Button>
         <Button variant="quiet" onClick={() => setEdit(true)}>Edit</Button>
         <Button variant="quiet" onClick={() => (p.retiredAt ? patchProbe(p.tag, { retired: false }).then(() => toast(`Restored ${p.tag}`), (e) => toast((e as Error).message, true)) : setRetire(true))}>{p.retiredAt ? "Restore" : "Retire…"}</Button>
       </div>

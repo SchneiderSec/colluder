@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { layoutJson } from "@/lib/jsonview";
 import { decodedQuery, showControls } from "@/lib/query";
+import { decodeExfil } from "@/lib/exfil";
 
 export const safeDecode = (s: string) => { try { return decodeURIComponent(s); } catch { return s; } };
 
@@ -64,6 +65,12 @@ const Pill = ({ children, strong, title }: { children: ReactNode; strong?: boole
 );
 // decoded text with control characters drawn as escapes in Ash, so nothing invisible slips by
 const Visible = ({ text }: { text: string }) => <>{showControls(text).map(([k, t], n) => (k === "ctl" ? <span key={n} className="text-ash">{t}</span> : t))}</>;
+// a value that looks encoded, decoded underneath it (display only)
+function Exfil({ value }: { value: string }) {
+  const d = decodeExfil(value);
+  if (!d) return null;
+  return <span className="block font-sans text-[11px] text-ash">decodes as {d.kind} to <span className="font-mono text-[12.5px] text-bone"><Visible text={d.text} /></span></span>;
+}
 const Tag = ({ children }: { children: ReactNode }) => <em className="bg-[#3a2f22] px-px text-bone not-italic">{children}</em>;
 
 // a request target: path (tag marked when it is the first segment), then ? key = value & …
@@ -166,7 +173,7 @@ export function HttpParsed({ p, tag, domain, capture, clientHttp2 }: { p: Parsed
       {q.length > 0 && (
         <Section title="Query" meta={`${q.length} ${q.length === 1 ? "parameter" : "parameters"}, decoded`}>
           <Pairs rows={q.map((x) => [x.name, x.value === null ? null : (
-            <span><span className="text-syn-value"><Visible text={x.value} /></span>{x.changed && <Pill title={`As sent: ${x.raw}`}>decoded</Pill>}</span>
+            <span><span className="text-syn-value"><Visible text={x.value} /></span>{x.changed && <Pill title={`As sent: ${x.raw}`}>decoded</Pill>}<Exfil value={x.value} /></span>
           )])} />
         </Section>
       )}

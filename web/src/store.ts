@@ -189,7 +189,7 @@ export async function plant(tag: string, target: string, technique: string) {
   select(p.tag);
   toast(existed ? `${tag} already planted: target updated` : seed ? `Planted ${tag}: set up its ${seed === "file" ? "hosted file" : "redirect"}, then copy a payload` : `Planted ${tag}: copy a payload above`);
 }
-export async function patchProbe(tag: string, body: { target?: string; note?: string; retired?: boolean }) {
+export async function patchProbe(tag: string, body: { target?: string; note?: string; trigger?: string; retired?: boolean }) {
   const p = await api<Probe>(`/api/probes/${tag}`, { method: "PATCH", body });
   set({ probes: new Map(state.probes).set(p.tag, p) });
 }
@@ -209,6 +209,13 @@ export async function loadOlder(key: string, before: number) {
 }
 export const searchHits = (key: string, q: string, types: string[]) =>
   api<{ hits: Interaction[] }>(`${hitsPath(key)}/hits?limit=500&q=${encodeURIComponent(q)}&type=${types.join(",")}`).then((r) => r.hits);
+export const fetchTrigger = (tag: string) => api<{ trigger: string }>(`/api/probes/${encodeURIComponent(tag)}/trigger`).then((r) => r.trigger);
+// C1: the probe report is built on the server from every stored hit; plain Markdown text
+export async function fetchReport(tag: string) {
+  const r = await fetch(`/api/probes/${encodeURIComponent(tag)}/report.md`, { headers: { accept: "text/markdown" } });
+  if (!r.ok) throw new Error(`Couldn't build the report (HTTP ${r.status})`);
+  return r.text();
+}
 export const exportUrl = (key: string) => `${hitsPath(key)}/export.jsonl`;
 
 // ---------- HTTP answer rules (phase 2) ----------

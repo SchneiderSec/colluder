@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowDown, Copy, FileText, Search } from "lucide-react";
+import { ArrowDown, Copy, FileText, Search, Terminal } from "lucide-react";
 import { useApp, loadDetail, lookupAsn, save, chatterOf } from "@/store";
 import { dnsSteps } from "@/lib/dns";
+import { decodeLabels } from "@/lib/exfil";
+import { toCurl } from "@/lib/curl";
 import type { Enrich } from "@/lib/types";
 import { byteCount, lineCount } from "@/lib/format";
 import { answeredBy, decode, evidence } from "@/lib/raw";
@@ -115,6 +117,7 @@ export function HitDetail({ id }: { id: number }) {
   const chatter = chatterOf(s.list).get(d.id);
   const step = d.protocol === "dns" ? dnsSteps(s.list).get(d.id) : undefined;
   const self = (s.status?.selfIps ?? []).includes(d.remoteAddress);
+  const curl = web ? toCurl(d.rawRequest, d.protocol === "https" ? "https" : "http", { id: d.id, normalised: !d.answer }) : null;
   // who wrote the bytes: the edge records them off the socket; interactsh re-serialises them
   const capture = d.answer ? "edge" as const : "engine" as const;
   const reqP = web && parsed ? parseHttp(cut(d.rawRequest)) : null;
@@ -166,7 +169,14 @@ export function HitDetail({ id }: { id: number }) {
           <b className="font-semibold text-bone">Resolver step, not data.</b> The same resolver asked for <span className="font-mono text-bone">{step}</span> within seconds. Resolvers that minimise queries ask for the name one label at a time, so the labels here are part of that longer name.
         </p>
       )}
-      {!step && !!d.extraLabels?.length && <p className="flex-none text-[12.5px] text-smoke">Extra labels before the tag: <span className="font-mono text-bone">{d.extraLabels.join(".")}</span></p>}
+      {!step && !!d.extraLabels?.length && (
+        <p className="flex-none text-[12.5px] text-smoke">
+          Extra labels before the tag: <span className="font-mono text-bone">{d.extraLabels.join(".")}</span>
+          {decodeLabels(d.extraLabels).map(({ label, decoded }) => (
+            <span key={label}> · <span className="font-mono">{label}</span> decodes as {decoded.kind} to <span className="font-mono text-bone">{decoded.text.replace(/[\r\n\t]/g, (c) => (c === "\n" ? "\\n" : c === "\t" ? "\\t" : "\\r"))}</span></span>
+          ))}
+        </p>
+      )}
 
       <div className="mt-0.5 flex flex-none flex-wrap items-center gap-2">
         {web ? (
@@ -188,6 +198,7 @@ export function HitDetail({ id }: { id: number }) {
             <span className="text-smoke">Wrap long lines</span><span className="text-ash max-[1180px]:hidden">display only; copies stay exact</span>
           </label>
         )}
+        {web && curl && <Button variant="ghost" title="The request rebuilt as a curl command, for a repro" onClick={() => copy(curl, "curl command")}><Terminal />Copy as curl</Button>}
         <Button variant="ghost" onClick={() => copy(`${d.rawRequest}\n\n${d.rawResponse}`, "request and response")}><Copy />Copy both</Button>
       </div>
 

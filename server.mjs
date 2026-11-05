@@ -14,6 +14,7 @@ import { Engine } from "./lib/engine.mjs";
 import { parseInteraction, summarize, TAG_RE } from "./lib/tag.mjs";
 import { reverseDns, asnLookup } from "./lib/enrich.mjs";
 import { Discord } from "./lib/discord.mjs";
+import { probeReport } from "./lib/report.mjs";
 import { validateHttpRule, respond, serialize, describeRule } from "./lib/rules.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -330,11 +331,27 @@ const server = http.createServer(async (req, res) => {
       let probe = store.editProbe(m[1], {
         target: b.target === undefined ? undefined : String(b.target).slice(0, 300),
         note: b.note === undefined ? undefined : String(b.note).slice(0, 2000),
+        trigger: b.trigger === undefined ? undefined : String(b.trigger).slice(0, 32_768),
       });
       if (b.retired !== undefined) probe = store.retire(m[1], b.retired ? nowIso() : null);
       probe = decorate(probe);
       broadcast("probe", probe);
       return json(res, 200, probe);
+    }
+    if (req.method === "GET" && (m = /^\/api\/probes\/([a-z0-9-]+)\/report\.md$/.exec(p))) {
+      const probe = store.probe(m[1]);
+      if (!probe) return json(res, 404, { error: "no such probe" });
+      const md = probeReport({
+        probe, hits: [...store.exportRows(m[1])].map((r) => ({ ...r, answer: r.answer ? JSON.parse(r.answer) : null })),
+        trigger: store.trigger(m[1]), enrich: (ip) => store.enrich(ip), domain: CFG.domain,
+        payloadId: engine.payload?.host?.split(".")[0] ?? "<payload-id>", selfIps: SELF_IPS, now: nowIso(),
+      });
+      res.writeHead(200, { "content-type": "text/markdown; charset=utf-8", "cache-control": "no-store" });
+      return res.end(md);
+    }
+    if (req.method === "GET" && (m = /^\/api\/probes\/([a-z0-9-]+)\/trigger$/.exec(p))) {
+      if (!store.probe(m[1])) return json(res, 404, { error: "no such probe" });
+      return json(res, 200, { trigger: store.trigger(m[1]) });
     }
     if (req.method === "GET" && (m = /^\/api\/probes\/([a-z0-9-]+)\/http-rule$/.exec(p))) {
       if (!store.probe(m[1])) return json(res, 404, { error: "no such probe" });

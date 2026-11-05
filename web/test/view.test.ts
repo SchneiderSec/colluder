@@ -57,3 +57,26 @@ test("dns: resolver steps toward a longer name are flagged, real names are not",
   assert.equal(steps.has(5), false);
   assert.equal(mostSpecific(list).id, 3);
 });
+
+import { decodeExfil, decodeLabels } from "../src/lib/exfil.ts";
+
+test("exfil: hex, base32 and base64url decode only to printable text", () => {
+  assert.deepEqual(decodeExfil("726f6f74", { dns: true }), { kind: "hex", text: "root" });
+  assert.deepEqual(decodeExfil("ORSXG5BAMRQXIYI", { dns: true }), { kind: "base32", text: "test data" });
+  assert.deepEqual(decodeExfil("cm9vdDp4OjA6MA"), { kind: "base64url", text: "root:x:0:0" });
+  assert.equal(decodeExfil("cm9vdDp4OjA6MA", { dns: true }), null, "no base64 for case-insensitive DNS");
+  for (const plain of ["admin", "integration", "password", "ip-10-0-3-17", "e2e", "deadbeefcafe0000"]) assert.equal(decodeExfil(plain, { dns: true }), null, plain);
+  assert.deepEqual(decodeLabels(["726f6f", "74"]), [{ label: "726f6f.74", decoded: { kind: "hex", text: "root" } }]);
+  assert.deepEqual(decodeLabels(["726f6f74", "ip-10-0-3-17"]), [{ label: "726f6f74", decoded: { kind: "hex", text: "root" } }]);
+});
+
+import { toCurl } from "../src/lib/curl.ts";
+
+test("curl: rebuilt request is shell-safe and drops computed headers", () => {
+  const raw = "POST /hook?a=1 HTTP/1.1\r\nHost: x.example\r\nContent-Length: 9\r\nContent-Type: application/json\r\nX-Evil: it's $(id)\r\n\r\n{\"a\":\"'\"}";
+  assert.equal(toCurl(raw, "https", { id: 7, normalised: true }),
+    "# Rebuilt from Colluder hit #7; interactsh normalised header order and name case\n" +
+    "curl -sS 'https://x.example/hook?a=1' -H 'Content-Type: application/json' -H 'X-Evil: it'\\''s $(id)' --data-binary '{\"a\":\"'\\''\"}'");
+  assert.equal(toCurl("PUT /x HTTP/1.1\r\nHost: h\r\n\r\n", "http", { id: 1, normalised: false }), "# Rebuilt from Colluder hit #1\ncurl -sS -X PUT 'http://h/x'");
+  assert.equal(toCurl("garbage", "http", { id: 1, normalised: false }), null);
+});

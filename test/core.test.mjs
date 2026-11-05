@@ -182,3 +182,30 @@ test("store: a probe's hits page by id, search escapes LIKE wildcards, filter by
   assert.equal(ex.length, 7);
   assert.ok(ex[0].rawRequest && ex[0].reqSha256);
 });
+
+import { probeReport, code, fenced } from "../lib/report.mjs";
+
+test("report: captured values stay inside code; timeline, exfil and self-tests are named", () => {
+  const at = (s) => `2026-11-05T10:00:${String(s).padStart(2, "0")}.000000000Z`;
+  const hits = [
+    { id: 1, protocol: "dns", uniqueId: ID, fullId: `726f6f74.ssrf.${ID}`, qType: "A", remoteAddress: "198.51.100.53", timestamp: at(1), tag: "ssrf", rawRequest: "q", rawResponse: "a", reqSha256: "x", answer: null },
+    { id: 2, protocol: "http", uniqueId: ID, fullId: ID, remoteAddress: "203.0.113.9", timestamp: at(2), tag: "ssrf",
+      rawRequest: "GET /x?d=cm9vdDp4OjA6MA HTTP/1.1\r\nUser-Agent: evil ``` [click](http://e) <img src=x>\r\n\r\n", rawResponse: "HTTP/1.1 200 OK\r\n\r\n", reqSha256: "abc", answer: null },
+    { id: 3, protocol: "http", uniqueId: ID, fullId: ID, remoteAddress: "203.0.113.10", timestamp: at(3), tag: "ssrf", rawRequest: "GET / HTTP/1.1\r\n\r\n", rawResponse: "", reqSha256: "def", answer: null },
+  ];
+  const md = probeReport({ probe: { tag: "ssrf", plantedAt: at(0), target: "api.shop.example webhook", note: "" }, hits, trigger: "POST /hook HTTP/1.1\r\n\r\nurl=```",
+    enrich: () => null, domain: D, payloadId: ID, selfIps: ["203.0.113.10"], now: at(9) });
+  assert.match(md, /First DNS lookup \(A\)/);
+  assert.match(md, /First HTTP request from `203\.0\.113\.9`/);
+  assert.match(md, /New source: HTTP request from `203\.0\.113\.10` \(this OOB box \(a self-test\)\)/);
+  assert.match(md, /`726f6f74` decodes as hex to `root`/);
+  assert.match(md, /decodes as base64url to `root:x:0:0`/);
+  assert.match(md, /First web request \(#2\)/, "the self-test is not the headline request");
+  assert.match(md, /header order and name case were normalised by interactsh/);
+  // the hostile User-Agent sits inside a longer backtick fence, so it can't close the code span
+  assert.match(md, /User-Agent ````evil ``` \[click\]\(http:\/\/e\) <img src=x>````/);
+  assert.match(md, /````http\nPOST \/hook HTTP\/1\.1\n\nurl=```\n````/, "fence outgrows backticks in the trigger");
+  assert.equal(code("a\nb"), "`a\\nb`");
+  assert.equal(code("`x`"), "`` `x` ``");
+  assert.match(fenced("x".repeat(20000)), /more bytes not included/);
+});
