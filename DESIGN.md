@@ -394,11 +394,11 @@ All three are self-hosted WOFF2 (latin and latin-ext subsets, `font-display: swa
 
 The desktop is a fixed, full-height application grid that never scrolls as a page:
 
-- **Tool rail** (76px) on the left, spanning the full height: the mark, then Probes, Hosted files, Redirects & responses, DNS rebinding, Payload kit, Listeners, with Settings pinned to the bottom.
+- **Tool rail** (76px) on the left, spanning the full height: the mark, then Probes, a short Rule, then the cross-probe tools Payload kit and Listeners, with Settings pinned to the bottom. Anything that changes what a single probe answers is a tab on the probe, not a rail tool.
 - **Banners** stack at the top of the main column when something is wrong.
 - **Composer band** on top: the "Plant a probe" heading in a 132px label column, then Tag / Target / Technique / Plant in one row, then the selected probe's DNS, HTTP and HTTPS payload variants, each with a copy button and a one-line note.
 - **Probe list** (400px; 320px under 1180px): latest activity first, with a 42px header and a 40px Discord-alerts footer.
-- **Probe pane**: a 52px probe header, then the hits table (capped at min(28vh, 212px) while a hit is open, so detail stays visible), a "Planted … · first hit …" caption between solid hairlines, then the hit detail filling the rest.
+- **Probe pane**: a 52px probe header, a 35px tab strip (Hits · HTTP response · DNS answers; Unregistered has no tabs), then on the Hits tab the hits table (capped at min(28vh, 212px) while a hit is open, so detail stays visible), a "Planted … · first hit …" caption between solid hairlines, then the hit detail filling the rest.
 - **Status bar** (28px) along the bottom of the main column: wordmark, Engine, Stream, Last hit, then the payload host and the UTC clock on the right.
 
 Spacing is tight and regular: 24px page gutter, 20px list gutter, 10px gaps between controls, 11px vertical row padding in the probe list and 6×10px table cells. The status bar spaces its items 22px apart.
@@ -457,7 +457,14 @@ Restrained, mostly outlined, with exactly one bright button per working region.
 
 ### Navigation (tool rail)
 - 70px-wide items: a 19px icon over an 11px label, in Smoke. Hover fills Soot 1. The active item is filled Soot 2 with Bone text (fill only, no stripe). The unread count sits as an amber badge on the Probes item (capped at "99+").
-- On a phone the rail becomes a sticky top strip of icons with screen-reader labels.
+- On a phone the rail becomes a sticky top strip of icons with screen-reader labels; the Rule after Probes turns vertical.
+
+### Probe tabs
+- Underline tabs under the probe header, 24px apart, 12.5px/550 in Smoke; the active tab is Bone with a 2px Bone underline sitting on the strip's bottom Rule. No amber on the active tab.
+- Each tab carries its state after the label: the hit count on Hits, and on HTTP response and DNS answers what the probe answers with ("default" in Ash today).
+- Hits only count as read while the Hits tab is in view. A hit that lands while another tab is open keeps the probe unread and puts the amber new dot on the Hits tab.
+- Arrow keys, Home and End move between tabs. The tab is in the URL (`#probes/<tag>/http`) and stays put when you switch probes. j/k only act on the Hits tab. Old `#files`, `#responses` and `#rebinding` links open the matching tab.
+- Until Colluder has its own responder, HTTP response and DNS answers say what is planned, what the engine answers today, and why it waits.
 
 ### Status bar and banners
 - **Status bar:** Soot 1, 28px, the wordmark then `Engine` / `Stream` / `Last hit`, each as a line form, a Smoke label and a bold word ("capturing", "connected", "3m 57s ago"). A failing state turns the line and the word Ember. Hovering Engine explains the line grammar.

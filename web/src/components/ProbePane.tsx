@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronRight } from "lucide-react";
-import { useApp, keyOf, selectHit, patchProbe, chatterOf, type AppState } from "@/store";
+import { useApp, keyOf, selectHit, patchProbe, chatterOf, setTab, unreadFor, PROBE_TABS, type AppState, type ProbeTab } from "@/store";
 import { UNTAGGED, type Interaction, type Probe } from "@/lib/types";
 import { dayOrTime, hmsms, isoMs, plural } from "@/lib/format";
 import { groupHits } from "@/lib/raw";
@@ -47,13 +47,12 @@ function Head({ s }: { s: AppState }) {
   }
   const p = s.probes.get(s.sel!)!;
   return (
-    <div className={cls}>
+    <div className={cn(cls, "border-b-0")}>
       <span className="font-mono text-[17px] whitespace-nowrap">{p.tag}</span>
       {p.retiredAt && <Chip grey>retired</Chip>}
       <div className="flex min-w-0 gap-3.5 overflow-hidden text-[12.5px] whitespace-nowrap text-smoke">
         <span className="truncate" title={p.note || undefined}>{p.target || "No target noted"}</span>
         <span>Planted <b className="font-semibold text-bone">{dayOrTime(p.plantedAt)}</b></span>
-        <span><b className="font-semibold text-bone">{p.hits}</b> {p.hits === 1 ? "hit" : "hits"}</span>
         {p.note && <span className="truncate text-ash" title={p.note}>Note: {p.note}</span>}
       </div>
       <div className="ml-auto flex gap-1.5">
@@ -118,6 +117,72 @@ function Td({ children, sel, first, last, className }: { children: React.ReactNo
   );
 }
 
+// What a probe answers is set on the probe itself. Until Colluder has its own responder these
+// tabs say what is planned and what the engine answers today.
+const TAB_PLANNED: Record<Exclude<ProbeTab, "hits">, { title: string; what: string; today: string; why: string }> = {
+  http: {
+    title: "How this probe answers HTTP",
+    what: "Pick one answer for HTTP and HTTPS hits on this probe: interactsh's default reply, a redirect (optionally looping back through the probe first, so a blind SSRF that follows redirects shows up as a run of hits), a custom status, headers, body and delay, or a hosted file such as a DTD for blind XXE or a page that probes internal hosts from a headless browser. Each hit will record which rule version answered it.",
+    today: "Today every HTTP and HTTPS hit gets interactsh-server's default reply. The Response pane of each hit shows exactly what was sent.",
+    why: "This needs Colluder's own responder in front of interactsh: interactsh's dynamic responses are server-wide and unauthenticated (they would make the domain an open redirector), and its file hosting forces downloads.",
+  },
+  dns: {
+    title: "How this probe answers DNS",
+    what: "Pick the answer for lookups of this probe's names: the default, fixed records, or a rebind sequence that answers one address and then another with short TTLs, counted per resolver and starting over after an idle gap.",
+    today: "Today every lookup gets interactsh-server's default answer: the server's own address.",
+    why: "interactsh only serves static records loaded at startup, so sequenced answers need Colluder's own DNS responder. Browser rebinding mostly fails now (Chrome asks before a public page reaches a private address), so this is aimed at server-side fetchers, PDF renderers and headless browsers.",
+  },
+};
+const TAB_LABEL: Record<ProbeTab, string> = { hits: "Hits", http: "HTTP response", dns: "DNS answers" };
+
+function ProbeTabs({ s, p }: { s: AppState; p: Probe }) {
+  const unread = s.tab !== "hits" ? unreadFor(s, p.tag) : 0;
+  const ref = useRef<HTMLDivElement>(null);
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    const step = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+    if (!step && e.key !== "Home" && e.key !== "End") return;
+    e.preventDefault();
+    const i = PROBE_TABS.indexOf(s.tab);
+    const next = e.key === "Home" ? 0 : e.key === "End" ? PROBE_TABS.length - 1 : (i + step + PROBE_TABS.length) % PROBE_TABS.length;
+    setTab(PROBE_TABS[next]);
+    ref.current?.querySelectorAll<HTMLButtonElement>("[role=tab]")[next]?.focus();
+  };
+  return (
+    <div ref={ref} role="tablist" aria-label={`Probe ${p.tag}`} onKeyDown={onKeyDown}
+      className="flex h-[35px] items-stretch gap-6 overflow-x-auto border-b border-rule pr-5 pl-6 max-[820px]:gap-5 max-[820px]:px-3.5">
+      {PROBE_TABS.map((t) => {
+        const on = s.tab === t;
+        return (
+          <button key={t} type="button" role="tab" id={`probe-tab-${t}`} aria-selected={on} aria-controls="probe-panel" tabIndex={on ? 0 : -1}
+            onClick={() => setTab(t)}
+            className={cn("relative flex flex-none cursor-pointer items-center gap-[7px] text-[12.5px] font-[550] whitespace-nowrap text-smoke hover:text-bone focus-visible:outline-[1.5px] focus-visible:-outline-offset-2 focus-visible:outline-bone",
+              on && "text-bone after:absolute after:inset-x-0 after:-bottom-px after:h-0.5 after:rounded-[1px] after:bg-bone")}>
+            {TAB_LABEL[t]}
+            {t === "hits" ? <span className="font-normal text-smoke">{p.hits}</span>
+              : <span className="text-[11px] font-normal text-ash" title="interactsh-server's standard answer">default</span>}
+            {t === "hits" && unread > 0 && <NewDot title={`${plural(unread, "new hit")} since you switched tabs`} />}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function PlannedTab({ tab }: { tab: Exclude<ProbeTab, "hits"> }) {
+  const t = TAB_PLANNED[tab];
+  return (
+    <div id="probe-panel" role="tabpanel" aria-labelledby={`probe-tab-${tab}`} className="min-h-0 overflow-auto px-6 py-[18px] max-[820px]:px-3.5">
+      <div className="max-w-[72ch] text-[12.5px] leading-[19px]">
+        <h2 className="text-[13.5px] font-[650]">{t.title}</h2>
+        <p className="mt-2 text-bone">{t.what}</p>
+        <p className="mt-3 text-smoke">{t.today}</p>
+        <p className="mt-3 text-ash">{t.why}</p>
+        <p className="mt-4 text-[11px] text-ash">Planned for phase 2. The research and build order live in tools/oob-dashboard/ROADMAP.md.</p>
+      </div>
+    </div>
+  );
+}
+
 export function ProbePane() {
   const s = useApp((x) => x);
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
@@ -129,6 +194,7 @@ export function ProbePane() {
       if (/^(INPUT|TEXTAREA|SELECT)$/.test((document.activeElement as HTMLElement)?.tagName) || e.metaKey || e.ctrlKey || e.altKey) return;
       if (document.querySelector("[role=dialog],[role=alertdialog]")) return; // never move hits behind an open dialog
       if ((e.key !== "j" && e.key !== "k") || !s.sel) return;
+      if (s.sel !== UNTAGGED && s.tab !== "hits") return;
       const hits = s.list.filter((i) => keyOf(i) === s.sel);
       const idx = hits.findIndex((i) => i.id === s.hit);
       const next = hits[Math.min(Math.max(idx + (e.key === "j" ? 1 : -1), 0), hits.length - 1)];
@@ -140,7 +206,7 @@ export function ProbePane() {
     };
     addEventListener("keydown", onKey);
     return () => removeEventListener("keydown", onKey);
-  }, [s.sel, s.list, s.hit]);
+  }, [s.sel, s.list, s.hit, s.tab]);
 
   const hits = s.sel ? s.list.filter((i) => keyOf(i) === s.sel) : [];
   const hitId = s.hit && hits.some((i) => i.id === s.hit) ? s.hit : hits[0]?.id ?? null;
@@ -158,12 +224,22 @@ export function ProbePane() {
     );
   }
   const p = s.probes.get(s.sel);
+  // a tagged probe gets the tab strip; Unregistered only has hits
+  const tabs = p ? <ProbeTabs s={s} p={p} /> : null;
+  const tabbed = p ? "grid-rows-[52px_35px_minmax(0,auto)_minmax(0,1fr)]" : "";
+  if (p && s.tab !== "hits") {
+    return (
+      <section className={cn(wrap, "grid-rows-[52px_35px_minmax(0,1fr)]")} aria-label={`Probe ${s.sel}`}>
+        <Head s={s} />{tabs}<PlannedTab tab={s.tab} />
+      </section>
+    );
+  }
   if (!hits.length) {
     const capturing = s.status?.engine?.state === "capturing";
     return (
-      <section className={wrap} aria-label={`Probe ${s.sel}`}>
-        <Head s={s} />
-        <div className="max-w-[72ch] px-6 py-[18px] text-[12.5px] leading-[19px] text-smoke">
+      <section className={cn(wrap, tabbed)} aria-label={`Probe ${s.sel}`}>
+        <Head s={s} />{tabs}
+        <div id={p ? "probe-panel" : undefined} role={p ? "tabpanel" : undefined} aria-labelledby={p ? "probe-tab-hits" : undefined} className="max-w-[72ch] px-6 py-[18px] text-[12.5px] leading-[19px] text-smoke">
           <p>
             <b className="font-semibold text-bone">Armed since {dayOrTime(p?.plantedAt)} UTC · no callbacks yet.</b> Waiting for the target to reach any payload above.{" "}
             {capturing ? "The engine is capturing, so a callback will show up here within seconds."
@@ -222,9 +298,9 @@ export function ProbePane() {
   }
   const firstHit = hits[hits.length - 1];
   return (
-    <section className={wrap} aria-label={`Probe ${s.sel === UNTAGGED ? "Unregistered" : s.sel}`}>
-      <Head s={s} />
-      <div className="max-h-[min(28vh,212px)] min-h-0 overflow-auto max-[820px]:max-h-none">
+    <section className={cn(wrap, tabbed)} aria-label={`Probe ${s.sel === UNTAGGED ? "Unregistered" : s.sel}`}>
+      <Head s={s} />{tabs}
+      <div id={p ? "probe-panel" : undefined} role={p ? "tabpanel" : undefined} aria-labelledby={p ? "probe-tab-hits" : undefined} className="max-h-[min(28vh,212px)] min-h-0 overflow-auto max-[820px]:max-h-none">
         <table className="w-full table-fixed border-collapse">
           <colgroup><col className="w-[112px] max-[820px]:w-[84px]" /><col className="w-[116px] max-[820px]:w-[96px]" /><col className="w-[92px] max-[820px]:w-[84px]" /><col className="w-[150px] max-[820px]:w-auto" /><col className="max-[820px]:w-0" /></colgroup>
           <thead>

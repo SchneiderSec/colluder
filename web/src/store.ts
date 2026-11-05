@@ -5,6 +5,8 @@ import { toast } from "@/lib/toast";
 import { isoMs, plural } from "@/lib/format";
 
 export type StreamState = "connecting" | "connected" | "reconnecting";
+export type ProbeTab = "hits" | "http" | "dns";
+export const PROBE_TABS: ProbeTab[] = ["hits", "http", "dns"];
 
 export interface AppState {
   loaded: boolean;
@@ -19,6 +21,7 @@ export interface AppState {
   openSeen: Record<string, number>; // marker as it was when the probe was opened (keeps rows marked "new")
   sel: string | null;
   hit: number | null;
+  tab: ProbeTab; // which probe tab is open; kept across probe switches
   stream: { state: StreamState; since: number; lastEventAt: number };
   arrived: number | null; // id that just arrived (row flash)
   lit: string | null; // probe that just got a hit (list flash)
@@ -34,7 +37,7 @@ export function save(k: string, v: unknown) {
 
 let state: AppState = {
   loaded: false, loadError: null, status: null, probes: new Map(), untagged: null, list: [], details: new Map(), enrich: new Map(),
-  seen: load<Record<string, number> | null>("colluder.seen", null) ?? {}, openSeen: {}, sel: null, hit: null,
+  seen: load<Record<string, number> | null>("colluder.seen", null) ?? {}, openSeen: {}, sel: null, hit: null, tab: "hits",
   stream: { state: "connecting", since: Date.now(), lastEventAt: 0 }, arrived: null, lit: null, pulse: 0,
 };
 const firstVisit = load("colluder.seen", null) == null;
@@ -140,11 +143,22 @@ export function select(key: string | null, push = true) {
     if (key) delete openSeen[key];
     set({ sel: key, hit: null, openSeen });
   }
-  if (key && !document.hidden) markSeen(key);
-  if (push && key) {
-    history.replaceState(null, "", "#probes/" + (key === UNTAGGED ? "unregistered" : key));
-    dispatchEvent(new Event("hashchange")); // replaceState is silent; keep the router's view of the URL in step
-  }
+  if (key && !document.hidden && viewingHits()) markSeen(key);
+  if (push && key) writeHash();
+}
+// hits only count as read while the Hits tab is in view (Unregistered has no other tabs)
+const viewingHits = () => state.tab === "hits" || state.sel === UNTAGGED;
+function writeHash() {
+  const key = state.sel;
+  if (!key) return;
+  const tab = key !== UNTAGGED && state.tab !== "hits" ? "/" + state.tab : "";
+  history.replaceState(null, "", "#probes/" + (key === UNTAGGED ? "unregistered" : encodeURIComponent(key)) + tab);
+  dispatchEvent(new Event("hashchange")); // replaceState is silent; keep the router's view of the URL in step
+}
+export function setTab(tab: ProbeTab, push = true) {
+  if (state.tab !== tab) set({ tab });
+  if (state.sel && !document.hidden && viewingHits()) markSeen(state.sel);
+  if (push) writeHash();
 }
 export const selectHit = (id: number | null) => set({ hit: id });
 
@@ -211,7 +225,7 @@ function onInteraction(row: Interaction) {
   if (state.list.some((i) => i.id === row.id)) return;
   const list = [row, ...state.list].slice(0, 5000);
   set({ list, arrived: row.id, lit: keyOf(row), pulse: state.pulse + 1 });
-  if (keyOf(row) === state.sel && !document.hidden && location.hash.startsWith("#probes")) markSeen(keyOf(row), false);
+  if (keyOf(row) === state.sel && !document.hidden && location.hash.startsWith("#probes") && viewingHits()) markSeen(keyOf(row), false);
 }
 
 // a silent stream is a dead stream: the server sends status every 5 s
@@ -220,5 +234,5 @@ setInterval(() => {
 }, 1000);
 
 document.addEventListener("visibilitychange", () => {
-  if (!document.hidden && state.sel) markSeen(state.sel);
+  if (!document.hidden && state.sel && viewingHits()) markSeen(state.sel);
 });

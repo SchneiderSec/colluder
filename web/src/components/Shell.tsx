@@ -1,4 +1,5 @@
-import { ArrowDownToLine, Copy, FileText, Radio, Repeat, Settings2, Undo2, Briefcase } from "lucide-react";
+import { Fragment } from "react";
+import { ArrowDownToLine, Copy, Radio, Settings2, Briefcase } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useApp, totalUnread, chatterOf, keyOf, select, selectHit } from "@/store";
 import { UNTAGGED } from "@/lib/types";
@@ -9,11 +10,10 @@ import { LineForm, useTick } from "./bits";
 import { Mark } from "./Mark";
 import { cn } from "@/lib/utils";
 
+// The rail holds tools that work across probes. What a single probe answers (HTTP response,
+// hosted files, DNS and rebinding) lives in tabs on the probe itself.
 export const TOOLS: { view: string; label: string; icon: LucideIcon }[] = [
   { view: "probes", label: "Probes", icon: ArrowDownToLine },
-  { view: "files", label: "Hosted files", icon: FileText },
-  { view: "responses", label: "Redirects & responses", icon: Undo2 },
-  { view: "rebinding", label: "DNS rebinding", icon: Repeat },
   { view: "kit", label: "Payload kit", icon: Briefcase },
   { view: "listeners", label: "Listeners", icon: Radio },
 ];
@@ -41,7 +41,12 @@ export function Rail({ view }: { view: string }) {
   return (
     <nav aria-label="Tools" className="row-span-2 z-10 flex flex-col items-center gap-0.5 border-r border-rule bg-soot pt-3.5 pb-2.5 max-[820px]:row-span-1 max-[820px]:sticky max-[820px]:top-0 max-[820px]:flex-row max-[820px]:overflow-x-auto max-[820px]:border-r-0 max-[820px]:border-b max-[820px]:px-2.5 max-[820px]:py-0">
       <Mark base={markBase(s)} pulse={s.pulse} />
-      {TOOLS.map((t) => <Item key={t.view} v={t.view} label={t.label} Icon={t.icon} badge={t.view === "probes" ? unread : undefined} />)}
+      {TOOLS.map((t, i) => (
+        <Fragment key={t.view}>
+          {i === 1 && <hr className="my-2 w-9 border-0 border-t border-rule max-[820px]:mx-1 max-[820px]:my-0 max-[820px]:h-5 max-[820px]:w-0 max-[820px]:border-t-0 max-[820px]:border-l" />}
+          <Item v={t.view} label={t.label} Icon={t.icon} badge={t.view === "probes" ? unread : undefined} />
+        </Fragment>
+      ))}
       <span className="flex-1 max-[820px]:hidden" />
       <Item v="settings" label="Settings" Icon={Settings2} />
     </nav>

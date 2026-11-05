@@ -9,9 +9,6 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { TOOLS } from "./Shell";
 
 export const PLANNED: Record<string, [string, string]> = {
-  files: ["Serve payload files from the OOB domain: DTDs for blind XXE, HTML and JS pages that probe internal hosts from headless browsers and PDF renderers, JWKS and WSDL documents. Every fetch lands in Probes like any other hit.", "Needs Colluder's own responder in front of interactsh (interactsh's upload store forces downloads, 1 MB, 24 h)."],
-  responses: ["Per-probe rules for status, headers, body and delay: 30x redirects to internal targets and scheme switches, redirect loops that make blind SSRF visible, slow and streaming responses, content-type tricks.", "interactsh's built-in dynamic responses are server-wide and unauthenticated (they would make the domain an open redirector), so this waits for Colluder's own responder."],
-  rebinding: ["Hostnames that answer with one address, then another: first/second answer sequences, multiple A records, short TTLs, and exfil zones that decode data split across labels.", "interactsh only serves static records loaded at startup; sequenced answers need Colluder's own DNS responder."],
   kit: ["Generate payloads tied to a probe: URL and IP obfuscation for filter bypass, a cloud metadata catalog (AWS, GCP, Azure, Alibaba, Oracle, Kubernetes), Gopher payloads, XXE, blind-XSS and JNDI templates.", "Generation only; no server changes needed. A good first phase-2 tool."],
   listeners: ["Status and settings for SMTP, LDAP/JNDI, FTP, SMB/NTLM and TLS/SNI capture.", "SMTP is already captured by the engine and shows up in Probes. The others need interactsh flags or Colluder's own responder."],
 };

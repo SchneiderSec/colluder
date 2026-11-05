@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { useApp, select, totalUnread, unreadFor, loadState, connect, getState } from "@/store";
+import { useApp, select, setTab, totalUnread, unreadFor, loadState, connect, getState, PROBE_TABS, type ProbeTab } from "@/store";
 import { UNTAGGED } from "@/lib/types";
 import { Rail, StatusBar, Banners } from "@/components/Shell";
 import { Composer } from "@/components/Composer";
@@ -11,10 +11,18 @@ import { MarkSvg, setFavicon } from "@/components/Mark";
 import { Toaster } from "@/components/bits";
 import { cn } from "@/lib/utils";
 
+// tools that became probe tabs: old links land on the tab instead
+const MOVED: Record<string, ProbeTab> = { files: "http", responses: "http", rebinding: "dns" };
+
 function useRoute() {
   const read = () => {
-    const [view, arg] = decodeURIComponent(location.hash.slice(1)).split("/");
-    return { view: view && (view === "probes" || view === "settings" || view in PLANNED) ? view : "probes", arg: arg ?? null };
+    const [view, arg, tab] = decodeURIComponent(location.hash.slice(1)).split("/");
+    if (view in MOVED) return { view: "probes", arg: null, tab: MOVED[view] };
+    return {
+      view: view && (view === "probes" || view === "settings" || view in PLANNED) ? view : "probes",
+      arg: arg || null,
+      tab: (PROBE_TABS as string[]).includes(tab) ? (tab as ProbeTab) : "hits" as ProbeTab,
+    };
   };
   const [r, setR] = useState(read);
   useEffect(() => { const f = () => setR(read()); addEventListener("hashchange", f); return () => removeEventListener("hashchange", f); }, []);
@@ -44,6 +52,7 @@ export default function App() {
   useEffect(() => {
     if (!loaded || route.view !== "probes") return;
     const s = getState();
+    setTab(route.tab, false);
     const want = route.arg === "unregistered" ? UNTAGGED : route.arg;
     if (want && (want === UNTAGGED || s.probes.has(want))) { select(want, false); return; }
     if (!s.sel) {
@@ -52,8 +61,8 @@ export default function App() {
       const first = [...s.probes.values()].filter((p) => !p.retiredAt).sort((a, b) =>
         (unreadFor(s, b.tag) ? 1 : 0) - (unreadFor(s, a.tag) ? 1 : 0) || t(b.lastHitAt) - t(a.lastHitAt) || t(b.plantedAt) - t(a.plantedAt))[0];
       if (first) select(first.tag); else if (s.untagged?.hits) select(UNTAGGED);
-    }
-  }, [loaded, route.view, route.arg]);
+    } else if (!route.arg) select(s.sel); // bare #probes or an old tool link: put the probe and tab back in the URL
+  }, [loaded, route.view, route.arg, route.tab]);
 
   useEffect(() => {
     document.title = unread ? `(${unread}) Colluder` : "Colluder";

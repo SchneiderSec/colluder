@@ -95,5 +95,6 @@ npm test                      # collector unit tests (node:test)
 npm run typecheck && npm run build
 ```
 
-`PRODUCT.md` holds the product brief, `DESIGN.md` the visual system, `ROADMAP.md` the planned
-tools (hosted files, redirects & responses, DNS rebinding, payload kit, listeners).
+`PRODUCT.md` holds the product brief, `DESIGN.md` the visual system, `ROADMAP.md` what is planned:
+per-probe HTTP responses (redirects, loops, hosted files) and DNS answers (rebinding) as tabs on each
+probe, plus the Payload kit and Listeners in the rail.
