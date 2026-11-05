@@ -4,7 +4,7 @@ import { useApp, plant, save } from "@/store";
 import { TAG_RE, UNTAGGED } from "@/lib/types";
 import { variants } from "@/lib/raw";
 import { METADATA, redirectable, hostOf } from "@/lib/metadata";
-import { ssrfPayloads, jsonEscape, xmlEscape, type Payload } from "@/lib/kit";
+import { ssrfPayloads, xxePayloads, jsonEscape, xmlEscape, type Payload } from "@/lib/kit";
 import type { HttpRule } from "@/lib/types";
 import { copy } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,18 @@ const CLOUDS = METADATA.filter(redirectable).filter((r) => /^(aws|alibaba|oracle
 function ssrfRule(url: string, headDecoy: boolean): HttpRule {
   return { mode: "redirect", delayMs: 0, schemes: { http: true, https: true }, status: 302, location: url, loop: 2, hopStatuses: [301, 307], ...(headDecoy ? { decoy: { methods: ["HEAD"] } } : {}) } as HttpRule;
 }
+// XXE (P2): the DTD reads one file. A one-line file works everywhere the URL survives (modern Java
+// rejects a newline in it); php://filter base64-encodes multi-line files on PHP.
+const XXE_FILES: [string, string][] = [
+  ["/etc/hostname", "/etc/hostname (one line, works on Java)"],
+  ["php://filter/convert.base64-encode/resource=/etc/passwd", "/etc/passwd through php://filter (PHP)"],
+  ["file:///c:/windows/win.ini", "C:\\Windows\\win.ini (Windows)"],
+  ["custom", "Another file…"],
+];
+function xxeRule(probeHost: string, file: string): HttpRule {
+  return { mode: "preset", delayMs: 0, schemes: { http: true, https: true }, kind: "xxe", params: { host: probeHost, file } } as unknown as HttpRule;
+}
+const PRESET_LABEL: Record<string, string> = { "ssrf-metadata": "SSRF", xxe: "XXE" };
 type CopyAs = "raw" | "url" | "json" | "xml";
 const asCopy = (s: string, c: CopyAs) => (c === "url" ? encodeURIComponent(s) : c === "json" ? jsonEscape(s) : c === "xml" ? xmlEscape(s) : s);
 
@@ -34,6 +46,8 @@ export function Composer() {
   const [technique, setTechnique] = useState("callback");
   const [cloud, setCloud] = useState(CLOUDS[0].id);
   const [headDecoy, setHeadDecoy] = useState(true);
+  const [xxeFile, setXxeFile] = useState(XXE_FILES[0][0]);
+  const [xxeCustom, setXxeCustom] = useState("");
   const [copyAs, setCopyAs] = useState<CopyAs>("raw");
   const [plain, setPlain] = useState(false);
   const [err, setErr] = useState("");
@@ -59,7 +73,9 @@ export function Composer() {
   // a preset probe's own payloads replace the plain three (which stay behind "Plain callbacks")
   const shownTechnique = preview ? technique : shownTag ? s.probes.get(shownTag)?.technique : null;
   useEffect(() => setPlain(false), [shownTag]);
-  const presetRows: Payload[] | null = host && shownTag && shownTechnique === "ssrf-metadata" ? ssrfPayloads(shownTag, host) : null;
+  const presetRows: Payload[] | null = !host || !shownTag ? null
+    : shownTechnique === "ssrf-metadata" ? ssrfPayloads(shownTag, host)
+    : shownTechnique === "xxe" ? xxePayloads(shownTag, host) : null;
   // B6: while you read a probe's hits, its payloads fold into one line of copy buttons, so the hit
   // detail gets the room. "Show payloads" keeps them open (remembered).
   const [pinned, setPinned] = useState<boolean>(() => { try { return JSON.parse(localStorage.getItem("colluder.payloadsOpen") ?? "false"); } catch { return false; } });
@@ -72,7 +88,12 @@ export function Composer() {
     if (!TAG_RE.test(tag)) { setErr(tag ? BAD_TAG : "Give the probe a tag first, e.g. avatar."); tagRef.current?.focus(); return; }
     try {
       const c = CLOUDS.find((x) => x.id === cloud)!;
+      const file = xxeFile === "custom" ? xxeCustom.trim() : xxeFile;
       if (technique === "ssrf-metadata") await plant(tag, target.trim(), technique, ssrfRule(c.url, headDecoy), `302 → ${hostOf(c.url)} (${c.provider}: ${c.name}) after 2 hops`);
+      else if (technique === "xxe") {
+        if (!host) throw new Error("No payload host yet: wait for the engine.");
+        await plant(tag, target.trim(), technique, xxeRule(`${tag}.${host}`, file), `an XXE DTD reading ${file}`);
+      }
       else await plant(tag, target.trim(), technique);
       setTag(""); setTarget(""); setErr(""); setTechnique("callback"); setPlain(false);
       // next step is copying a payload: put focus there, not back in an emptied field
@@ -108,10 +129,26 @@ export function Composer() {
             <SelectItem value="redirect">Redirect</SelectItem>
             <SelectItem value="file">Hosted file</SelectItem>
             <SelectItem value="ssrf-metadata">SSRF → metadata</SelectItem>
+            <SelectItem value="xxe">XXE</SelectItem>
             <SelectItem value="rebind" disabled>DNS rebinding (planned)</SelectItem>
           </SelectContent>
         </Select>
         <Button type="submit" variant="default" size="lg" className="h-9"><ArrowDownToLine />Plant</Button>
+        {technique === "xxe" && (
+          <div className="col-span-full flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[12.5px] text-smoke">
+            <Select value={xxeFile} onValueChange={setXxeFile}>
+              <SelectTrigger aria-label="File to read" className="h-8 w-auto gap-[9px] rounded-[3px] border-rule bg-soot text-[12.5px]"><span className="font-[550] text-smoke">File</span><SelectValue /></SelectTrigger>
+              <SelectContent>{XXE_FILES.map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}</SelectContent>
+            </Select>
+            {xxeFile === "custom" && (
+              <label className="flex h-8 w-[280px] items-center rounded-[3px] border border-rule bg-soot px-2.5 focus-within:border-smoke">
+                <input aria-label="Path of the file to read" spellCheck={false} value={xxeCustom} onChange={(e) => setXxeCustom(e.target.value)} placeholder="/etc/issue or file:///…"
+                  className="min-w-0 flex-1 bg-transparent font-mono text-[12.5px] text-bone outline-none placeholder:font-sans placeholder:text-ash" />
+              </label>
+            )}
+            <span className="max-w-[110ch] text-ash">Serves at once: a DTD that reads the file and sends it back as a hit, plus feed.xml and sitemap.xml for "import from URL" features. Modern Java rejects a newline in the URL, so keep to one-line files there; libxml2 2.9+ and .NET 4.5.2+ don't load external entities by default.</span>
+          </div>
+        )}
         {technique === "ssrf-metadata" && (
           <div className="col-span-full flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[12.5px] text-smoke">
             <Select value={cloud} onValueChange={setCloud}>
@@ -129,11 +166,20 @@ export function Composer() {
         {preview ? "Preview for" : shownTag ? "Payloads for" : "Base payload"}
         <span className="block truncate font-mono text-[12.5px] text-bone">{shownTag ?? "no tag"}</span>
       </div>
-      {presetRows && !plain ? (
+      {presetRows && !plain && reading && !pinned ? (
+        <div ref={varsRef} className="flex min-w-0 flex-wrap items-center gap-1">
+          {presetRows.map((p) => (
+            <Button key={p.code} data-copy variant="ghost" size="sm" title={`${p.note ?? ""}\n${p.text}`} aria-label={`Copy ${p.name} payload`} onClick={() => copy(asCopy(p.text, copyAs), `${p.name} payload`)}>
+              <Copy />{p.name}
+            </Button>
+          ))}
+          <Button variant="ghost" size="sm" className="ml-1 text-ash" onClick={() => pin(true)}>Show payloads</Button>
+        </div>
+      ) : presetRows && !plain ? (
         <div ref={varsRef} className="grid min-w-0 grid-cols-[164px_minmax(0,max-content)_28px_minmax(0,1fr)] items-center gap-x-2.5 gap-y-0.5 max-[820px]:grid-cols-[minmax(0,1fr)_28px]">
           {presetRows.map((p) => (
             <div key={p.code} className="contents">
-              <span className="flex items-center gap-2 text-[12.5px] whitespace-nowrap text-smoke max-[820px]:col-span-full"><TypeChip proto={p.text.startsWith("https") ? "https" : "http"} />{p.name}</span>
+              <span title={p.note} className="flex items-center gap-2 text-[12.5px] whitespace-nowrap text-smoke max-[820px]:col-span-full"><TypeChip proto={/^https:/.test(p.text) ? "https" : "http"} />{p.name}</span>
               <span className="truncate font-mono text-[12.5px] text-smoke" title={p.text}><Marked text={p.text} tag={shownTag!} code={p.code} /></span>
               <Button data-copy variant="ghost" size="icon-sm" aria-label={`Copy ${p.name} payload`} onClick={() => copy(asCopy(p.text, copyAs), `${p.name} payload${copyAs === "raw" ? "" : `, ${copyAs === "url" ? "URL-encoded" : copyAs === "json" ? "JSON-escaped" : "XML-escaped"}`}`)}><Copy /></Button>
               <span className="truncate pl-2 text-[11px] text-ash max-[1180px]:hidden" title={p.note}>{p.note}</span>
@@ -148,6 +194,7 @@ export function Composer() {
               </ToggleGroup>
             </span>
             <Button variant="ghost" size="sm" className="text-ash" onClick={() => setPlain(true)}>Plain callbacks</Button>
+            {reading && pinned && <Button variant="ghost" size="sm" className="text-ash" onClick={() => pin(false)}>Fold payloads while reading hits</Button>}
           </div>
         </div>
       ) : folded ? (
@@ -198,7 +245,7 @@ export function Composer() {
               </div>
             ))}
             {preview && <p className="col-span-full text-[11px] text-ash">Not planted yet: these already work, but Plant records the tag and target so the hits read as a story.</p>}
-            {presetRows && plain && <Button variant="ghost" size="sm" className="col-span-full justify-self-start text-ash" onClick={() => setPlain(false)}>SSRF payloads</Button>}
+            {presetRows && plain && <Button variant="ghost" size="sm" className="col-span-full justify-self-start text-ash" onClick={() => setPlain(false)}>{PRESET_LABEL[shownTechnique ?? ""] ?? "Preset"} payloads</Button>}
             {reading && pinned && <Button variant="ghost" size="sm" className="col-span-full justify-self-start text-ash" onClick={() => pin(false)}>Fold payloads while reading hits</Button>}
           </>
         )}

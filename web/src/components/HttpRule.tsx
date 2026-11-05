@@ -20,6 +20,7 @@ const MODE_DEFAULTS: Record<RuleMode, Partial<HttpRule>> = {
   redirect: { status: 302, location: "", loop: 0 },
   custom: { status: 200, headers: [], body: "", bodyEncoding: "text" },
   file: { contentType: "text/plain; charset=utf-8", body: "", bodyEncoding: "text", template: "" },
+  preset: {},
 };
 const MODES: [RuleMode, string][] = [["default", "Default reply"], ["redirect", "Redirect"], ["custom", "Custom response"], ["file", "Hosted file"]];
 
@@ -62,6 +63,7 @@ const KEYS: Record<RuleMode, (keyof HttpRule)[]> = {
   redirect: ["status", "location", "loop", "hopStatuses"],
   custom: ["status", "headers", "body", "bodyEncoding"],
   file: ["contentType", "body", "bodyEncoding", "template"],
+  preset: ["kind", "params"],
 };
 function effective(r: HttpRule): HttpRule {
   if (r.mode === "default") return DEFAULT;
@@ -90,7 +92,7 @@ const same = (a: HttpRule, b: HttpRule) => JSON.stringify(effective(a)) === JSON
 function errorField(msg?: string) {
   if (!msg) return null;
   for (const [re, f] of [[/^Location/, "location"], [/^(Redirect status|Status)/, "status"], [/^Loop/, "loop"], [/^(Hop codes|Up to 10 hop)/, "hopStatuses"], [/^(Decoy|Up to 20 decoy)/, "decoy"], [/[Hh]eader/, "headers"],
-    [/^Body/, "body"], [/^Delay/, "delay"], [/^Content type/, "contentType"], [/HTTP, HTTPS or both/, "schemes"]] as [RegExp, string][]) if (re.test(msg)) return f;
+    [/^Body/, "body"], [/^(File must|Preset)/, "preset"], [/^Delay/, "delay"], [/^Content type/, "contentType"], [/HTTP, HTTPS or both/, "schemes"]] as [RegExp, string][]) if (re.test(msg)) return f;
   return null;
 }
 const CUTOVER = "sudo ~/work/tools/oob-dashboard/deploy/cutover-phase2.sh";
@@ -216,7 +218,9 @@ export function HttpRuleTab({ p }: { p: Probe }) {
       )}
       <dl onBlurCapture={onLeave} className="m-0 grid grid-cols-[96px_minmax(0,1fr)] content-start gap-x-[18px] gap-y-4 pb-4 max-[820px]:grid-cols-1 max-[820px]:gap-y-1.5">
         <Row label="Answer with" help={draft.mode === "default" ? `interactsh's standard reply: 200, CORS headers, the id reversed in the body.${live ? " Sent by Colluder's edge, so the hit records exactly what went out." : ""}` : "For HTTP and HTTPS hits on this probe. DNS lookups still get interactsh's answer."}>
-          <Seg label="Answer with" value={draft.mode} onChange={setMode} items={MODES} />
+          {draft.mode === "preset"
+            ? <div className="flex flex-wrap items-center gap-2"><span className="text-[12.5px] font-semibold">XXE preset</span><Button variant="ghost" size="sm" onClick={() => setMode("default")}>Use another kind of answer</Button></div>
+            : <Seg label="Answer with" value={draft.mode} onChange={setMode} items={MODES} />}
         </Row>
 
         {draft.mode === "redirect" && (
@@ -251,6 +255,20 @@ export function HttpRuleTab({ p }: { p: Probe }) {
                 <label className={cn(fld, "w-[220px]", bad("hopStatuses"))}><input aria-label="Hop codes" spellCheck={false} value={Array.isArray(draft.hopStatuses) ? draft.hopStatuses.join(" ") : draft.hopStatuses ?? ""} placeholder={`e.g. 301 305 309`} className={cn(inputCls, "placeholder:font-sans")} onChange={(e) => { set({ hopStatuses: e.target.value }); }} /></label>
               </Row>
             )}
+          </>
+        )}
+
+        {draft.mode === "preset" && draft.params && (
+          <>
+            <Row label="Serves" help={<>Any path under the probe, by its last segment; everything else gets the default reply, which is where the file arrives (as a <span className="font-mono">kx0</span> hit).</>}>
+              <ul className="space-y-0.5 text-[12.5px] text-smoke">
+                <li><span className="font-mono text-bone">x.dtd</span> · a DTD that reads the file and sends it back</li>
+                <li><span className="font-mono text-bone">feed.xml</span>, <span className="font-mono text-bone">sitemap.xml</span> · documents that pull the DTD, for "import from URL" features</li>
+              </ul>
+            </Row>
+            <Row label="File" error={errFor("preset")} help="A path, a file:/// URL, or php://filter/convert.base64-encode/resource=… for multi-line files on PHP.">
+              <label className={cn(fld, bad("preset"))}><input aria-label="File to read" spellCheck={false} value={draft.params.file} className={inputCls} onChange={(e) => set({ params: { ...draft.params!, file: e.target.value } })} /></label>
+            </Row>
           </>
         )}
 
@@ -405,7 +423,7 @@ function HistoryRow({ v, current, live, onLoad }: { v: RuleVersion; current: boo
   const r = v.rule;
   const codes = Array.isArray(r.hopStatuses) && r.hopStatuses.length ? ` (${r.hopStatuses.join("/")})` : "";
   const what = (r.mode === "default" ? "Default reply" : r.mode === "redirect" ? `Redirect ${r.status} → ${r.location}${r.loop ? `, loop ×${r.loop}${codes}` : ""}`
-    : r.mode === "file" ? `Hosted file, ${r.contentType}` : `Custom ${r.status}`) + (r.decoy ? ", with a decoy" : "");
+    : r.mode === "file" ? `Hosted file, ${r.contentType}` : r.mode === "preset" ? `XXE preset, reads ${r.params?.file}` : `Custom ${r.status}`) + (r.decoy ? ", with a decoy" : "");
   const depth = r.mode === "redirect" && r.loop && v.maxHop ? ` · deepest hop ${v.maxHop}/${r.loop + 1}` : "";
   const decoys = v.decoys ? ` · ${v.decoys} decoy` : "";
   return (

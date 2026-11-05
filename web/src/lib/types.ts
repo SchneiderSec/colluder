@@ -51,6 +51,7 @@ export interface Answer {
   hop?: number;
   status?: number; // a loop hop's own redirect code, when it differs from the rule's
   decoy?: "first" | "user-agent" | "source" | "method"; // got the default reply as a decoy
+  part?: string; // a preset's part that answered (x.dtd, feed.xml…)
   code?: number; // the exit redirect's status…
   to?: string; // …and the host it pointed at
   error?: string;
@@ -58,7 +59,7 @@ export interface Answer {
   delaySkipped?: boolean;
 }
 
-export type RuleMode = "default" | "redirect" | "custom" | "file";
+export type RuleMode = "default" | "redirect" | "custom" | "file" | "preset";
 export interface HttpRule {
   mode: RuleMode;
   delayMs: number;
@@ -73,6 +74,8 @@ export interface HttpRule {
   bodyEncoding?: "text" | "base64";
   contentType?: string;
   template?: string;
+  kind?: "xxe"; // preset: answers by path (PLAN-PRESETS.md)
+  params?: { host: string; file: string };
 }
 // who gets interactsh's harmless default reply instead of the rule (sources: a string while typed)
 export interface Decoy { first?: number; ua?: string; sources?: string[] | string }

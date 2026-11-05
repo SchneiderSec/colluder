@@ -121,7 +121,7 @@ export function HitDetail({ id }: { id: number }) {
   const self = (s.status?.selfIps ?? []).includes(d.remoteAddress);
   const kit = variantOf(d);
   const a = d.answer;
-  const stage = a ? stageOf({ summary: d.summary, hop: a.hop, decoy: a.decoy, answerCode: a.code, answerTo: a.to, hopCode: a.status }) : null;
+  const stage = a ? stageOf({ summary: d.summary, fullId: d.fullId, hop: a.hop, decoy: a.decoy, answerCode: a.code, answerTo: a.to, hopCode: a.status, answerPart: a.part }) : null;
   const curl = web ? toCurl(d.rawRequest, d.protocol === "https" ? "https" : "http", { id: d.id, normalised: !d.answer }) : null;
   // who wrote the bytes: the edge records them off the socket; interactsh re-serialises them
   const capture = d.answer ? "edge" as const : "engine" as const;

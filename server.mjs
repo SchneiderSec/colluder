@@ -183,7 +183,7 @@ function decorate(p, rules = activeRules()) {
 const probeOut = (tag) => decorate(store.probe(tag));
 
 // what a probe was planted for: the plain ones, then presets that plant with a rule (PLAN-PRESETS.md)
-const TECHNIQUES = ["callback", "redirect", "file", "ssrf-metadata"];
+const TECHNIQUES = ["callback", "redirect", "file", "ssrf-metadata", "xxe"];
 
 function previewRequest(tag, scheme, hop) {
   const host = engine.payload?.host || `${"x".repeat(33)}.${CFG.domain}`;
@@ -385,7 +385,9 @@ const server = http.createServer(async (req, res) => {
       if (v.error) return json(res, 400, { error: v.error });
       if (m[2]) { // preview: the same code the edge runs, for the probe's own payload host
         const hop = Math.min(Math.max(Number(b.hop) || 1, 1), 99);
-        const r = respond(v.rule, (activeRules()[m[1]]?.version || 0) + 1, previewRequest(m[1], b.scheme === "https" ? "https" : "http", hop));
+        const pr = previewRequest(m[1], b.scheme === "https" ? "https" : "http", hop);
+        if (v.rule.mode === "preset") pr.target = pr.target.replace(/\?.*$/, "").replace(/\/?$/, "/x.dtd"); // a preset's main part
+        const r = respond(v.rule, (activeRules()[m[1]]?.version || 0) + 1, pr);
         return json(res, 200, { raw: serialize(r).toString("utf8"), answer: r.answer, delayMs: r.delayMs });
       }
       const saved = store.saveRule(m[1], v.rule, nowIso());
