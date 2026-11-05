@@ -344,7 +344,7 @@ A warm, low-chroma brown-black ground with bone ink. The only saturated colours 
 - **Well** (#110e0b): the deepest surface, used only behind raw request and response bytes.
 - **Accent Hover** (#30271f): hover fill for secondary, quiet and ghost buttons.
 - **Rule** (#3a3129): structural borders between regions, field strokes, scrollbar thumb.
-- **Rule 2** (#2a231d): row dividers inside lists and tables, raw-pane frames.
+- **Rule 2** (#2a231d): row dividers inside lists and tables, raw-pane frames, section rules inside a parsed request.
 - **Smoke** (#a99f90): secondary text, labels, column headers.
 - **Ash** (#8f8576): tertiary text: hints, footnotes, placeholders, sub-captions.
 - **Fur** (#9a9084): the mark's tile and the raccoon tail's body. Not a text colour.
@@ -355,6 +355,12 @@ A warm, low-chroma brown-black ground with bone ink. The only saturated colours 
 - **Alarm Ink** (#f3b4a3) on **Alarm Ground** (#2a1914): destructive buttons, form errors, failed-action toasts. Engine-down banners use **Alarm Banner Ink** (#f4c6b8) on the same ground.
 - **Caution Ink** (#f3d9a4) on **Caution Ground** (#2b2113): stream-paused and correlation-changed banners. Caution Ground also backs the amber "new" chip.
 - **Lit Flash** (#3a2c17): the brief warm flash on a probe row or hit row when a hit arrives.
+
+### Syntax (raw panes only)
+- **Slate** (`oklch(0.76 0.055 235)`): names: HTTP header names, query and form parameter names, JSON keys, and 3xx status codes.
+- **Sage** (`oklch(0.83 0.075 135)`): decoded values the client chose: query and form values, JSON strings, and 2xx status codes. Header values stay Bone, because they are most of what you read.
+- 4xx and 5xx status codes are Ember. Methods, numbers, `true`/`false`/`null` are Bone at 650. Versions, punctuation (`? & = :`, JSON brackets) and markup tags are Ash.
+- Syntax inks live only on the Well. They are never used for UI, and stay clear of amber and the four protocol inks.
 
 ### Mark
 - **Mask** (#0f0c09), **Eyeshine Highlight** (#fff4d6), **Shut Eye** (#5d554b): used only inside the raccoon mark and the Konami peek.
@@ -403,7 +409,7 @@ The desktop is a fixed, full-height application grid that never scrolls as a pag
 
 Spacing is tight and regular: 24px page gutter, 20px list gutter, 10px gaps between controls, 11px vertical row padding in the probe list and 6×10px table cells. The status bar spaces its items 22px apart.
 
-**Breakpoints.** At **1180px** the probe list narrows to 320px, payload notes and the "display only" hint drop out, and the request and response panes stack. At **820px** (phone) the rail turns into a sticky horizontal icon strip across the top (labels become screen-reader only), everything stacks into one scrolling column, the probe list caps at 48vh, the composer fields go full width, the gutter drops to 14px, the hits table hides the Request column, payloads show a short host (`c0ffee12…`) with the tag still highlighted, and the status bar sticks to the bottom of the viewport.
+**Breakpoints.** At **1180px** the probe list narrows to 320px and payload notes and the "display only" hint drop out; the request and response panes stack whenever the hit detail is under 900px wide. At **820px** (phone) the rail turns into a sticky horizontal icon strip across the top (labels become screen-reader only), everything stacks into one scrolling column, the probe list caps at 48vh, the composer fields go full width, the gutter drops to 14px, the hits table hides the Request column, payloads show a short host (`c0ffee12…`) with the tag still highlighted, and the status bar sticks to the bottom of the viewport.
 
 ### Named Rules
 **The Detail-Stays-Visible Rule.** When a hit is open, the hits table shrinks to min(28vh, 212px) and scrolls on its own, so the selected request is always on screen next to the list it came from.
@@ -501,8 +507,18 @@ A bare-id lookup within 10s of a tagged hit is labelled "resolver chatter around
 ### Hit detail
 A header line with "#40", a type chip, an optional new chip, the receive time, the tag (and "(from path)"), and the bone **Copy as evidence** on the right. Then Source / rDNS / ASN, where ASN lookup is opt-in and labelled as sending the IP to a third party. Then an **Exact bytes | Decoded** segmented toggle, a "Wrap long lines" switch captioned "display only; copies stay exact", and Copy both.
 
+### Parsed HTTP view
+Web hits open in **Parsed** (the choice is remembered; DNS and SMTP keep Exact bytes | Decoded). Each pane reads top to bottom in sections divided by Rule 2 hairlines, each headed by an 11px/650 Smoke label with an Ash count ("Headers 8, in the order received"):
+- the start line, unlabelled: method in Bone 650, the path with the tag marked (path-tag payloads), the version in Ash; for responses the version, the status code in its syntax ink, and the reason;
+- **Query** ("3 parameters, decoded"): a name/value list, a bare parameter reads "no value";
+- **Headers**: a name/value list in wire order, names capped at 24ch and wrapping at hyphens. The payload host reads as the tag marked, the id shortened to `c0ffee12…` and the domain in Smoke. Headers worth a second look carry a grey pill with a word: "forwarded for", "client IP", "via proxy", "original host", "came from", and "credential" (Bone) for Authorization, Cookie and API-key headers;
+- **Body** (type · bytes): JSON pretty-printed and highlighted, form bodies as a decoded name/value list, HTML/XML with tags in Ash, anything else as text.
+A head that doesn't parse as HTTP falls back to the exact lines. The view says "Display only; copies stay exact" and Copy still gives the exact bytes. Exact bytes keeps every character but tints the request line, query, header names and status code with the same inks.
+
+The panes sit side by side while the hit detail is at least 900px wide and stack below that (a container query); a pane narrower than 440px stacks each name above its value.
+
 ### Raw pane
-Request (or Query) and Response (or Answer) side by side on the Well, each with a 32px title bar showing the name, an Ash sub-caption ("exact, as received · 6 lines · 145 bytes") and a ghost Copy. Bytes are Fragment Mono 12.5/18px. HTTP header names are tinted Smoke. Wrapped lines hang-indent by 2ch.
+Request (or Query) and Response (or Answer) side by side on the Well, each with a 32px title bar showing the name, an Ash sub-caption ("exact, as received · 6 lines · 145 bytes") and a ghost Copy. Bytes are Fragment Mono 12.5/18px. HTTP header names are tinted Slate. Wrapped lines hang-indent by 2ch.
 
 ### Overflow cue (signature)
 When lines sit below the fold, a Soot 2 pill in the pane's bottom-right reads "↓ 3 more lines" over a fade into the well. Clicking it scrolls 80% of a page. Captures over 200,000 characters end with "… n more bytes not shown. Copy gives everything."

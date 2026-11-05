@@ -4,6 +4,7 @@ import { useApp, loadDetail, lookupAsn, save, chatterOf } from "@/store";
 import type { Enrich } from "@/lib/types";
 import { byteCount, lineCount } from "@/lib/format";
 import { answeredBy, decode, evidence } from "@/lib/raw";
+import { ExactLine, HttpParsed, parseHttp } from "./HttpView";
 import { copy, toast } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -13,11 +14,11 @@ import { Peek } from "./Mark";
 import { cn } from "@/lib/utils";
 
 const MAX = 200_000;
-const HEADER = /^([!#$%&'*+.^_`|~0-9A-Za-z-]+:)(.*)$/;
 
 // Raw text is attacker-controlled: rendered only as React text nodes (escaped), never as HTML.
-function RawPane({ title, sub, text, exact, http }: { title: string; sub: string; text: string; exact: string; http: boolean }) {
+function RawPane({ title, sub, text, exact, http, parsed, tag, domain }: { title: string; sub: string; text: string; exact: string; http: boolean; parsed?: boolean; tag: string | null; domain?: string }) {
   const shown = text.length > MAX ? text.slice(0, MAX) : text;
+  const p = parsed && http ? parseHttp(shown) : null;
   const box = useRef<HTMLDivElement>(null);
   const [below, setBelow] = useState(0); // lines hidden under the fold, so a cut-off pane never looks complete
   useEffect(() => {
@@ -33,19 +34,19 @@ function RawPane({ title, sub, text, exact, http }: { title: string; sub: string
   let inHead = http;
   const lines = shown ? shown.split(/\r?\n/) : [];
   return (
-    <div className="relative flex min-h-[220px] min-w-0 flex-col rounded-[3px] border border-rule-2 bg-well max-[820px]:min-h-[200px]">
+    <div className="@container/pane relative flex min-h-[220px] min-w-0 flex-col rounded-[3px] border border-rule-2 bg-well max-[820px]:min-h-[200px]">
       <div className="flex h-8 flex-none items-center gap-2 border-b border-rule-2 pr-1.5 pl-3 text-[12.5px] font-[650]">
         {title}<span className="truncate text-[11px] font-normal text-ash">{sub}</span>
         <Button variant="ghost" size="sm" className="ml-auto" onClick={() => copy(exact, title.toLowerCase())}><Copy />Copy</Button>
       </div>
-      <div ref={box} tabIndex={0} className="raw min-h-0 flex-1 overflow-auto px-3 py-2 font-mono text-[12.5px] leading-[18px] whitespace-pre text-bone [tab-size:4] in-[.wrap]:break-all in-[.wrap]:whitespace-pre-wrap">
+      <div ref={box} tabIndex={0} className={cn("raw min-h-0 flex-1 overflow-auto px-3 font-mono text-[12.5px] leading-[18px] text-bone [tab-size:4]", p ? "py-2.5" : "py-2 whitespace-pre in-[.wrap]:break-all in-[.wrap]:whitespace-pre-wrap")}>
         {!shown && <span className="font-sans text-ash">Empty</span>}
-        {lines.map((ln, idx) => {
-          const m = inHead && idx > 0 ? HEADER.exec(ln) : null;
-          if (inHead && ln === "") inHead = false;
+        {p ? <HttpParsed p={p} tag={tag} domain={domain} /> : lines.map((ln, idx) => {
+          const head = inHead;
+          if (inHead && ln === "" && idx > 0) inHead = false;
           return (
             <span key={idx} className="block min-h-[18px] in-[.wrap]:pl-[2ch] in-[.wrap]:-indent-[2ch]">
-              {m ? <><span className="text-smoke">{m[1]}</span>{m[2]}</> : ln || "​"}
+              {http ? <ExactLine ln={ln} idx={idx} inHead={head} tag={tag} /> : ln || "​"}
             </span>
           );
         })}
@@ -62,9 +63,13 @@ function RawPane({ title, sub, text, exact, http }: { title: string; sub: string
 }
 
 
+const segCls = "h-6 rounded-none px-2.5 text-[11px] text-smoke data-[state=on]:bg-soot-2 data-[state=on]:font-semibold data-[state=on]:text-bone";
+
 export function HitDetail({ id }: { id: number }) {
   const s = useApp((x) => x);
   const [decoded, setDecoded] = useState(false);
+  // web hits open parsed (sections, decoded query, highlighted); the choice is remembered
+  const [parsed, setParsed] = useState<boolean>(() => { try { return JSON.parse(localStorage.getItem("colluder.parsed") ?? "true"); } catch { return true; } });
   const [wrap, setWrap] = useState<boolean>(() => { try { return JSON.parse(localStorage.getItem("colluder.wrap") ?? "true"); } catch { return true; } });
   const [err, setErr] = useState<string | null>(null);
   const [asnBusy, setAsnBusy] = useState(false);
@@ -84,7 +89,7 @@ export function HitDetail({ id }: { id: number }) {
     return () => removeEventListener("keydown", onKey);
   }, []);
 
-  const box = "relative flex min-h-0 flex-col gap-2.5 overflow-auto border-t border-rule bg-soot-1 py-3.5 pr-5 pl-6 max-[820px]:px-3.5";
+  const box = "@container relative flex min-h-0 flex-col gap-2.5 overflow-auto border-t border-rule bg-soot-1 py-3.5 pr-5 pl-6 max-[820px]:px-3.5";
   const d = s.details.get(id);
   if (!d) return <article className={box}><p className="text-ash">{err ? `Could not load #${id}: ${err}` : `Loading #${id}…`}</p></article>;
 
@@ -130,25 +135,35 @@ export function HitDetail({ id }: { id: number }) {
       {!!d.extraLabels?.length && <p className="flex-none text-[12.5px] text-smoke">Extra labels before the tag: <span className="font-mono text-bone">{d.extraLabels.join(".")}</span></p>}
 
       <div className="mt-0.5 flex flex-none flex-wrap items-center gap-2">
-        <ToggleGroup type="single" value={decoded ? "decoded" : "exact"} onValueChange={(v) => v && setDecoded(v === "decoded")} aria-label="View"
-          className="overflow-hidden rounded-[3px] border border-rule">
-          <ToggleGroupItem value="exact" className="h-6 rounded-none px-2.5 text-[11px] text-smoke data-[state=on]:bg-soot-2 data-[state=on]:font-semibold data-[state=on]:text-bone">Exact bytes</ToggleGroupItem>
-          <ToggleGroupItem value="decoded" className="h-6 rounded-none border-l border-rule px-2.5 text-[11px] text-smoke data-[state=on]:bg-soot-2 data-[state=on]:font-semibold data-[state=on]:text-bone">Decoded</ToggleGroupItem>
-        </ToggleGroup>
-        <label className="mr-auto ml-2.5 flex cursor-pointer items-center gap-[7px] text-[12.5px]">
-          <Switch checked={wrap} onCheckedChange={(v) => { setWrap(v); save("colluder.wrap", v); }} aria-label="Wrap long lines" />
-          <span className="text-smoke">Wrap long lines</span><span className="text-ash max-[1180px]:hidden">display only; copies stay exact</span>
-        </label>
+        {web ? (
+          <ToggleGroup type="single" value={parsed ? "parsed" : "exact"} onValueChange={(v) => { if (!v) return; setParsed(v === "parsed"); save("colluder.parsed", v === "parsed"); }} aria-label="View"
+            className="overflow-hidden rounded-[3px] border border-rule">
+            <ToggleGroupItem value="parsed" className={segCls}>Parsed</ToggleGroupItem>
+            <ToggleGroupItem value="exact" className={cn(segCls, "border-l border-rule")}>Exact bytes</ToggleGroupItem>
+          </ToggleGroup>
+        ) : (
+          <ToggleGroup type="single" value={decoded ? "decoded" : "exact"} onValueChange={(v) => v && setDecoded(v === "decoded")} aria-label="View"
+            className="overflow-hidden rounded-[3px] border border-rule">
+            <ToggleGroupItem value="exact" className={segCls}>Exact bytes</ToggleGroupItem>
+            <ToggleGroupItem value="decoded" className={cn(segCls, "border-l border-rule")}>Decoded</ToggleGroupItem>
+          </ToggleGroup>
+        )}
+        {web && parsed ? <span className="mr-auto ml-2.5 text-[12.5px] text-ash">Display only; copies stay exact</span> : (
+          <label className="mr-auto ml-2.5 flex cursor-pointer items-center gap-[7px] text-[12.5px]">
+            <Switch checked={wrap} onCheckedChange={(v) => { setWrap(v); save("colluder.wrap", v); }} aria-label="Wrap long lines" />
+            <span className="text-smoke">Wrap long lines</span><span className="text-ash max-[1180px]:hidden">display only; copies stay exact</span>
+          </label>
+        )}
         <Button variant="ghost" onClick={() => copy(`${d.rawRequest}\n\n${d.rawResponse}`, "request and response")}><Copy />Copy both</Button>
       </div>
 
-      <div className="grid min-h-[220px] flex-1 grid-cols-2 gap-3 max-[1180px]:flex-none max-[1180px]:grid-cols-1 max-[1180px]:[&>*]:max-h-[360px]">
-        <RawPane title={d.protocol === "dns" ? "Query" : "Request"} http={web}
-          sub={decoded ? "decoded view · copy stays exact" : `exact, as received · ${lineCount(d.rawRequest)} lines · ${byteCount(d.rawRequest)} bytes`}
-          text={decoded ? decode(d.rawRequest, d.protocol) : d.rawRequest} exact={d.rawRequest} />
-        <RawPane title={d.protocol === "dns" ? "Answer" : "Response"} http={web}
-          sub={d.protocol === "dns" ? "sent by interactsh-server" : `${answeredBy(d.answer)} · ${lineCount(d.rawResponse)} lines`}
-          text={decoded ? decode(d.rawResponse, d.protocol) : d.rawResponse} exact={d.rawResponse} />
+      <div className="grid min-h-[220px] flex-1 grid-cols-2 gap-3 @max-[900px]:flex-none @max-[900px]:grid-cols-1 @max-[900px]:[&>*]:max-h-[360px]">
+        <RawPane title={d.protocol === "dns" ? "Query" : "Request"} http={web} parsed={parsed} tag={d.tag} domain={s.status?.payload?.domain}
+          sub={web ? `${parsed ? "parsed" : "exact, as received"} · ${byteCount(d.rawRequest)} bytes` : decoded ? "decoded view · copy stays exact" : `exact, as received · ${lineCount(d.rawRequest)} lines · ${byteCount(d.rawRequest)} bytes`}
+          text={!web && decoded ? decode(d.rawRequest, d.protocol) : d.rawRequest} exact={d.rawRequest} />
+        <RawPane title={d.protocol === "dns" ? "Answer" : "Response"} http={web} parsed={parsed} tag={d.tag} domain={s.status?.payload?.domain}
+          sub={d.protocol === "dns" ? "sent by interactsh-server" : `${answeredBy(d.answer)} · ${byteCount(d.rawResponse)} bytes`}
+          text={!web && decoded ? decode(d.rawResponse, d.protocol) : d.rawResponse} exact={d.rawResponse} />
       </div>
 
       <div aria-label="Custody record" className="flex flex-none flex-wrap items-center gap-x-4 gap-y-1 rounded-[3px] border border-rule bg-soot px-3 py-1.5 text-[11px] whitespace-nowrap max-[820px]:flex-col max-[820px]:items-start">

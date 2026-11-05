@@ -24,6 +24,10 @@
   --ink-https: #8aa2ea;
   --ink-smtp: #62b08f;
   --ink-other: #b5ab9c;
+  /* syntax inks: only inside raw panes on the Well. Names (header, parameter, JSON key) in slate,
+     values in sage. Kept off amber and off the four protocol inks. */
+  --syn-name: oklch(0.76 0.055 235);
+  --syn-value: oklch(0.83 0.075 135);
 
   /* shadcn/ui semantic variables mapped onto the Colluder palette */
   --radius: 0.25rem;
@@ -69,6 +73,8 @@
   --color-https: var(--ink-https);
   --color-smtp: var(--ink-smtp);
   --color-other: var(--ink-other);
+  --color-syn-name: var(--syn-name);
+  --color-syn-value: var(--syn-value);
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
