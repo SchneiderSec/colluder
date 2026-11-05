@@ -121,8 +121,9 @@ export function HitDetail({ id }: { id: number }) {
   const self = (s.status?.selfIps ?? []).includes(d.remoteAddress);
   const kit = variantOf(d);
   const a = d.answer;
-  const stage = a ? stageOf({ summary: d.summary, fullId: d.fullId, hop: a.hop, decoy: a.decoy, answerCode: a.code, answerTo: a.to, hopCode: a.status, answerPart: a.part }) : null;
-  const curl = web ? toCurl(d.rawRequest, d.protocol === "https" ? "https" : "http", { id: d.id, normalised: !d.answer }) : null;
+  const stage = a ? stageOf({ summary: d.summary, fullId: d.fullId, hop: a.hop, decoy: a.decoy, answerCode: a.code, answerTo: a.to, hopCode: a.status, answerPart: a.part, answerMode: a.mode, malformed: a.malformed }) : null;
+  const tlsOnly = a?.mode === "tls" ? a.tls : null;
+  const curl = web && d.rawRequest ? toCurl(d.rawRequest, d.protocol === "https" ? "https" : "http", { id: d.id, normalised: !d.answer }) : null;
   // who wrote the bytes: the edge records them off the socket; interactsh re-serialises them
   const capture = d.answer ? "edge" as const : "engine" as const;
   const reqP = web && parsed ? parseHttp(cut(d.rawRequest)) : null;
@@ -177,6 +178,23 @@ export function HitDetail({ id }: { id: number }) {
       {stage && (
         <p className="flex-none text-[12.5px] text-smoke">Edge: <span className="text-bone">{stage}</span>
           {d.answer?.to && <span className="text-ash"> · whether the target followed it shows in its response, not here{(d.answer.hop ?? 0) > 1 ? "; this hop proves it follows redirects" : ""}</span>}
+        </p>
+      )}
+      {tlsOnly && (
+        <p className="flex-none text-[12.5px] text-smoke">
+          <b className="font-semibold text-bone">TLS handshake only.</b> The client asked for <span className="font-mono text-bone">{tlsOnly.sni}</span>{tlsOnly.alpn.length ? <> (ALPN {tlsOnly.alpn.join(", ")})</> : null} and closed before sending a request{tlsOnly.error ? <> ({tlsOnly.error})</> : null}. Most often it rejected the certificate, which covers one label under the domain. It proves the target connected; for the request itself, use the path form <span className="font-mono text-bone">https://&lt;id&gt;.{s.status?.payload?.domain ?? "domain"}/{d.tag ?? "tag"}/</span>. The request pane is empty; the ClientHello bytes are in the download.
+        </p>
+      )}
+      {a?.malformed && (
+        <p className="flex-none text-[12.5px] text-smoke">
+          <b className="font-semibold text-bone">Malformed request ({a.malformed}).</b> A strict HTTP parser would refuse it (a raw space or newline in the target is what an XXE file read looks like), so the edge recorded it exactly as it came and answered from the probe's rule.
+        </p>
+      )}
+      {(d.binary || a?.droppedBytes || tlsOnly) && (
+        <p className="flex flex-none flex-wrap items-center gap-x-2 text-[12.5px] text-smoke">
+          {d.binary && !tlsOnly && <span><b className="font-semibold text-bone">Not UTF-8.</b> The text below is a UTF-8 view of {d.rawLength?.toLocaleString("en-US")} bytes, so its copies aren't exact; the SHA-256 is of the bytes.</span>}
+          {!!a?.droppedBytes && <span><b className="font-semibold text-bone">Body truncated.</b> The edge kept the first 1 MB and dropped {a.droppedBytes.toLocaleString("en-US")} bytes; copies and curl carry only what was kept.</span>}
+          {(d.binary || tlsOnly) && <a className="text-bone underline decoration-ash underline-offset-2 hover:decoration-bone" href={`/api/interactions/${d.id}/raw`} download>Download the exact bytes</a>}
         </p>
       )}
       {kit && <p className="flex-none text-[12.5px] text-smoke">Payload: <span className="text-bone">{SECTION_LABEL[kit.section]}, {kit.name}</span> <span className="font-mono text-ash">({kit.code})</span></p>}

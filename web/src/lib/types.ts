@@ -18,6 +18,9 @@ export interface Interaction {
   answerCode?: number | null; // exit redirect: the status sent…
   answerTo?: string | null; // …and the host it pointed at
   hopCode?: number | null; // a loop hop's own code, when it differs from the rule's
+  answerPart?: string | null; // a preset part that answered (x.dtd…)
+  answerMode?: string | null; // "tls": a handshake that never completed
+  malformed?: string | null; // the strict parser refused it; the edge recorded it anyway
 }
 
 export interface Enrich {
@@ -37,6 +40,8 @@ export interface InteractionDetail extends Interaction {
   rawRequest: string;
   rawResponse: string;
   reqSha256: string;
+  binary?: boolean; // the request wasn't UTF-8: rawRequest is a lossy view; /api/interactions/:id/raw has the bytes
+  rawLength?: number;
   clearedAt: string | null;
   enrich: Enrich | null;
   answer: Answer | null; // set when Colluder's edge answered this hit
@@ -45,7 +50,9 @@ export interface InteractionDetail extends Interaction {
 // Who answered a hit (phase 2). mode "error" = the edge refused a malformed request.
 export interface Answer {
   by: "colluder";
-  mode: "default" | "redirect" | "custom" | "file" | "error";
+  mode: "default" | "redirect" | "custom" | "file" | "preset" | "error" | "tls";
+  malformed?: string; // the strict parser refused the request; the edge recorded and answered it anyway
+  tls?: { sni: string; alpn: string[]; error: string | null }; // mode "tls": a handshake that never completed
   version: number | null;
   tag?: string | null;
   hop?: number;

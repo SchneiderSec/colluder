@@ -3,7 +3,7 @@
 
 import { decodeExfil } from "./exfil.ts"; // with the extension: Node runs this file in tests and the report
 
-type Hit = { summary?: string; fullId?: string; hop?: number | null; decoy?: string | null; answerCode?: number | null; answerTo?: string | null; hopCode?: number | null; answerPart?: string | null };
+type Hit = { summary?: string; fullId?: string; answerMode?: string | null; malformed?: string | null; hop?: number | null; decoy?: string | null; answerCode?: number | null; answerTo?: string | null; hopCode?: number | null; answerPart?: string | null };
 
 // XXE: the DTD sends the file to kx0.<tag>…/d?d=<contents>. Shown decoded, one line, control
 // characters as escapes; php://filter output is base64, so that is decoded too.
@@ -19,6 +19,12 @@ export function xxeData(h: Hit): string | null {
 }
 
 export function stageOf(h: Hit): string | null {
+  if (h.answerMode === "tls") return "TLS handshake only: no request arrived";
+  const s = stageCore(h);
+  return h.malformed ? (s ? `malformed request · ${s}` : "malformed request") : s;
+}
+
+function stageCore(h: Hit): string | null {
   if (h.answerPart) return `served ${h.answerPart}`;
   const data = xxeData(h);
   if (data !== null) return `file data: ${data.length > 90 ? data.slice(0, 90) + "…" : data}`;

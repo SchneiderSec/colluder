@@ -7,11 +7,12 @@
 // No API, no database, no secrets: it reads rules.json and the certificate, and appends edge.jsonl.
 import net from "node:net";
 import tls from "node:tls";
+import { isUtf8 } from "node:buffer";
 import { readFileSync, openSync, writeSync, writeFileSync, renameSync, watchFile, existsSync, mkdirSync } from "node:fs";
 import { X509Certificate } from "node:crypto";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { Reader, readHead, readBody, HttpError, LIMITS } from "./lib/http1.mjs";
+import { Reader, readHead, readBody, lenientHead, HttpError, LIMITS } from "./lib/http1.mjs";
 import { respond, serialize, reason } from "./lib/rules.mjs";
 import { parseInteraction } from "./lib/tag.mjs";
 import { edgeCodeHash } from "./lib/codehash.mjs";
@@ -74,8 +75,20 @@ export function ownership(hostHeader, cids) {
   return null;
 }
 
-// Server name from a TLS ClientHello, without decrypting anything (RFC 8446 §4.1.2, RFC 6066 §3).
-// Returns { done: false } until the whole first record is in, then { done: true, tls, sni }.
+// The host a request is for: the Host header, or the authority of an absolute-form target
+// (GET http://x/ HTTP/1.1, which proxies and some HTTP/1.0 clients send with a foreign or no Host).
+export function routeOf(hostHeader, target, cids) {
+  const byHost = ownership(hostHeader, cids);
+  if (byHost) return { own: byHost, host: hostHeader };
+  const a = /^[a-z][a-z0-9+.-]*:\/\/([^/?#\s]*)/i.exec(String(target || ""));
+  const auth = a ? a[1].replace(/^.*@/, "") : "";
+  const byTarget = auth ? ownership(auth, cids) : null;
+  return byTarget ? { own: byTarget, host: auth } : null;
+}
+
+// Server name and ALPN from a TLS ClientHello, without decrypting anything (RFC 8446 §4.1.2,
+// RFC 6066 §3, RFC 7301). Returns { done: false } until the whole first record is in, then
+// { done: true, tls, sni, alpn }.
 export function sniOf(buf) {
   if (buf.length < 1) return { done: false };
   if (buf[0] !== 0x16) return { done: true, tls: false, sni: null };
@@ -91,17 +104,22 @@ export function sniOf(buf) {
     p += 1 + buf[p];                       // compression methods
     const end = Math.min(p + 2 + buf.readUInt16BE(p), 5 + recLen);
     p += 2;
+    let sni = null;
+    const alpn = [];
     while (p + 4 <= end) {
       const type = buf.readUInt16BE(p), len = buf.readUInt16BE(p + 2);
       p += 4;
       if (type === 0 && len >= 5 && buf[p + 2] === 0) {
         const n = buf.readUInt16BE(p + 3);
-        return { done: true, tls: true, sni: buf.subarray(p + 5, p + 5 + n).toString("latin1").toLowerCase() };
+        sni = buf.subarray(p + 5, p + 5 + n).toString("latin1").toLowerCase();
+      } else if (type === 16 && len >= 2) {
+        for (let q = p + 2; q < p + len && alpn.length < 10;) { const n = buf[q]; alpn.push(buf.subarray(q + 1, q + 1 + n).toString("latin1")); q += 1 + n; }
       }
       p += len;
     }
+    return { done: true, tls: true, sni, alpn };
   } catch { /* truncated or odd hello: no name */ }
-  return { done: true, tls: true, sni: null };
+  return { done: true, tls: true, sni: null, alpn: [] };
 }
 
 // Raw byte pipe to interactsh, for TLS we must not terminate (the apex: interactsh's API and its own
@@ -123,6 +141,22 @@ function record(o) {
 }
 
 const ipOf = (sock) => String(sock.remoteAddress || "").replace(/^::ffff:/, "");
+// the request as recorded: text, plus the exact bytes when the text would be a lossy view of them
+const rawFields = (buf) => ({ "raw-request": buf.toString("utf8"), ...(isUtf8(buf) ? {} : { "raw-request-b64": buf.toString("base64") }) });
+
+// The origin header on a request relayed without a parsed head (one the strict parser refused):
+// whatever the client sent under that name is removed, and the real peer added after the first line.
+// Returns null when the head can't be found in what was read (then the request is refused).
+export function withOrigin(buf, ip) {
+  const text = buf.toString("latin1");
+  const m = /\r?\n\r?\n/.exec(text);
+  const headEnd = m ? m.index + m[0].length : -1;
+  if (headEnd === -1) return text.toLowerCase().includes(ORIGIN_LC) ? null : buf;
+  const head = text.slice(0, headEnd).replace(new RegExp(`(\\n)${ORIGIN_LC}[ \\t]*:[^\\n]*\\n`, "gi"), "$1");
+  const nl = head.indexOf("\n") + 1;
+  if (!nl) return buf;
+  return Buffer.concat([Buffer.from(head.slice(0, nl) + `${ORIGIN}: ${ip}\r\n` + head.slice(nl), "latin1"), buf.subarray(headEnd)]);
+}
 const plain = (status) => Buffer.from(`HTTP/1.1 ${status} ${reason(status)}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`, "latin1");
 
 // requests answered per probe and rule version, for a decoy's "first N" (in memory: an edge restart
@@ -137,24 +171,35 @@ async function handle(sock, scheme) {
   sock.setTimeout(60_000, () => sock.destroy());
   sock.on("error", () => {});
   const r = new Reader(sock);
-  let head;
+  let head, malformed = null;
   try {
     head = await readHead(r, t0 + 10_000);
   } catch (e) {
-    // not HTTP we can route (garbage, huge head): let interactsh see it exactly as it would have
-    if (e instanceof HttpError && e.status !== 408) return relay(sock, r, null, scheme);
-    stats.errors++;
-    return sock.destroy();
+    if (e instanceof HttpError && e.headBytes) {
+      // a head the strict grammar refuses: if it's addressed to us, it is evidence (a raw newline in
+      // the target is what an XXE file read looks like); record it rather than relay it
+      const lh = lenientHead(e.headBytes);
+      if (routeOf(lh.get("host")?.[0], lh.target, state.cids)) { r.take(e.headBytes.length); head = lh; malformed = e.message; }
+    }
+    if (!head) {
+      // not HTTP we can route (garbage, huge head): interactsh sees it as it would have
+      if (e instanceof HttpError && e.status !== 408) return relay(sock, r, null, scheme);
+      stats.errors++;
+      return sock.destroy();
+    }
   }
   if (!head) return sock.destroy();
-  const host = head.get("host")?.[0] || "";
-  const own = ownership(host, state.cids);
-  if (!own) return relay(sock, r, head, scheme);
+  const route = routeOf(head.get("host")?.[0] || "", head.target, state.cids);
+  if (!route) return relay(sock, r, head, scheme);
+  const { own, host } = route;
 
   stats.own++;
   const arrived = new Date().toISOString();
   let body = Buffer.alloc(0), dropped = 0, failed = null;
-  try { ({ body, dropped } = await readBody(r, head, t0 + 30_000)); } catch (e) { failed = e instanceof HttpError ? e : new HttpError(400, e.message); }
+  try { ({ body, dropped } = await readBody(r, head, t0 + 30_000)); } catch (e) {
+    if (malformed) body = r.take(Math.min(r.buf.length, LIMITS.record)); // keep what came; answer anyway
+    else failed = e instanceof HttpError ? e : new HttpError(400, e.message);
+  }
   r.detach();
   const rawRequest = Buffer.concat([head.raw, body]);
   const tag = parseInteraction({ protocol: scheme, "unique-id": own.uniqueId, "full-id": own.fullId, "raw-request": head.raw.toString("latin1") }, CFG.domain).tag;
@@ -169,7 +214,7 @@ async function handle(sock, scheme) {
     const res = respond(entry?.rule || null, entry?.version ?? null, { scheme, method: head.method, target: head.target, host, uniqueId: own.uniqueId, domain: CFG.domain, ua: head.get("user-agent")?.[0] ?? "", ip, seen });
     if (entry?.rule?.decoy && res.answer.version != null) { answered.delete(key); answered.set(key, seen + 1); if (answered.size > 5000) answered.delete(answered.keys().next().value); }
     wire = serialize(res, head.method);
-    answer = res.answer;
+    answer = malformed ? { ...res.answer, malformed } : res.answer;
     if (res.delayMs) {
       if (delayed < CFG.maxDelayed) { delayed++; await new Promise((ok) => setTimeout(ok, res.delayMs)); delayed--; }
       else answer.delaySkipped = true;
@@ -179,7 +224,7 @@ async function handle(sock, scheme) {
     protocol: scheme,
     "unique-id": own.uniqueId,
     "full-id": own.fullId,
-    "raw-request": rawRequest.toString("utf8"),
+    ...rawFields(rawRequest),
     "raw-response": wire.toString("utf8"),
     "remote-address": ip,
     timestamp: arrived,
@@ -190,9 +235,14 @@ async function handle(sock, scheme) {
 
 function relay(sock, r, head, scheme) {
   stats.relayed++;
-  const rest = r.detach();
+  let rest = r.detach();
   sock.pause(); // nothing may flow until the upstream is there to receive it
   let first = Buffer.alloc(0);
+  if (!head) {
+    // unparsed: never pass on a client-supplied origin header (interactsh would believe it)
+    rest = withOrigin(rest, ipOf(sock));
+    if (!rest) { stats.errors++; return sock.end(plain(400)); }
+  }
   if (head) {
     const ip = ipOf(sock);
     const nl = head.raw.indexOf("\n") + 1;
@@ -227,6 +277,24 @@ function relay(sock, r, head, scheme) {
 }
 
 // ---------- listeners ----------
+// ---------- TLS handshakes that never complete ----------
+// A client that refuses the certificate (https://<tag>.<id>…: the wildcard covers one label) closes
+// during the handshake, so no request ever arrives. If its server name is ours, that is still a hit.
+const pendingTls = new Map();
+const connKey = (s) => `${s.remoteAddress}|${s.remotePort}`;
+function tlsFailed(p) {
+  const own = ownership(p.sni, state.cids);
+  if (!own) return;
+  const tag = parseInteraction({ protocol: "https", "unique-id": own.uniqueId, "full-id": own.fullId }, CFG.domain).tag;
+  stats.own++;
+  record({
+    protocol: "https", "unique-id": own.uniqueId, "full-id": own.fullId,
+    "raw-request": "", "raw-request-b64": p.hello.toString("base64"), "raw-response": "",
+    "remote-address": p.ip, timestamp: p.at,
+    "colluder-answer": { by: "colluder", mode: "tls", version: null, tag, tls: { sni: p.sni, alpn: p.alpn, error: p.error || null } },
+  });
+}
+
 function loadCtx() {
   const cert = readFileSync(CFG.cert), key = readFileSync(CFG.key);
   const notAfter = new X509Certificate(cert).validTo;
@@ -251,8 +319,11 @@ function start() {
     certInfo = { notAfter: c.notAfter };
     // TLS is terminated only after reading the server name: the apex (interactsh's polling API, which
     // the wildcard certificate doesn't cover) goes through untouched; everything else is ours to read.
-    const s = tls.createServer({ ...c.ctx, ALPNProtocols: ["http/1.1"] }, (sock) => handle(sock, "https"));
-    s.on("tlsClientError", () => { stats.tlsErrors++; });
+    const s = tls.createServer({ ...c.ctx, ALPNProtocols: ["http/1.1"] }, (sock) => { pendingTls.delete(connKey(sock)); handle(sock, "https"); });
+    s.on("tlsClientError", (err, ts) => {
+      stats.tlsErrors++;
+      try { const p = pendingTls.get(connKey(ts)); if (p) p.error = String(err?.code || err?.message || "").slice(0, 120); } catch { /* socket gone */ }
+    });
     const front = net.createServer((sock) => {
       sock.on("error", () => {});
       let buf = Buffer.alloc(0);
@@ -265,6 +336,11 @@ function start() {
         sock.off("data", onData);
         sock.pause();
         if (!h.tls || h.sni === CFG.domain) return passthrough(sock, buf, CFG.upHttps);
+        if (h.sni && ownership(h.sni, state.cids) && pendingTls.size < 1000) {
+          const key = connKey(sock), p = { sni: h.sni, alpn: h.alpn, hello: buf.subarray(0, 16 * 1024), ip: ipOf(sock), at: new Date().toISOString() };
+          pendingTls.set(key, p);
+          sock.once("close", () => { if (pendingTls.get(key) === p) { pendingTls.delete(key); tlsFailed(p); } });
+        }
         sock.unshift(buf);
         s.emit("connection", sock);
       };

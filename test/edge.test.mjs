@@ -12,7 +12,8 @@ import { fileURLToPath } from "node:url";
 import { PassThrough } from "node:stream";
 import { validateHttpRule, respond, serialize, describeRule, describeDecoy, xxeParts } from "../lib/rules.mjs";
 import { Reader, readHead, readBody, HttpError } from "../lib/http1.mjs";
-import { ownership, sniOf } from "../edge.mjs";
+import { ownership, sniOf, withOrigin, routeOf } from "../edge.mjs";
+import { lenientHead } from "../lib/http1.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CID = "abcdefghij0123456789";
@@ -303,15 +304,67 @@ test("edge: TLS for the apex (interactsh's polling API) passes through untouched
 test("edge: server name is read from the ClientHello", () => {
   const hello = Buffer.from("16030100a5010000a10303" + "00".repeat(32) + "00" + "0002c02f" + "0100" + "0017" + "0000" + "0013" + "0011" + "00" + "000e" + Buffer.from("a.example.test").toString("hex"), "hex");
   hello.writeUInt16BE(hello.length - 5, 3);
-  assert.deepEqual(sniOf(hello), { done: true, tls: true, sni: "a.example.test" });
+  assert.deepEqual(sniOf(hello), { done: true, tls: true, sni: "a.example.test", alpn: [] });
   assert.deepEqual(sniOf(hello.subarray(0, 20)), { done: false });
   assert.deepEqual(sniOf(Buffer.from("GET / HTTP/1.1\r\n")), { done: true, tls: false, sni: null });
 });
 
-test("edge: unparseable requests reach interactsh unchanged", async () => {
+test("edge: unparseable foreign requests reach interactsh with the real origin, never a client-supplied one", async () => {
   const res = await request(ports.http, "NOT HTTP AT ALL\r\n\r\n");
   assert.match(res, /upstream$/);
-  assert.equal(upSeen.at(-1).bytes, "NOT HTTP AT ALL\r\n\r\n");
+  assert.equal(upSeen.at(-1).bytes, "NOT HTTP AT ALL\r\nX-Colluder-Origin-IP: 127.0.0.1\r\n\r\n");
+  const other = "zzzzzzzzzzzzzzzzzzzzklmnopqrstuvw";
+  await request(ports.http, `M-SEARCH * HTTP/1.1\r\nHost: t.${other}.${DOMAIN}\r\nX-Colluder-Origin-IP: 203.0.113.77\r\nbad header line\r\n\r\n`);
+  assert.doesNotMatch(upSeen.at(-1).bytes, /203\.0\.113\.77/);
+  assert.match(upSeen.at(-1).bytes, /^M-SEARCH \* HTTP\/1\.1\r\nX-Colluder-Origin-IP: 127\.0\.0\.1\r\n/);
+  assert.equal(withOrigin(Buffer.from("GET / HTTP/1.1\r\nx-colluder-origin-ip: 1.2.3.4"), "9.9.9.9"), null, "no head end: refused when the header is there");
+});
+
+test("edge: a malformed request addressed to a probe is recorded and answered, not relayed", async () => {
+  const before = upSeen.length;
+  // what an old Java XXE client sends for a two-line file: the newline splits the request line
+  const req = `GET /d?d=line one\nline two HTTP/1.1\r\nHost: kx0.e2e.${ID}.${DOMAIN}\r\nUser-Agent: Java/1.8.0_151\r\n\r\n`;
+  const res = await request(ports.http, req);
+  assert.match(res, /^HTTP\/1\.1 200 OK/);
+  const line = edgeLines().at(-1);
+  assert.equal(line["raw-request"], req);
+  assert.equal(line["colluder-answer"].tag, "e2e");
+  assert.equal(line["colluder-answer"].malformed, "bad request line");
+  assert.equal(upSeen.length, before, "nothing relayed");
+  const lh = lenientHead(Buffer.from(req));
+  assert.equal(lh.target, "/d?d=line one\nline two");
+  assert.equal(lh.get("user-agent")[0], "Java/1.8.0_151");
+});
+
+test("edge: absolute-form requests route by the target's authority; token methods are fine", async () => {
+  await request(ports.http, `GET http://abs.${ID}.${DOMAIN}/x HTTP/1.1\r\nHost: shop.example\r\n\r\n`);
+  assert.equal(edgeLines().at(-1)["full-id"], `abs.${ID}`);
+  await request(ports.http, `PROPFIND / HTTP/1.1\r\nHost: dav.${ID}.${DOMAIN}\r\n\r\n`);
+  assert.equal(edgeLines().at(-1)["colluder-answer"].malformed, undefined);
+  assert.equal(routeOf("", `http://u:p@abs.${ID}.${DOMAIN}:80/`, [CID]).own.fullId, `abs.${ID}`);
+});
+
+test("edge: a request that isn't UTF-8 keeps its exact bytes", async () => {
+  const head = `POST / HTTP/1.1\r\nHost: bin.${ID}.${DOMAIN}\r\nContent-Length: 4\r\n\r\n`;
+  const bytes = Buffer.concat([Buffer.from(head), Buffer.from([0xff, 0x00, 0xfe, 0x80])]);
+  await new Promise((ok) => { const s = net.connect(ports.http, "127.0.0.1", () => s.end(bytes)); s.on("close", ok); s.resume(); });
+  const line = edgeLines().at(-1);
+  assert.deepEqual(Buffer.from(line["raw-request-b64"], "base64"), bytes);
+  assert.equal(edgeLines().filter((l) => l["full-id"] === `abs.${ID}`).every((l) => !l["raw-request-b64"]), true, "UTF-8 requests carry no copy");
+});
+
+test("edge: a TLS handshake for a probe that never completes is a hit", async () => {
+  await new Promise((ok) => {
+    const s = tls.connect({ host: "127.0.0.1", port: ports.https, servername: `deep.${ID}.${DOMAIN}`, ALPNProtocols: ["h2", "http/1.1"] }); // verifies: the test cert fails
+    s.on("error", () => ok()); s.on("close", ok);
+  });
+  await sleep(300);
+  const line = edgeLines().at(-1);
+  assert.equal(line["full-id"], `deep.${ID}`);
+  assert.equal(line["colluder-answer"].mode, "tls");
+  assert.equal(line["colluder-answer"].tag, "deep");
+  assert.deepEqual(line["colluder-answer"].tls.alpn, ["h2", "http/1.1"]);
+  assert.equal(Buffer.from(line["raw-request-b64"], "base64")[0], 0x16, "the ClientHello bytes");
 });
 
 test("edge: status file reports listeners and counts", () => {

@@ -304,6 +304,13 @@ const server = http.createServer(async (req, res) => {
       if (!it.enrich || !it.enrich.rdnsAt) enrichRdns(it.remoteAddress); // backfilled rows: resolve lazily, arrives as an "enrich" event
       return json(res, 200, it);
     }
+    if (req.method === "GET" && (m = /^\/api\/interactions\/(\d+)\/raw$/.exec(p))) {
+      const bytes = store.rawRequestBytes(Number(m[1]));
+      if (!bytes) return json(res, 404, { error: "no such interaction" });
+      res.writeHead(200, { "content-type": "application/octet-stream", "content-length": bytes.length, "content-disposition": `attachment; filename="colluder-hit-${m[1]}.bin"`,
+        "x-content-type-options": "nosniff", "content-security-policy": "sandbox", "cache-control": "no-store" });
+      return res.end(bytes);
+    }
     // B4: a probe's older hits, search and filter (q, type=dns,http,https,smtp), and a JSONL export
     if (req.method === "GET" && (m = /^\/api\/probes\/([a-z0-9-]{1,32}|__untagged)\/hits$/.exec(p))) {
       const tag = m[1] === "__untagged" ? null : m[1];
@@ -323,7 +330,7 @@ const server = http.createServer(async (req, res) => {
         "content-disposition": `attachment; filename="colluder-${tag ?? "unregistered"}-${nowIso().slice(0, 10)}.jsonl"`,
         "cache-control": "no-store",
       });
-      for (const r of store.exportRows(tag)) res.write(JSON.stringify({ ...r, answer: r.answer ? JSON.parse(r.answer) : null }) + "\n");
+      for (const { rawBytes, ...r } of store.exportRows(tag)) res.write(JSON.stringify({ ...r, answer: r.answer ? JSON.parse(r.answer) : null, ...(rawBytes ? { rawRequestB64: Buffer.from(rawBytes).toString("base64") } : {}) }) + "\n");
       return res.end();
     }
     if (req.method === "POST" && p === "/api/probes") {

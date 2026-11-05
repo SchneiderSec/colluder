@@ -242,3 +242,19 @@ test("codehash: the edge fingerprint changes when any edge file changes", () => 
     assert.match(edgeCodeHash(), /^[0-9a-f]{16}$/, "the real tree hashes");
   } finally { rmrf(dir, { recursive: true }); }
 });
+
+test("store: a request that isn't UTF-8 keeps its bytes, and the hash is of the bytes", async () => {
+  const { createHash } = await import("node:crypto");
+  const s = new Store(":memory:");
+  const bytes = Buffer.concat([Buffer.from("POST / HTTP/1.1\r\n\r\n"), Buffer.from([0xff, 0x00, 0xfe])]);
+  const o = { protocol: "http", "unique-id": ID, "full-id": `bin.${ID}`, "remote-address": "198.51.100.24", timestamp: "2026-11-05T04:26:35.571Z",
+    "raw-request": bytes.toString("utf8"), "raw-request-b64": bytes.toString("base64"), "raw-response": "", "colluder-answer": { by: "colluder", mode: "default", version: null } };
+  const a = s.insert(JSON.stringify(o), parseInteraction(o, D, { trusted: true }), "2026-11-05T04:26:35.900Z");
+  const it = s.interaction(a.row.id);
+  assert.equal(it.reqSha256, createHash("sha256").update(bytes).digest("hex"));
+  assert.equal(it.binary, true);
+  assert.equal(it.rawLength, bytes.length);
+  assert.deepEqual(s.rawRequestBytes(a.row.id), bytes);
+  const untrusted = parseInteraction(o, D);
+  assert.equal(untrusted.rawBytes, null, "only the edge's lines carry bytes");
+});
