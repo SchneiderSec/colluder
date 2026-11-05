@@ -14,7 +14,7 @@ export const SECTIONS: { id: Section | "metadata" | "gopher" | "xxe" | "xss" | "
   { id: "callbacks", label: "Callbacks", ready: true },
   { id: "bypass", label: "Allowlist bypass", ready: true },
   { id: "address", label: "Address forms", ready: true },
-  { id: "metadata", label: "Cloud metadata", ready: false },
+  { id: "metadata", label: "Cloud metadata", ready: true },
   { id: "gopher", label: "Gopher", ready: false },
   { id: "xxe", label: "XXE", ready: false },
   { id: "xss", label: "Blind XSS", ready: false },

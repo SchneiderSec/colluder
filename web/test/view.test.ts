@@ -140,3 +140,18 @@ test("kit: a hit names the payload that fired", () => {
   assert.equal(encode("http://a/?b=c&d", "once"), "http%3A%2F%2Fa%2F%3Fb%3Dc%26d");
   assert.equal(encode("a b", "twice"), "a%2520b");
 });
+
+import { METADATA, redirectable, hostOf, pathOf } from "../src/lib/metadata.ts";
+// @ts-ignore: plain JS module shared with the edge
+import { validateHttpRule } from "../../lib/rules.mjs";
+
+test("metadata: ids unique, every redirectable URL is a valid redirect Location", () => {
+  assert.equal(new Set(METADATA.map((r) => r.id)).size, METADATA.length);
+  for (const r of METADATA) {
+    assert.ok(hostOf(r.url), r.id);
+    if (redirectable(r)) assert.equal(validateHttpRule({ mode: "redirect", location: r.url }).error, undefined, r.id);
+  }
+  assert.equal(hostOf("http://[fd00:ec2::254]/latest/"), "fd00:ec2::254");
+  assert.equal(pathOf(METADATA.find((r) => r.id === "azure")!.url), "/metadata/instance?api-version=2021-02-01");
+  assert.ok(!redirectable(METADATA.find((r) => r.id === "gcp")!));
+});

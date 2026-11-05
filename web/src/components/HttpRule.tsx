@@ -5,6 +5,7 @@ import { ChevronLeft, ChevronRight, Copy, Plus, X } from "lucide-react";
 import { useApp, getState, fetchRule, previewRule, saveRule, setRuleDraft, takeRuleSeed } from "@/store";
 import type { Decoy, HttpRule, Probe, RuleMode, RuleState, RuleVersion } from "@/lib/types";
 import { reach } from "@/lib/reach";
+import { METADATA, redirectable } from "@/lib/metadata";
 import { dayOrTime, plural } from "@/lib/format";
 import { copy, toast } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
@@ -22,13 +23,10 @@ const MODE_DEFAULTS: Record<RuleMode, Partial<HttpRule>> = {
 };
 const MODES: [RuleMode, string][] = [["default", "Default reply"], ["redirect", "Redirect"], ["custom", "Custom response"], ["file", "Hosted file"]];
 
-// Redirect targets that work without extra request headers (a redirect can't add them).
+// Redirect targets that work without extra request headers (a redirect can't add them): the
+// Payload kit's metadata catalog, then local services and scheme switches.
 const TARGETS: [string, string][] = [
-  ["AWS IMDSv1: IAM credentials", "http://169.254.169.254/latest/meta-data/iam/security-credentials/"],
-  ["AWS ECS task metadata", "http://169.254.170.2/v2/metadata"],
-  ["Alibaba Cloud metadata", "http://100.100.100.200/latest/meta-data/"],
-  ["DigitalOcean metadata", "http://169.254.169.254/metadata/v1.json"],
-  ["Oracle Cloud IMDSv1", "http://169.254.169.254/opc/v1/instance/"],
+  ...METADATA.filter(redirectable).map((r): [string, string] => [`${r.provider}: ${r.name}`, r.url]),
   ["Localhost web", "http://127.0.0.1/"],
   ["Redis via gopher (INFO)", "gopher://127.0.0.1:6379/_INFO%0D%0A"],
   ["Memcached via dict (stats)", "dict://127.0.0.1:11211/stats"],

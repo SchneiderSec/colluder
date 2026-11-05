@@ -1,7 +1,9 @@
 // The Payload kit (PLAN-KIT.md): payloads for one probe, ready to copy. Generation only.
 import { useMemo, useState, type ReactNode } from "react";
-import { Copy } from "lucide-react";
-import { useApp } from "@/store";
+import { Copy, CornerDownRight } from "lucide-react";
+import { useApp, setRuleDraft } from "@/store";
+import { METADATA, hostOf, pathOf, redirectable, type MetaRow } from "@/lib/metadata";
+import { parseIPv4 } from "@/lib/kit";
 import { UNTAGGED } from "@/lib/types";
 import { SECTIONS, addressForms, bypasses, callbacks, encode, formUrl, type Enc, type Payload } from "@/lib/kit";
 import { copy } from "@/lib/toast";
@@ -41,6 +43,34 @@ function Row({ name, code, text, note, tag }: { name: string; code?: string; tex
         {note && <p className="mt-1 max-w-[70ch] text-[11px] leading-4 text-ash">{note}</p>}
       </div>
       <Button variant="ghost" size="icon-sm" aria-label={`Copy ${name}`} onClick={() => copy(text, name)}><Copy /></Button>
+    </li>
+  );
+}
+
+// a catalog row: the URL, what it needs, and the two ways to use it from here
+function MetaItem({ r, tag, enc, onForms }: { r: MetaRow; tag: string; enc: Enc; onForms?: () => void }) {
+  const text = encode(r.url, enc);
+  const redirect = () => {
+    setRuleDraft(tag, { mode: "redirect", delayMs: 0, schemes: { http: true, https: true }, status: 302, location: r.url, loop: 0 });
+    location.hash = `probes/${tag}/http`;
+  };
+  return (
+    <li className="grid grid-cols-[176px_minmax(0,1fr)_auto] items-start gap-x-4 border-b border-rule-2 py-2.5 max-[820px]:grid-cols-[minmax(0,1fr)_auto]">
+      <span className="pt-px text-[12.5px] max-[820px]:col-span-full"><span className="font-[550] text-bone">{r.provider}</span><span className="block text-smoke">{r.name}</span></span>
+      <div className="min-w-0">
+        <code className="block font-mono text-[12.5px] leading-[18px] break-all text-bone">{text}</code>
+        <p className="mt-1 text-[11px] leading-4">{r.header
+          ? <span className="text-smoke">Needs <span className="font-mono text-bone">{r.header}</span>, so a redirect can't reach it.</span>
+          : <span className="text-smoke">No header needed: a redirect reaches it.</span>}</p>
+        <p className="mt-0.5 max-w-[78ch] text-[11px] leading-4 text-ash">{r.note}</p>
+        {(onForms || redirectable(r)) && (
+          <div className="mt-1.5 -ml-2.5 flex flex-wrap gap-1">
+            {redirectable(r) && <Button variant="ghost" size="sm" title={`Opens ${tag}'s HTTP response tab with a redirect here, unsaved`} onClick={redirect}><CornerDownRight />Redirect {tag} here</Button>}
+            {onForms && <Button variant="ghost" size="sm" onClick={onForms}>Address forms</Button>}
+          </div>
+        )}
+      </div>
+      <Button variant="ghost" size="icon-sm" aria-label={`Copy ${r.provider} ${r.name}`} onClick={() => copy(text, `${r.provider} ${r.name}`)}><Copy /></Button>
     </li>
   );
 }
@@ -133,7 +163,12 @@ export function PayloadKit({ section }: { section: string | null }) {
             </>
           )}
 
+          {sec === "metadata" && <p className="max-w-[72ch] text-[12.5px] leading-[19px] text-smoke">Where cloud credentials live, for an SSRF that reaches the instance. A redirect can't add request headers, so only rows that need none can be reached by redirecting from <span className="font-mono text-bone">{tag}</span>; the others need a fetcher that lets you set headers. A working one shows up as data in the target's response, not as a hit.</p>}
           <ul className="mt-3 border-t border-rule-2">
+            {sec === "metadata" && METADATA.map((r) => (
+              <MetaItem key={r.id} r={r} tag={tag} enc={enc}
+                onForms={parseIPv4(hostOf(r.url)) ? () => { setIp(hostOf(r.url)); setPath(pathOf(r.url)); location.hash = "kit/address"; } : undefined} />
+            ))}
             {rows.map((p) => <Row key={p.code} name={p.name} code={p.code} text={encode(p.text, enc)} note={p.note} tag={tag} />)}
             {forms?.map((f) => <Row key={f.name} name={f.name} text={encode(formUrl(f, path), enc)} note={f.note} tag={tag} />)}
           </ul>
