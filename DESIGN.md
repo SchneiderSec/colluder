@@ -449,6 +449,7 @@ Restrained, mostly outlined, with exactly one bright button per working region.
 - **New chip:** an amber "3 new" or "new" pill on Caution Ground with an amber-brown border.
 - **Grey chip:** "unregistered" in Smoke on Soot with a Rule border.
 - **New dot:** a 6px amber circle at the start of an unread row. Read rows keep an empty 6px slot so columns never shift.
+- **Unread counts firings, not rows.** Unseen hits on the same probe less than 3s apart are one event, so one payload firing (a DNS burst plus the HTTP fetch that follows it) reads as "1 new" and "(1) Colluder", never "(5)". Resolver chatter never counts.
 
 ### Inputs / Fields
 - **Composer field:** a 36px Soot well with a Rule stroke and 3px corners, with the label (Tag, Target, Technique) inside it in Smoke. The value is mono for the tag. The tag field also shows the payload host as a mono suffix. On focus the stroke lifts to Smoke. An invalid tag turns the stroke Ember and puts an Alarm Ink message under the row. The caret is amber.
@@ -472,7 +473,7 @@ A 120×10px raccoon tail as the probe's time axis: Fur at 40% opacity, tapering 
 When a hit moves a probe to the top, the rows slide to their new places (FLIP, 420ms, ease-out-expo) so the eye can follow what moved, and the arriving row flashes Lit for 1.4s.
 
 ### Hits table and DNS bursts
-Fixed columns `#`, `Time (UTC)` (to the millisecond), `Type`, `Source` (mono), `Request` (mono summary for web and SMTP, "A lookup" in 11px for DNS). It has a sticky Soot header with 11px Smoke labels. DNS lookups that arrive together collapse into one burst row ("#18–21", "DNS ×4", "2 resolvers", query types, span in ms, per-IP counts) with a chevron that expands its children, indented, on a slightly darker ground. Selected rows fill Soot 2.
+Fixed columns `#`, `Time (UTC)` (to the millisecond), `Type`, `Source` (mono), `Request` (mono request line plus User-Agent for web, the mail sender for SMTP; for DNS the queried name, with the tag highlighted, any exfil labels in Bone, and the id shortened to `c0ffee12…`). It has a sticky Soot header with 11px Smoke labels. DNS lookups that arrive together collapse into one burst row ("#18–21", "DNS ×4", "2 resolvers", query types, span in ms, per-IP counts) with a chevron that expands its children, indented, on a slightly darker ground. Selected rows fill Soot 2.
 
 ### Resolver-chatter labelling
 A bare-id lookup within 10s of a tagged hit is labelled "resolver chatter around ‹tag›" in Ash. It is kept but never counted as new (no dot, no chip). Hit detail explains it in one sentence (QNAME minimisation or HTTPS host resolution).

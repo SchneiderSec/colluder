@@ -141,7 +141,7 @@ export function HitDetail({ id }: { id: number }) {
         <Button variant="ghost" onClick={() => copy(`${d.rawRequest}\n\n${d.rawResponse}`, "request and response")}><Copy />Copy both</Button>
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-2 gap-3 max-[1180px]:grid-cols-1">
+      <div className="grid min-h-[220px] flex-1 grid-cols-2 gap-3 max-[1180px]:flex-none max-[1180px]:grid-cols-1 max-[1180px]:[&>*]:max-h-[360px]">
         <RawPane title={d.protocol === "dns" ? "Query" : "Request"} http={web}
           sub={decoded ? "decoded view · copy stays exact" : `exact, as received · ${lineCount(d.rawRequest)} lines · ${byteCount(d.rawRequest)} bytes`}
           text={decoded ? decode(d.rawRequest, d.protocol) : d.rawRequest} exact={d.rawRequest} />

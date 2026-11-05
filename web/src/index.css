@@ -113,6 +113,11 @@
     font-variant-numeric: tabular-nums;
     overflow: hidden;
   }
+  /* phones stack everything into one document: let it scroll */
+  @media (max-width: 820px) {
+    html, body, #root { height: auto; min-height: 100%; }
+    body { overflow: visible; }
+  }
   ::selection { background: #5b4a33; color: var(--bone); }
   input, textarea { caret-color: var(--amber); }
   :focus-visible { outline: 1.5px solid var(--bone); outline-offset: 2px; border-radius: 3px; }

@@ -39,7 +39,7 @@ export function Settings() {
   const st = s.status;
   const e = st?.engine;
   const rows: [string, ReactNode][] = e ? [
-    ["State", `${e.state}: ${e.detail}`],
+    ["State", e.detail.toLowerCase() === e.state ? e.detail : `${e.state}: ${e.detail}`],
     ...(e.fix ? [["Fix", <span className="flex items-start gap-2"><code className="font-mono break-all">{e.fix}</code><Button variant="ghost" size="icon-sm" aria-label="Copy fix" onClick={() => copy(e.fix!, "fix command")}><Copy /></Button></span>] as [string, ReactNode]] : []),
     ["Service", <code className="font-mono">{e.unit}</code>],
     ["Client", e.version ?? "unknown"],

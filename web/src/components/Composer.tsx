@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowDownToLine, Copy } from "lucide-react";
+import { ArrowDownToLine, Copy, RefreshCw } from "lucide-react";
 import { useApp, plant } from "@/store";
 import { TAG_RE, UNTAGGED } from "@/lib/types";
 import { variants } from "@/lib/raw";
@@ -19,11 +19,12 @@ export function Composer() {
   const [technique, setTechnique] = useState("callback");
   const [err, setErr] = useState("");
   const tagRef = useRef<HTMLInputElement>(null);
+  const varsRef = useRef<HTMLDivElement>(null);
 
   // "p" or "/" anywhere focuses the tag field
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const typing = /^(INPUT|TEXTAREA|SELECT)$/.test((document.activeElement as HTMLElement)?.tagName) || document.querySelector("[role=dialog]");
+      const typing = /^(INPUT|TEXTAREA|SELECT)$/.test((document.activeElement as HTMLElement)?.tagName) || document.querySelector("[role=dialog],[role=alertdialog]");
       if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === "p" || e.key === "/") { e.preventDefault(); tagRef.current?.focus(); }
     };
@@ -40,7 +41,12 @@ export function Composer() {
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!TAG_RE.test(tag)) { setErr(tag ? BAD_TAG : "Give the probe a tag first, e.g. avatar."); tagRef.current?.focus(); return; }
-    try { await plant(tag, target.trim(), technique); setTag(""); setTarget(""); setErr(""); }
+    try {
+      await plant(tag, target.trim(), technique);
+      setTag(""); setTarget(""); setErr("");
+      // next step is copying a payload: put focus there, not back in an emptied field
+      requestAnimationFrame(() => varsRef.current?.querySelector<HTMLButtonElement>("button[data-copy]")?.focus());
+    }
     catch (ex) { setErr((ex as Error).message); }
   }
 
@@ -81,7 +87,7 @@ export function Composer() {
         {preview ? "Preview for" : shownTag ? "Payloads for" : "Base payload"}
         <span className="block truncate font-mono text-[12.5px] text-bone">{shownTag ?? "no tag"}</span>
       </div>
-      <div className="grid min-w-0 auto-rows-[24px] grid-cols-[62px_minmax(0,max-content)_30px_minmax(0,1fr)] items-center gap-x-2.5 max-[820px]:grid-cols-[52px_minmax(0,1fr)_30px]">
+      <div ref={varsRef} className="grid min-w-0 auto-rows-[24px] grid-cols-[62px_minmax(0,max-content)_54px_minmax(0,1fr)] items-center gap-x-2.5 max-[820px]:grid-cols-[52px_minmax(0,1fr)_54px]">
         {!vs ? (
           <p className="col-span-full flex items-center gap-2 text-[12.5px] text-smoke">
             <LineForm kind="dash" />{s.status?.engine ? `No payload yet. ${s.status.engine.detail}` : "Waiting for the engine's payload…"}
@@ -98,12 +104,23 @@ export function Composer() {
                     </span>
                   ))}
                 </span>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button variant="ghost" size="icon-sm" aria-label={`Copy ${v.proto.toUpperCase()} payload`} onClick={() => copy(v.value, `${v.proto.toUpperCase()} payload`)}><Copy /></Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Copy {v.proto.toUpperCase()} payload</TooltipContent>
-                </Tooltip>
+                <span className="flex gap-0.5">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button data-copy variant="ghost" size="icon-sm" aria-label={`Copy ${v.proto.toUpperCase()} payload`} onClick={() => copy(v.value, `${v.proto.toUpperCase()} payload`)}><Copy /></Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Copy {v.proto.toUpperCase()} payload</TooltipContent>
+                  </Tooltip>
+                  {v.proto === "dns" && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button variant="ghost" size="icon-sm" aria-label="Copy DNS payload with a fresh label"
+                          onClick={() => copy(`${Math.random().toString(36).slice(2, 6).padEnd(4, "x")}.${v.value}`, "DNS payload with a fresh label")}><RefreshCw /></Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Copy with a fresh random label in front, so no resolver can answer from cache</TooltipContent>
+                    </Tooltip>
+                  )}
+                </span>
                 <span className="truncate pl-2 text-[11px] text-ash max-[1180px]:hidden">{v.note}</span>
               </div>
             ))}

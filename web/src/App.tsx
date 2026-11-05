@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { useApp, select, totalUnread, loadState, connect, getState } from "@/store";
+import { useApp, select, totalUnread, unreadFor, loadState, connect, getState } from "@/store";
 import { UNTAGGED } from "@/lib/types";
 import { Rail, StatusBar, Banners } from "@/components/Shell";
 import { Composer } from "@/components/Composer";
@@ -30,6 +30,16 @@ export default function App() {
 
   useEffect(() => { loadState(); connect(); }, []);
 
+  // Esc leaves a text field, so j/k and p work again (dialogs handle their own Esc)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = document.activeElement as HTMLElement | null;
+      if (e.key === "Escape" && el && /^(INPUT|TEXTAREA)$/.test(el.tagName) && !el.closest("[role=dialog],[role=alertdialog]")) el.blur();
+    };
+    addEventListener("keydown", onKey);
+    return () => removeEventListener("keydown", onKey);
+  }, []);
+
   // route → selection (deep links like #probes/fetch); default to the most recent probe
   useEffect(() => {
     if (!loaded || route.view !== "probes") return;
@@ -37,7 +47,10 @@ export default function App() {
     const want = route.arg === "unregistered" ? UNTAGGED : route.arg;
     if (want && (want === UNTAGGED || s.probes.has(want))) { select(want, false); return; }
     if (!s.sel) {
-      const first = [...s.probes.values()].filter((p) => !p.retiredAt).sort((a, b) => Date.parse(b.lastHitAt ?? b.plantedAt) - Date.parse(a.lastHitAt ?? a.plantedAt))[0];
+      // open where the news is: unread first, then the latest hit, then the latest planted
+      const t = (x: string | null) => (x ? Date.parse(x) : 0);
+      const first = [...s.probes.values()].filter((p) => !p.retiredAt).sort((a, b) =>
+        (unreadFor(s, b.tag) ? 1 : 0) - (unreadFor(s, a.tag) ? 1 : 0) || t(b.lastHitAt) - t(a.lastHitAt) || t(b.plantedAt) - t(a.plantedAt))[0];
       if (first) select(first.tag); else if (s.untagged?.hits) select(UNTAGGED);
     }
   }, [loaded, route.view, route.arg]);

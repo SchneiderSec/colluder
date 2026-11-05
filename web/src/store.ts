@@ -105,11 +105,18 @@ export function chatterOf(list: Interaction[]): Map<number, string> {
   return m;
 }
 
+// Unread counts firings, not rows: one payload firing (a DNS burst plus the HTTP fetch that
+// follows it) reads as one event. Unseen hits less than EVENT_GAP_MS apart are one event.
+export const EVENT_GAP_MS = 3_000;
 export function unreadFor(s: AppState, key: string) {
   const seen = s.seen[key] || 0;
   const chatter = key === UNTAGGED ? chatterOf(s.list) : null;
-  let n = 0;
-  for (const i of s.list) { if (i.id <= seen) break; if (keyOf(i) === key && !chatter?.has(i.id)) n++; }
+  const times: number[] = [];
+  for (const i of s.list) { if (i.id <= seen) break; if (keyOf(i) === key && !chatter?.has(i.id)) times.push(isoMs(i.timestamp)); }
+  if (!times.length) return 0;
+  times.sort((a, b) => a - b);
+  let n = 1;
+  for (let k = 1; k < times.length; k++) if (times[k] - times[k - 1] > EVENT_GAP_MS) n++;
   return n;
 }
 export function totalUnread(s: AppState) {
