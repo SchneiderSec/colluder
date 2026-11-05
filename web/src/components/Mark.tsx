@@ -79,7 +79,7 @@ export function Mark({ base, pulse }: { base: "wink" | "blink" | "doze"; pulse: 
   const st: MarkState = flash?.state ?? base;
   const cls = flash?.cls ?? (base === "blink" ? "mk-blink" : "");
   return (
-    <button type="button" onClick={onClick} aria-label={LABEL[st]} className={cn("mb-3.5 cursor-pointer rounded-[15px] p-0", cls)}>
+    <button type="button" onClick={onClick} aria-label={LABEL[st]} className={cn("mb-3.5 flex-none cursor-pointer rounded-[15px] p-0 max-[820px]:my-1.5 max-[820px]:mr-1 max-[820px]:[&_svg]:size-8", cls)}>
       <MarkSvg state={st} size={36} />
     </button>
   );

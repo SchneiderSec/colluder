@@ -1,6 +1,6 @@
 // The HTTP response tab: how this probe answers HTTP and HTTPS hits (phase 2, answered by the edge).
 // The preview comes from the server, which runs the same code as the edge.
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ChevronLeft, ChevronRight, Copy, Plus, X } from "lucide-react";
 import { useApp, getState, fetchRule, previewRule, saveRule, setRuleDraft, takeRuleSeed } from "@/store";
 import type { Decoy, HttpRule, Probe, RuleMode, RuleState, RuleVersion } from "@/lib/types";
@@ -151,6 +151,9 @@ export function HttpRuleTab({ p }: { p: Probe }) {
 
   // load this probe's rule; a new active version (saved elsewhere) replaces an untouched draft
   const activeVersion = p.httpRule?.version ?? 0;
+  // typed before the rule finished loading (focus lands in Location right after planting): the load
+  // must not wipe it
+  const typed = useRef<string | null>(null);
   useEffect(() => {
     let live = true;
     fetchRule(p.tag).then((r) => {
@@ -158,6 +161,7 @@ export function HttpRuleTab({ p }: { p: Probe }) {
       setRs(r); setLoadErr(null); setHop(1);
       const kept = getState().ruleDrafts[p.tag]; // unsaved edits from before a tab or probe switch
       const seed = r.active || kept ? null : takeRuleSeed(p.tag); // planted as Redirect / Hosted file
+      if (typed.current === p.tag && !r.active) return;
       setDraft(kept ?? norm(seed ? { ...DEFAULT, ...MODE_DEFAULTS[seed], mode: seed } : r.active?.rule ?? DEFAULT));
     },
       (e) => live && setLoadErr((e as Error).message));
@@ -186,7 +190,7 @@ export function HttpRuleTab({ p }: { p: Probe }) {
     return () => clearTimeout(t);
   }, [p.tag, draft, scheme, hop]);
 
-  const set = (patch: Partial<HttpRule>) => setDraft((d) => ({ ...d, ...patch }));
+  const set = (patch: Partial<HttpRule>) => { if (!rs) typed.current = p.tag; setDraft((d) => ({ ...d, ...patch })); };
   const setMode = (mode: RuleMode) => { setDraft((d) => ({ ...MODE_DEFAULTS[mode], ...d, mode })); setHop(1); };
   const nextVersion = (rs?.history[0]?.version ?? 0) + 1;
   const save = async () => {
@@ -245,7 +249,8 @@ export function HttpRuleTab({ p }: { p: Probe }) {
             </Row>
             <Row label="Location" error={errFor("location")} help="Scheme switches (gopher, dict, file) only land if the client follows them. Cloud targets listed here need no extra request headers.">
               <div className="flex min-w-0 gap-2">
-                <label className={cn(fld, "flex-1", bad("location"))}><input aria-label="Location" aria-invalid={errF === "location"} spellCheck={false} value={draft.location ?? ""} placeholder="Where to send the client: type a URL or pick a target" className={cn(inputCls, "placeholder:font-sans")} onChange={(e) => set({ location: e.target.value })} /></label>
+                <label className={cn(fld, "flex-1", bad("location"))}><input aria-label="Location" aria-invalid={errF === "location"} spellCheck={false} value={draft.location ?? ""} placeholder="A URL, or pick from Targets" className={cn(inputCls, "placeholder:font-sans")} onChange={(e) => set({ location: e.target.value })}
+                  onBlur={(e) => { const v = e.target.value.trim(); if (/^[a-z0-9.-]+\.[a-z]{2,}(?::\d+)?(?:[/?#].*)?$/i.test(v)) set({ location: `https://${v}` }); }} /></label>
                 <Select value="" onValueChange={(v) => set({ location: v })}>
                   <SelectTrigger aria-label="Pick a target" className="h-[30px] w-auto gap-1.5 rounded-[3px] border-rule bg-transparent px-2.5 text-[12.5px] font-[550]"><SelectValue placeholder="Targets" /></SelectTrigger>
                   <SelectContent>{TARGETS.map(([l, u]) => <SelectItem key={u} value={u}>{l}</SelectItem>)}</SelectContent>
@@ -254,7 +259,7 @@ export function HttpRuleTab({ p }: { p: Probe }) {
             </Row>
             <Row label="Loop first" error={errFor("loop")} help={loop ? <>A blind SSRF that follows redirects shows up as a run of {loop + 1} hits: the first request, then <b className="font-[550] text-smoke">?hop=2</b> to <b className="font-[550] text-smoke">?hop={loop + 1}</b>. One that doesn't follow stops after the first. Each hop keeps the scheme it arrived on.{loop >= 9 && <> <b className="font-[550] text-bone">Go's HTTP client stops after 10 redirects</b>, so with {loop} hops a Go client never reaches the final Location; use 8 or fewer to test past it.</>}</> : "Bounce the client back through this probe before the final redirect, so following redirects shows up as a run of hits."}>
               <div className="flex items-center gap-2">
-                <Switch aria-label="Loop through this probe first" checked={loop > 0} onCheckedChange={(on) => { set({ loop: on ? 9 : 0 }); setHop(1); }} />
+                <Switch aria-label="Loop through this probe first" checked={loop > 0} onCheckedChange={(on) => { set({ loop: on ? 3 : 0 }); setHop(1); }} />
                 {loop > 0 && <><Num label="Hops" value={loop} max={20} onChange={(n) => { set({ loop: Math.max(n, 1) }); setHop(1); }} /><span className="text-[12.5px] text-smoke">hops through this probe first</span></>}
               </div>
               {reached.length > 0 && (
@@ -390,7 +395,7 @@ export function HttpRuleTab({ p }: { p: Probe }) {
             {(rs?.history ?? []).map((v) => <HistoryRow key={v.version} v={v} live={live} current={v.version === rs?.active?.version} onLoad={() => { setDraft(norm(v.rule)); setHop(1); }} />)}
             {(live || !!rs?.defaultHits) && (
               <li className="grid grid-cols-[22px_44px_minmax(0,1fr)_auto] items-baseline gap-2.5 px-3 py-[5px] text-[12.5px]">
-                <span /><span /><span className="truncate text-smoke">Default reply from Colluder (no rule)</span>
+                <span className="text-[11px] text-ash">—</span><span className="font-semibold text-smoke">{dayOrTime(p.plantedAt)}</span><span className="truncate text-smoke">Default reply from Colluder (no rule)</span>
                 <span className="text-[11px] text-ash">answered {plural(rs?.defaultHits ?? 0, "hit")}</span>
               </li>
             )}

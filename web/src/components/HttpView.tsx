@@ -1,7 +1,7 @@
 // HTTP requests and responses laid out for reading: start line, query, headers, body.
 // Raw text is attacker-controlled: everything here is a React text node (escaped), never HTML.
 // Display only: copies always come from the exact bytes.
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { layoutJson } from "@/lib/jsonview";
 import { decodedQuery, showControls } from "@/lib/query";
@@ -74,7 +74,9 @@ function Exfil({ value }: { value: string }) {
 const Tag = ({ children }: { children: ReactNode }) => <em className="bg-[#3a2f22] px-px text-bone not-italic">{children}</em>;
 
 // a request target: path (tag marked when it is the first segment), then ? key = value & …
-export function Target({ target, tag, split }: { target: string; tag: string | null; split?: boolean }) {
+// short: the Query section below lists every value in full, so the start line keeps each one brief
+const brief = (v: string) => (v.length > 32 ? v.slice(0, 32) + "…" : v);
+export function Target({ target, tag, split, short }: { target: string; tag: string | null; split?: boolean; short?: boolean }) {
   const q = target.indexOf("?");
   const path = q < 0 ? target : target.slice(0, q);
   const query = q < 0 ? "" : target.slice(q + 1);
@@ -86,12 +88,21 @@ export function Target({ target, tag, split }: { target: string; tag: string | n
   return (
     <>{p}<span className="text-ash">?</span>{query.split("&").map((kv, n) => {
       const e = kv.indexOf("=");
-      return <span key={n}>{n > 0 && <span className="text-ash">&amp;</span>}<span className="text-syn-name">{e < 0 ? kv : kv.slice(0, e)}</span>{e >= 0 && <><span className="text-ash">=</span><span className="text-syn-value">{kv.slice(e + 1)}</span></>}</span>;
+      return <span key={n}>{n > 0 && <span className="text-ash">&amp;</span>}<span className="text-syn-name">{e < 0 ? kv : kv.slice(0, e)}</span>{e >= 0 && <><span className="text-ash">=</span><span className="text-syn-value" title={short && kv.length - e - 1 > 32 ? "In full under Query" : undefined}>{short ? brief(kv.slice(e + 1)) : kv.slice(e + 1)}</span></>}</span>;
     })}</>
   );
 }
 
 const statusInk = (s: string) => (s[0] === "2" ? "text-syn-value" : s[0] === "3" ? "text-syn-name" : s[0] === "4" || s[0] === "5" ? "text-bad" : "text-bone");
+
+// a long value shows its first 600 characters and how much more there is (display only; copies are
+// taken from the exact bytes, never from here)
+const CLAMP = 600;
+function Clamp({ text, children }: { text: string; children: (t: string) => ReactNode }) {
+  const [all, setAll] = useState(false);
+  if (text.length <= CLAMP || all) return <>{children(text)}</>;
+  return <>{children(text.slice(0, CLAMP))}<button type="button" onClick={() => setAll(true)} className="ml-1 cursor-pointer font-sans text-[11px] text-smoke underline decoration-ash underline-offset-2 hover:text-bone">+{(text.length - CLAMP).toLocaleString("en-US")} chars</button></>;
+}
 
 function Section({ title, meta, children }: { title?: string; meta?: ReactNode; children: ReactNode }) {
   return (
@@ -162,7 +173,7 @@ export function HttpParsed({ p, tag, domain, capture, clientHttp2 }: { p: Parsed
     <div className="font-mono text-[12.5px] leading-[18px] text-bone">
       <Section>
         {p.kind === "request" ? (
-          <div className="[overflow-wrap:anywhere]"><b className="mr-[1ch] font-[650]">{p.method}</b><Target target={p.target!} tag={tag} /><span className="ml-[1ch] text-ash">{p.version}</span></div>
+          <div className="[overflow-wrap:anywhere]"><b className="mr-[1ch] font-[650]">{p.method}</b><Target target={p.target!} tag={tag} short={q.length > 0} /><span className="ml-[1ch] text-ash">{p.version}</span></div>
         ) : (
           <>
             <div><span className="mr-[1ch] text-ash">{p.version}</span><b className={cn("mr-[1ch] font-[650]", statusInk(p.status!))}>{p.status}</b>{p.reason}</div>
@@ -173,12 +184,12 @@ export function HttpParsed({ p, tag, domain, capture, clientHttp2 }: { p: Parsed
       {q.length > 0 && (
         <Section title="Query" meta={`${q.length} ${q.length === 1 ? "parameter" : "parameters"}, decoded`}>
           <Pairs rows={q.map((x) => [x.name, x.value === null ? null : (
-            <span><span className="text-syn-value"><Visible text={x.value} /></span>{x.changed && <Pill title={`As sent: ${x.raw}`}>decoded</Pill>}<Exfil value={x.value} /></span>
+            <span><span className="text-syn-value"><Clamp text={x.value}>{(t) => <Visible text={t} />}</Clamp></span>{x.changed && <Pill title={`As sent: ${x.raw}`}>decoded</Pill>}<Exfil value={x.value} /></span>
           )])} />
         </Section>
       )}
       <Section title="Headers" meta={`${p.headers.length}, ${order}`}>
-        <Pairs note={(k) => NOTE[k.toLowerCase()]} rows={p.headers.map(([k, v]) => [k, k.toLowerCase() === "host" ? <Host value={v} tag={tag} domain={domain} /> : v])} />
+        <Pairs note={(k) => NOTE[k.toLowerCase()]} rows={p.headers.map(([k, v]) => [k, k.toLowerCase() === "host" ? <Host value={v} tag={tag} domain={domain} /> : v === "" ? "" : <Clamp text={v}>{(t) => t}</Clamp>])} />
       </Section>
       {(p.body || bodyBytes > 0) && (
         <Section title="Body" meta={[type.split(";")[0], `${bodyBytes} bytes`].filter(Boolean).join(" · ")}>

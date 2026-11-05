@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Bell, BellOff, ChevronRight, Download, FileText, Search } from "lucide-react";
+import { Bell, BellOff, ChevronRight, Download, FileText, Search, X } from "lucide-react";
 import { useApp, keyOf, markSeen, selectHit, patchProbe, saveRule, fetchTrigger, fetchReport, chatterOf, setTab, unreadFor, loadOlder, searchHits, exportUrl, PROBE_TABS, type AppState, type ProbeTab } from "@/store";
 import { dnsSteps, mostSpecific } from "@/lib/dns";
 import { stageOf } from "@/lib/stage";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { UNTAGGED, type Interaction, type Probe } from "@/lib/types";
-import { dayOrTime, hmsms, isoMs, newestFirst, plural } from "@/lib/format";
+import { dayOrTime, hmsms, isoMs, newestFirst, plural, settled } from "@/lib/format";
 import { groupHits } from "@/lib/raw";
 import { copy, toast } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
@@ -31,7 +31,7 @@ function EditDialog({ p, open, onOpenChange }: { p: Probe; open: boolean; onOpen
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-[560px] border-rule bg-soot-1">
         <DialogHeader><DialogTitle>Edit {p.tag}</DialogTitle><DialogDescription>Where you planted it and anything worth remembering.</DialogDescription></DialogHeader>
-        <label className="text-[12.5px] text-smoke">Target<Input className="mt-1.5" value={target} maxLength={300} onChange={(e) => setTarget(e.target.value)} /></label>
+        <label className="text-[12.5px] text-smoke">Target<Input className="mt-1.5" value={target} maxLength={300} placeholder="e.g. api.shop.example · POST /import url=" onChange={(e) => setTarget(e.target.value)} /></label>
         <label className="text-[12.5px] text-smoke">Note<Textarea className="mt-1.5" rows={3} value={note} maxLength={2000} onChange={(e) => setNote(e.target.value)} /></label>
         <label className="text-[12.5px] text-smoke">Trigger request
           <span className="mt-0.5 block text-[11px] text-ash">The request that made the target call back, pasted from your proxy. It opens the probe report.</span>
@@ -87,6 +87,7 @@ function Head({ s }: { s: AppState }) {
       <EditDialog p={p} open={edit} onOpenChange={setEdit} />
       <AlertDialog open={retire} onOpenChange={setRetire}>
         <AlertDialogContent className="max-w-[440px] border-rule bg-soot-1">
+          <Button variant="ghost" size="icon-sm" aria-label="Close" className="absolute top-3 right-3 text-smoke" onClick={() => setRetire(false)}><X /></Button>
           <AlertDialogHeader>
             <AlertDialogTitle>Retire {p.tag}?</AlertDialogTitle>
             <AlertDialogDescription>It moves to Retired at the bottom of the list. Its hits stay, and new hits on this tag are still recorded.</AlertDialogDescription>
@@ -94,7 +95,7 @@ function Head({ s }: { s: AppState }) {
           {p.httpRule && (
             <label className="flex items-start gap-2 text-[12.5px] text-smoke">
               <input type="checkbox" className="mt-[3px] accent-bone" checked={resetRule} onChange={(e) => setResetRule(e.target.checked)} />
-              <span>Also reset its HTTP answer to the default reply, so it {s.status?.edge?.state === "running" ? "stops answering" : "won't answer after the cutover"} with <span className="font-mono text-bone">{p.httpRule.line}</span></span>
+              <span>Also reset its HTTP answer to the default reply, so it {s.status?.edge?.state === "running" ? "stops answering" : "won't answer after the cutover"} with <span className="text-bone">{p.httpRule.line}</span></span>
             </label>
           )}
           <AlertDialogFooter>
@@ -124,6 +125,11 @@ export function DnsName({ i }: { i: Interaction }) {
   );
 }
 
+// a web hit's summary is "request line · User-Agent"; the stage label goes between the two, so a
+// long User-Agent never cuts it off
+const reqOf = (summary: string) => { const k = summary.indexOf(" · "); return k === -1 ? summary : summary.slice(0, k); };
+const uaOf = (summary: string) => { const k = summary.indexOf(" · "); return k === -1 ? "" : summary.slice(k + 3); };
+
 function rowKeys(fn: () => void) {
   return (e: React.KeyboardEvent) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fn(); } };
 }
@@ -131,20 +137,20 @@ function rowKeys(fn: () => void) {
 // the labels before the payload id, for naming a longer lookup compactly
 const labelsOf = (fullId: string) => fullId.split(".").slice(0, -3).join(".") || fullId;
 
-function HitRow({ i, open, sel, arrived, child, chatter, inProbe, step, self, onClick }: { i: Interaction; open: number; sel: boolean; arrived: boolean; child?: boolean; chatter?: string; inProbe?: boolean; step?: string; self?: "box" | "mine"; onClick: () => void }) {
+function HitRow({ i, open, sel, arrived, child, chatter, inProbe, step, self, stop, onClick }: { i: Interaction; open: number; sel: boolean; arrived: boolean; child?: boolean; chatter?: string; inProbe?: boolean; step?: string; self?: "box" | "mine"; stop?: boolean; onClick: () => void }) {
   const isNew = i.id > open && !chatter && !step;
   const quiet = !!chatter || !!step;
   const web = i.protocol === "http" || i.protocol === "https";
   const ref = useRef<HTMLTableRowElement>(null);
-  useEffect(() => { if (sel) ref.current?.scrollIntoView({ block: "nearest" }); }, [sel]);
+  useEffect(() => { if (sel && settled()) ref.current?.scrollIntoView({ block: "nearest" }); }, [sel]);
   return (
-    <tr ref={ref} tabIndex={0} aria-selected={sel} onClick={(e) => { e.stopPropagation(); onClick(); }} onKeyDown={rowKeys(onClick)}
+    <tr ref={ref} tabIndex={sel || stop ? 0 : -1} aria-selected={sel} onClick={(e) => { e.stopPropagation(); onClick(); }} onKeyDown={rowKeys(onClick)}
       className={cn("group cursor-pointer", arrived && "[&>td]:animate-lit", child && "[&>td]:bg-[#191510] [&>td:first-child]:pl-11", quiet && !sel && "[&>td]:text-smoke")}>
       <Td sel={sel} first><span className={cn("flex items-center gap-1.5 font-semibold", isNew ? "text-bone" : "text-smoke")}>{isNew ? <NewDot /> : <NilDot />}#{i.id}</span></Td>
       <Td sel={sel}>{hmsms(i.timestamp)}</Td>
       <Td sel={sel}><TypeChip proto={i.protocol}>{i.protocol === "dns" ? `DNS ${i.qType || "other"}` : undefined}</TypeChip></Td>
       <Td sel={sel} className="font-mono text-[12.5px]">{i.remoteAddress}</Td>
-      <Td sel={sel} last>{web || i.protocol === "smtp" ? <><span className="font-mono text-[12.5px]">{i.summary}</span>{stageOf(i) && <span className="ml-2 text-[11px] whitespace-nowrap text-ash" title="What Colluder's edge answered. A redirect sent is not proof it was followed; a later hop is.">· {stageOf(i)}</span>}{self && <span className="ml-2 text-[11px] text-ash" title="A self-test (the OOB box, or a source you marked as yours), not a target">· {self === "mine" ? "yours" : "this box"}</span>}</> : i.protocol === "dns" ? <><DnsName i={i} />{chatter && <span className="text-[11px] text-ash" title="A lookup of the bare payload id near this probe's hits: a resolver walking the name, or a client resolving the HTTPS host. Kept, never counted as new."> · resolver chatter{inProbe ? "" : ` around ${chatter}`}</span>}{step && <span className="text-[11px] text-ash" title={`The resolver asked for this on its way to ${step} (QNAME minimisation). Not exfil data.`}> · resolver step toward <span className="font-mono">{labelsOf(step)}</span></span>}</> : <span className="text-[11px] text-smoke">{i.summary}</span>}</Td>
+      <Td sel={sel} last>{web || i.protocol === "smtp" ? <><span className="font-mono text-[12.5px]">{reqOf(i.summary)}</span>{stageOf(i) && <span className="ml-2 text-[11px] whitespace-nowrap text-smoke" title="What Colluder's edge answered. A redirect sent is not proof it was followed; a later hop is.">· {stageOf(i)}</span>}{uaOf(i.summary) && <span className="ml-2 font-mono text-[11px] text-ash">· {uaOf(i.summary)}</span>}{self && <span className="ml-2 text-[11px] text-ash" title="A self-test (the OOB box, or a source you marked as yours), not a target">· {self === "mine" ? "yours" : "this box"}</span>}</> : i.protocol === "dns" ? <><DnsName i={i} />{chatter && <span className="text-[11px] text-ash" title="A lookup of the bare payload id near this probe's hits: a resolver walking the name, or a client resolving the HTTPS host. Kept, never counted as new."> · resolver chatter{inProbe ? "" : ` around ${chatter}`}</span>}{step && <span className="text-[11px] text-ash" title={`The resolver asked for this on its way to ${step} (QNAME minimisation). Not exfil data.`}> · resolver step toward <span className="font-mono">{labelsOf(step)}</span></span>}</> : <span className="text-[11px] text-smoke">{i.summary}</span>}</Td>
     </tr>
   );
 }
@@ -155,17 +161,10 @@ function Td({ children, sel, first, last, className }: { children: React.ReactNo
   );
 }
 
-// What a probe answers is set on the probe itself. DNS answers wait for a DNS responder (PHASE2.md:
-// :53 stays with interactsh), so that tab says what is planned and what the engine answers today.
-const TAB_PLANNED: Record<"dns", { title: string; what: string; today: string; why: string }> = {
-  dns: {
-    title: "How this probe answers DNS",
-    what: "Pick the answer for lookups of this probe's names: the default, fixed records, or a rebind sequence that answers one address and then another with short TTLs, counted per resolver and starting over after an idle gap.",
-    today: "Today every lookup gets interactsh-server's default answer: the server's own address.",
-    why: "interactsh only serves static records loaded at startup, so sequenced answers need Colluder's own DNS responder. Browser rebinding mostly fails now (Chrome asks before a public page reaches a private address), so this is aimed at server-side fetchers, PDF renderers and headless browsers.",
-  },
-};
-const TAB_LABEL: Record<ProbeTab, string> = { hits: "Hits", http: "HTTP response", dns: "DNS answers" };
+const TAB_LABEL: Record<ProbeTab, string> = { hits: "Hits", http: "HTTP response" };
+// the tab's note for an unsaved draft says what the draft answers: "302, edited", "XXE, edited"
+const draftShort = (r: { mode?: string; status?: number } | undefined) =>
+  !r ? "default" : r.mode === "redirect" || r.mode === "custom" ? String(r.status ?? r.mode) : r.mode === "file" ? "file" : r.mode === "preset" ? "XXE" : "default";
 
 function ProbeTabs({ s, p, right }: { s: AppState; p: Probe; right?: React.ReactNode }) {
   const unread = s.tab !== "hits" ? unreadFor(s, p.tag) : 0;
@@ -192,7 +191,7 @@ function ProbeTabs({ s, p, right }: { s: AppState; p: Probe; right?: React.React
               on && "text-bone after:absolute after:inset-x-0 after:-bottom-px after:h-0.5 after:rounded-[1px] after:bg-bone")}>
             {TAB_LABEL[t]}
             {t === "hits" ? <span className="font-normal text-smoke">{p.hits}</span>
-              : t === "http" && s.ruleDrafts[p.tag] ? <span className="text-[11px] font-normal text-smoke italic" title="Unsaved changes, kept until you save or discard">{p.httpRule?.short ?? "default"}, edited</span>
+              : t === "http" && s.ruleDrafts[p.tag] ? <span className="text-[11px] font-normal text-smoke italic" title="Unsaved changes, kept until you save or discard">{draftShort(s.ruleDrafts[p.tag] as { mode?: string; status?: number })}, edited</span>
               : t === "http" && p.httpRule ? (s.status?.edge?.state === "running"
                 ? <span className="font-mono text-[11px] font-normal text-bone" title={p.httpRule.line}>{p.httpRule.short}</span>
                 : <span className="font-mono text-[11px] font-normal text-ash" title={`v${p.httpRule.version} saved, not served until the cutover`}>{p.httpRule.short}</span>)
@@ -212,21 +211,6 @@ function autoHit(hits: Interaction[]) {
   if (!top) return null;
   const near = hits.filter((i) => isoMs(top.timestamp) - isoMs(i.timestamp) < 5000);
   return (near.find((i) => i.protocol !== "dns") ?? top).id;
-}
-
-function PlannedTab({ tab }: { tab: "dns" }) {
-  const t = TAB_PLANNED[tab];
-  return (
-    <div id="probe-panel" role="tabpanel" aria-labelledby={`probe-tab-${tab}`} className="min-h-0 overflow-auto px-6 py-[18px] max-[820px]:px-3.5">
-      <div className="max-w-[72ch] text-[12.5px] leading-[19px]">
-        <h2 className="text-[13.5px] font-[650]">{t.title}</h2>
-        <p className="mt-2 text-bone">{t.what}</p>
-        <p className="mt-3 text-smoke">{t.today}</p>
-        <p className="mt-3 text-ash">{t.why}</p>
-        <p className="mt-4 text-[11px] text-ash">Planned for phase 2. The research and build order live in tools/oob-dashboard/ROADMAP.md.</p>
-      </div>
-    </div>
-  );
 }
 
 export function ProbePane() {
@@ -301,7 +285,7 @@ export function ProbePane() {
   if (p && s.tab !== "hits") {
     return (
       <section className={cn(wrap, "grid-rows-[52px_35px_minmax(0,1fr)]")} aria-label={`Probe ${s.sel}`}>
-        <Head s={s} />{tabs}{s.tab === "http" ? <HttpRuleTab p={p} /> : <PlannedTab tab="dns" />}
+        <Head s={s} />{tabs}<HttpRuleTab p={p} />
       </section>
     );
   }
@@ -332,8 +316,12 @@ export function ProbePane() {
   const chatter = chatterAll;
   const boxIps = new Set(s.status?.selfIps ?? []), mineIps = new Set(s.status?.mineIps ?? []);
   const selfOf = (ip: string) => (boxIps.has(ip) ? "box" as const : mineIps.has(ip) ? "mine" as const : undefined);
+  // with no row selected (a filter hid it), the first row is the table's tab stop
+  const selShown = hits.some((i) => i.id === hitId);
+  let stopGiven = selShown;
+  const takeStop = () => { if (stopGiven) return false; stopGiven = true; return true; };
   const row = (i: Interaction, child?: boolean) => (
-    <HitRow key={i.id} child={child} i={i} chatter={chatter.get(i.id)} inProbe={s.sel !== UNTAGGED} step={steps.get(i.id)} self={selfOf(i.remoteAddress)} open={open} sel={i.id === hitId} arrived={i.id === s.arrived} onClick={() => selectHit(i.id)} />
+    <HitRow key={i.id} stop={takeStop()} child={child} i={i} chatter={chatter.get(i.id)} inProbe={s.sel !== UNTAGGED} step={steps.get(i.id)} self={selfOf(i.remoteAddress)} open={open} sel={i.id === hitId} arrived={i.id === s.arrived} onClick={() => selectHit(i.id)} />
   );
   const rows: React.ReactNode[] = [];
   for (const g of groupHits(hits)) {
@@ -354,7 +342,7 @@ export function ProbePane() {
     const own = items.filter((i) => !chatter.has(i.id));
     const toggle = () => { const n = new Set(expanded); if (exp) n.delete(first.id); else n.add(first.id); setExpanded(n); selectHit((own.at(-1) ?? first).id); };
     rows.push(
-      <tr key={`g${first.id}`} tabIndex={0} aria-selected={sel} aria-expanded={exp} aria-label={`${items.length} DNS queries, ${exp ? "expanded" : "collapsed"}`} onClick={toggle} onKeyDown={rowKeys(toggle)} className={cn("group cursor-pointer", items.some((i) => i.id === s.arrived) && "[&>td]:animate-lit")}>
+      <tr key={`g${first.id}`} tabIndex={sel || takeStop() ? 0 : -1} aria-selected={sel} aria-expanded={exp} aria-label={`${items.length} DNS queries, ${exp ? "expanded" : "collapsed"}`} onClick={toggle} onKeyDown={rowKeys(toggle)} className={cn("group cursor-pointer", items.some((i) => i.id === s.arrived) && "[&>td]:animate-lit")}>
         <Td sel={sel} first>
           <span className={cn("flex items-center gap-1.5 font-semibold", anyNew ? "text-bone" : "text-smoke")}>
             {anyNew ? <NewDot /> : <NilDot />}
@@ -388,6 +376,7 @@ export function ProbePane() {
         <Search className="size-3.5 flex-none text-ash" strokeWidth={1.5} />
         <input aria-label={`Search ${p ? p.tag : "Unregistered"}'s hits`} value={q} onChange={(e) => setQ(e.target.value)} spellCheck={false}
           placeholder="Search names, paths, bodies, IPs" className="h-full w-full min-w-0 bg-transparent font-mono text-[12.5px] text-bone outline-none placeholder:font-sans placeholder:text-ash" />
+        {q && <button type="button" aria-label="Clear search" onClick={() => setQ("")} className="flex-none cursor-pointer text-ash hover:text-bone"><X className="size-3.5" strokeWidth={1.5} /></button>}
       </label>
       {filtering && <span className="text-[11px] whitespace-nowrap text-ash">{results === null ? "searching…" : `${results.length}${results.length === 500 ? "+" : ""} ${results.length === 1 ? "match" : "matches"}`}</span>}
       <Button variant="ghost" size="sm" asChild className="flex-none"><a href={exportUrl(s.sel!)} download title="Every stored hit of this probe as JSON lines, raw bytes included"><Download />Export</a></Button>
@@ -401,15 +390,23 @@ export function ProbePane() {
       <div id={p ? "probe-panel" : undefined} role={p ? "tabpanel" : undefined} aria-labelledby={p ? "probe-tab-hits" : undefined} className="flex min-h-0 flex-col">
       {/* the filters sit in the tab strip when the pane is wide; below it otherwise (and on Unregistered) */}
       <div className={cn("flex flex-none flex-wrap items-center gap-x-2.5 gap-y-1.5 border-b border-rule-2 py-1.5 pr-5 pl-6 max-[820px]:px-3.5", p && "@min-[900px]/probe:hidden")}>{filterBar("bar")}</div>
-      <div className="max-h-[min(28vh,212px)] min-h-0 overflow-auto max-[820px]:max-h-none">
+      <div className="max-h-[min(28vh,212px)] min-h-0 overflow-auto max-[820px]:max-h-none [@media(max-height:900px)]:max-h-[min(22vh,160px)]">
         <table className="w-full table-fixed border-collapse">
-          <colgroup><col className="w-[112px] max-[820px]:w-[84px]" /><col className="w-[116px] max-[820px]:w-[96px]" /><col className="w-[92px] max-[820px]:w-[84px]" /><col className="w-[150px] max-[820px]:w-auto" /><col className="max-[820px]:w-0" /></colgroup>
+          <colgroup><col className="w-[112px] max-[820px]:w-[84px]" /><col className="w-[116px] max-[820px]:w-[96px]" /><col className="w-[106px] max-[820px]:w-[96px]" /><col className="w-[150px] max-[820px]:w-auto" /><col className="max-[820px]:w-0" /></colgroup>
           <thead>
             <tr>{["#", "Time (UTC)", "Type", "Source", "Request"].map((t, i) => (
               <th key={t} scope="col" className={cn("sticky top-0 z-[1] border-b border-rule bg-soot px-2.5 py-[5px] text-left text-[11px] font-semibold tracking-[.03em] text-smoke", i === 0 && "pl-6 max-[820px]:pl-3.5", i === 4 && "max-[820px]:hidden")}>{t}</th>
             ))}</tr>
           </thead>
-          <tbody>
+          <tbody onKeyDown={(e) => {
+            // one tab stop for the table; arrows move between rows (j/k work anywhere)
+            if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+            const trs = [...e.currentTarget.querySelectorAll<HTMLTableRowElement>("tr[tabindex]")];
+            const at = trs.indexOf(document.activeElement as HTMLTableRowElement);
+            const el = trs[at + (e.key === "ArrowDown" ? 1 : -1)];
+            if (at === -1 || !el) return;
+            e.preventDefault(); el.focus(); el.click();
+          }}>
             {rows}
             {filtering && results?.length === 0 && <tr><td colSpan={5} className="px-6 py-3 text-[12.5px] text-ash">No stored hits match. Search covers names, request lines, raw requests and source IPs.</td></tr>}
           </tbody>

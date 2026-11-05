@@ -158,7 +158,7 @@ export function HitDetail({ id }: { id: number }) {
             <span className="text-smoke">Forwarded for</span><span className="truncate font-mono text-[12.5px] text-bone">{v}</span>
           </span>
         ))}
-        <span className="flex min-w-0 items-center gap-2"><span className="text-smoke">rDNS</span><span className="truncate font-mono text-[12.5px]">{e.rdnsAt ? e.rdns || "no PTR record" : "looking up…"}</span></span>
+        <span className="flex min-w-0 items-center gap-2"><span className="text-smoke">rDNS</span>{e.rdnsAt && e.rdns ? <span className="truncate font-mono text-[12.5px]">{e.rdns}</span> : <span className="text-[12.5px] text-ash">{e.rdnsAt ? "no PTR record" : "looking up…"}</span>}</span>
         <span className="flex flex-wrap items-center gap-2">
           <span className="text-smoke">ASN / owner</span>
           {e.asn ? <span className="font-mono text-[12.5px]">{[e.asn, e.asnName, e.asnCc, e.asnPrefix].filter(Boolean).join(" · ")}</span> : (
@@ -183,8 +183,8 @@ export function HitDetail({ id }: { id: number }) {
         </p>
       )}
       {stage && (
-        <p className="flex-none text-[12.5px] text-smoke">Edge: <span className="text-bone">{stage}</span>
-          {d.answer?.to && <span className="text-ash"> · whether the target followed it shows in its response, not here{(d.answer.hop ?? 0) > 1 ? "; this hop proves it follows redirects" : ""}</span>}
+        <p className="flex-none text-[12.5px] text-smoke">What the edge did: <span className="text-bone">{stage[0].toUpperCase() + stage.slice(1)}.</span>
+          {d.answer?.to && <span className="text-ash"> Whether the target followed that last redirect shows in its own response.{(d.answer.hop ?? 0) > 1 ? " Arriving at this hop proves it follows redirects." : ""}</span>}
         </p>
       )}
       {tlsOnly && (

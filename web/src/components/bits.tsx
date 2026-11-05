@@ -37,7 +37,7 @@ export function Toaster() {
   useEffect(() => onToast(setT), []);
   return (
     <div role="status" aria-live="polite"
-      className={cn("pointer-events-none fixed bottom-11 left-1/2 z-50 -translate-x-1/2 rounded px-3.5 py-[7px] text-[12.5px] font-semibold text-soot shadow-[0_6px_18px_rgba(0,0,0,.4)] transition-all duration-300 ease-out-expo",
+      className={cn("pointer-events-none fixed bottom-[92px] left-1/2 z-50 -translate-x-1/2 rounded px-3.5 py-[7px] text-[12.5px] font-semibold text-soot shadow-[0_6px_18px_rgba(0,0,0,.4)] transition-all duration-300 ease-out-expo",
         t ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0", t?.bad ? "bg-[#f3b4a3]" : "bg-bone")}>
       {t?.msg}
     </div>

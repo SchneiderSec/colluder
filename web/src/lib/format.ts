@@ -5,6 +5,9 @@ export const newestFirst = (a: { timestamp: string; id: number }, b: { timestamp
   const x = timeKey(a.timestamp), y = timeKey(b.timestamp);
   return x === y ? b.id - a.id : x < y ? 1 : -1;
 };
+// scrolling the selection into view on page load would scroll a phone past the composer
+const BOOT = Date.now();
+export const settled = () => Date.now() - BOOT > 2000;
 export const isoMs = (ts?: string | null) => (ts ? Date.parse(String(ts).replace(/(\.\d{3})\d+/, "$1")) : NaN);
 export const hms = (ts?: string | null) => (ts ? ts.slice(11, 19) : "");
 export const hmsms = (ts?: string | null) => (ts ? ts.slice(11, 23) : "");

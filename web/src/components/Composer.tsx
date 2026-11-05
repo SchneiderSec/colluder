@@ -73,6 +73,9 @@ export function Composer() {
   // a preset probe's own payloads replace the plain three (which stay behind "Plain callbacks")
   const shownTechnique = preview ? technique : shownTag ? s.probes.get(shownTag)?.technique : null;
   useEffect(() => setPlain(false), [shownTag]);
+  // planted as Redirect or Hosted file, but the rule isn't saved yet
+  const shownProbe = shownTag && !preview ? s.probes.get(shownTag) : undefined;
+  const unsaved = shownProbe && !shownProbe.httpRule && (shownProbe.technique === "redirect" || shownProbe.technique === "file") ? (shownProbe.technique === "file" ? "hosted file" : "redirect") : null;
   const presetRows: Payload[] | null = !host || !shownTag ? null
     : shownTechnique === "ssrf-metadata" ? ssrfPayloads(shownTag, host)
     : shownTechnique === "xxe" ? xxePayloads(shownTag, host) : null;
@@ -80,7 +83,12 @@ export function Composer() {
   // detail gets the room. "Show payloads" keeps them open (remembered).
   const [pinned, setPinned] = useState<boolean>(() => { try { return JSON.parse(localStorage.getItem("colluder.payloadsOpen") ?? "false"); } catch { return false; } });
   const pin = (v: boolean) => { setPinned(v); save("colluder.payloadsOpen", v); };
-  const reading = !preview && !!shownTag && (s.probes.get(shownTag)?.hits ?? 0) > 0 && s.tab === "hits";
+  // folded on every tab of a probe that has hits (the editor and the hit detail both need the room);
+  // a fresh probe keeps its rows open, since copying one is the next step
+  const reading = !preview && !!shownTag && (s.probes.get(shownTag)?.hits ?? 0) > 0;
+  // a preset's rows show three at a time until asked: seven rows push the probe pane half a screen down
+  const [allRows, setAllRows] = useState(false);
+  useEffect(() => setAllRows(false), [shownTag]);
   const folded = reading && !pinned && !!vs;
 
   async function submit(e: React.FormEvent) {
@@ -95,9 +103,14 @@ export function Composer() {
         await plant(tag, target.trim(), technique, xxeRule(`${tag}.${host}`, file), `an XXE DTD reading ${file}`);
       }
       else await plant(tag, target.trim(), technique);
+      const next = technique === "redirect" ? '[aria-label="Location"]' : technique === "file" ? '[aria-label="Template"]' : null;
       setTag(""); setTarget(""); setErr(""); setTechnique("callback"); setPlain(false);
-      // next step is copying a payload: put focus there, not back in an emptied field
-      requestAnimationFrame(() => varsRef.current?.querySelector<HTMLButtonElement>("button[data-copy]")?.focus());
+      // the next step: setting up the answer for Redirect / Hosted file, else copying a payload
+      const focus = (n: number) => requestAnimationFrame(() => {
+        const el = next ? document.querySelector<HTMLElement>(next) : varsRef.current?.querySelector<HTMLButtonElement>("button[data-copy]");
+        if (el) el.focus(); else if (n > 0) focus(n - 1);
+      });
+      focus(60); // the editor appears once its rule loads
     }
     catch (ex) { setErr((ex as Error).message); }
   }
@@ -105,9 +118,9 @@ export function Composer() {
   const fld = "flex h-9 items-center gap-[9px] overflow-hidden rounded-[3px] border border-rule bg-soot px-3 whitespace-nowrap transition-colors focus-within:border-smoke";
   return (
     <section aria-label="Plant a probe" className="grid grid-cols-[132px_minmax(0,1fr)] gap-y-2.5 border-b border-rule bg-soot-1 px-6 pt-3.5 pb-3 max-[820px]:grid-cols-1 max-[820px]:px-3.5">
-      <h1 className="self-center text-[17px] font-[650]">Plant a probe</h1>
+      <h1 className="self-start pt-[6px] text-[17px] font-[650] max-[820px]:pt-0">Plant a probe</h1>
       <form onSubmit={submit} noValidate autoComplete="off"
-        className="grid grid-cols-[minmax(200px,318px)_minmax(0,1fr)_214px_auto] gap-2.5 max-[1180px]:grid-cols-[minmax(160px,1fr)_minmax(0,1.4fr)_160px_auto] max-[820px]:grid-cols-1">
+        className="grid grid-cols-[minmax(200px,318px)_minmax(0,1fr)_236px_auto] gap-2.5 max-[1180px]:grid-cols-[minmax(160px,1fr)_minmax(0,1.4fr)_172px_auto] max-[820px]:grid-cols-1">
         <label className={cn(fld, err && "border-bad")}>
           <span className="text-[12.5px] font-[550] text-smoke">Tag</span>
           <input ref={tagRef} value={tag} maxLength={32} spellCheck={false} placeholder="e.g. avatar" aria-invalid={!!err} aria-describedby="tag-err"
@@ -122,15 +135,14 @@ export function Composer() {
         </label>
         <Select value={technique} onValueChange={setTechnique}>
           <SelectTrigger aria-label="Technique" className="h-9 w-full justify-start gap-[9px] rounded-[3px] border-rule bg-soot text-[12.5px] [&>svg]:ml-auto">
-            <span className="text-[12.5px] font-[550] text-smoke">Technique</span><SelectValue />
+            <span className="text-[12.5px] font-[550] text-smoke max-[1180px]:sr-only max-[820px]:not-sr-only">Technique</span><SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="callback">Callback</SelectItem>
+            <SelectItem value="callback">Default reply</SelectItem>
             <SelectItem value="redirect">Redirect</SelectItem>
             <SelectItem value="file">Hosted file</SelectItem>
             <SelectItem value="ssrf-metadata">SSRF → metadata</SelectItem>
             <SelectItem value="xxe">XXE</SelectItem>
-            <SelectItem value="rebind" disabled>DNS rebinding (planned)</SelectItem>
           </SelectContent>
         </Select>
         <Button type="submit" variant="default" size="lg" className="h-9"><ArrowDownToLine />Plant</Button>
@@ -165,6 +177,7 @@ export function Composer() {
       <div className="pt-[3px] text-[12.5px] leading-[17px] text-smoke max-[820px]:flex max-[820px]:gap-1.5 max-[820px]:pt-0.5">
         {preview ? "Preview for" : shownTag ? "Payloads for" : "Base payload"}
         <span className="block truncate font-mono text-[12.5px] text-bone">{shownTag ?? "no tag"}</span>
+        {unsaved && <span className="block text-[11px] leading-[15px] text-amber max-[820px]:hidden" title="Planted, but its rule isn't saved yet: payloads copied now get the default reply">default reply until you save its {unsaved}</span>}
       </div>
       {presetRows && !plain && reading && !pinned ? (
         <div ref={varsRef} className="flex min-w-0 flex-wrap items-center gap-1">
@@ -177,7 +190,7 @@ export function Composer() {
         </div>
       ) : presetRows && !plain ? (
         <div ref={varsRef} className="grid min-w-0 grid-cols-[164px_minmax(0,max-content)_28px_minmax(0,1fr)] items-center gap-x-2.5 gap-y-0.5 max-[820px]:grid-cols-[minmax(0,1fr)_28px]">
-          {presetRows.map((p) => (
+          {(allRows ? presetRows : presetRows.slice(0, 3)).map((p) => (
             <div key={p.code} className="contents">
               <span title={p.note} className="flex items-center gap-2 text-[12.5px] whitespace-nowrap text-smoke max-[820px]:col-span-full"><TypeChip proto={/^https:/.test(p.text) ? "https" : "http"} />{p.name}</span>
               <span className="truncate font-mono text-[12.5px] text-smoke" title={p.text}><Marked text={p.text} tag={shownTag!} code={p.code} /></span>
@@ -188,13 +201,14 @@ export function Composer() {
           <div className="col-span-full mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-ash">
             <span className="flex items-center gap-2">Copy
               <ToggleGroup type="single" value={copyAs} onValueChange={(v) => v && setCopyAs(v as CopyAs)} aria-label="Copy as" className="overflow-hidden rounded-[3px] border border-rule">
-                {([["raw", "as is"], ["url", "URL"], ["json", "JSON"], ["xml", "XML"]] as [CopyAs, string][]).map(([v, l]) => (
+                {([["raw", "as is"], ["url", "URL-encoded"], ["json", "JSON"], ["xml", "XML"]] as [CopyAs, string][]).map(([v, l]) => (
                   <ToggleGroupItem key={v} value={v} className="h-[22px] rounded-none border-l border-rule px-2 text-[11px] text-smoke first:border-l-0 data-[state=on]:bg-soot-2 data-[state=on]:font-semibold data-[state=on]:text-bone">{l}</ToggleGroupItem>
                 ))}
               </ToggleGroup>
             </span>
+            {presetRows.length > 3 && <Button variant="ghost" size="sm" className="text-smoke" onClick={() => setAllRows(!allRows)}>{allRows ? "Show fewer" : `Show all ${presetRows.length} payloads`}</Button>}
             <Button variant="ghost" size="sm" className="text-ash" onClick={() => setPlain(true)}>Plain callbacks</Button>
-            {reading && pinned && <Button variant="ghost" size="sm" className="text-ash" onClick={() => pin(false)}>Fold payloads while reading hits</Button>}
+            {reading && pinned && <Button variant="ghost" size="sm" className="text-ash" onClick={() => pin(false)}>Fold payloads</Button>}
           </div>
         </div>
       ) : folded ? (

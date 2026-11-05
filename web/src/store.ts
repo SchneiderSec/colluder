@@ -6,8 +6,8 @@ import { toast } from "@/lib/toast";
 import { isoMs, plural } from "@/lib/format";
 
 export type StreamState = "connecting" | "connected" | "reconnecting";
-export type ProbeTab = "hits" | "http" | "dns";
-export const PROBE_TABS: ProbeTab[] = ["hits", "http", "dns"];
+export type ProbeTab = "hits" | "http";
+export const PROBE_TABS: ProbeTab[] = ["hits", "http"];
 
 export interface AppState {
   loaded: boolean;

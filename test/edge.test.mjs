@@ -63,7 +63,7 @@ test("rules: loop hops cycle through odd 3xx codes; the exit keeps the redirect 
   assert.equal(respond(rule, 1, req("/x")).answer.status, 305);
   assert.match(serialize(respond(rule, 1, req("/x?hop=2"))).toString("latin1"), /^HTTP\/1\.1 309 Redirect\r\n/);
   assert.equal(describeRule(rule).line, "loop ×3 (305/309), then 302 → 169.254.169.254");
-  assert.equal(validateHttpRule({ mode: "redirect", location: "http://x/", loop: 2, hopStatuses: [200] }).error, "Hop codes must be redirects: 301, 302, 303, 307, 308, 300, 305, 306, 309, 310.");
+  assert.equal(validateHttpRule({ mode: "redirect", location: "http://x/", loop: 2, hopStatuses: [200] }).error, "Hop codes: 200 isn't a redirect code. Use 301, 302, 303, 307, 308, 300, 305, 306, 309, 310.");
   assert.equal(validateHttpRule({ mode: "redirect", status: 310, location: "http://x/" }).rule.status, 310);
   assert.equal(validateHttpRule({ mode: "redirect", location: "http://x/", hopStatuses: [305] }).rule.hopStatuses, undefined, "no loop, no hop codes");
 });

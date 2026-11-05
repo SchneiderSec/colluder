@@ -110,7 +110,7 @@ export function PayloadKit({ section }: { section: string | null }) {
     );
   }
 
-  const rows: Payload[] = sec === "callbacks" ? callbacks(tag, host) : sec === "bypass" ? bypasses(tag, host, expected) : [];
+  const rows: Payload[] = sec === "callbacks" ? callbacks(tag, host) : sec === "bypass" ? (expected.trim() ? bypasses(tag, host, expected) : []) : [];
   const forms = sec === "address" ? addressForms(ip) : null;
 
   return (
@@ -143,7 +143,8 @@ export function PayloadKit({ section }: { section: string | null }) {
           {sec === "bypass" && (
             <>
               <p className="max-w-[72ch] text-[12.5px] leading-[19px] text-smoke">For a URL field that only accepts certain hosts: the validator reads the host it expects, the fetcher connects to <span className="font-mono text-bone">{tag}</span>. Plain HTTP, so the code is a DNS label and still shows when the path is dropped.</p>
-              <div className="mt-3"><Field label="Host the target expects" value={expected} onChange={setExpected} placeholder="api.shop.example" /></div>
+              <div className="mt-3"><Field label="Host the target expects" value={expected} onChange={setExpected} placeholder="e.g. api.shop.example" /></div>
+              {!expected.trim() && <p className="mt-3 text-[12.5px] text-ash">The payloads appear once you type the host the target's allowlist expects: each one is built around it.</p>}
             </>
           )}
           {sec === "address" && (

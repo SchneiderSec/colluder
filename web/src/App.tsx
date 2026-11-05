@@ -6,21 +6,21 @@ import { Rail, StatusBar, Banners } from "@/components/Shell";
 import { Composer } from "@/components/Composer";
 import { ProbeList } from "@/components/ProbeList";
 import { ProbePane } from "@/components/ProbePane";
-import { Settings, Planned, PLANNED } from "@/components/Pages";
+import { Settings } from "@/components/Pages";
 import { PayloadKit } from "@/components/PayloadKit";
 import { MarkSvg, setFavicon } from "@/components/Mark";
 import { Toaster } from "@/components/bits";
 import { cn } from "@/lib/utils";
 
 // tools that became probe tabs: old links land on the tab instead
-const MOVED: Record<string, ProbeTab> = { files: "http", responses: "http", rebinding: "dns" };
+const MOVED: Record<string, ProbeTab> = { files: "http", responses: "http", rebinding: "hits" };
 
 function useRoute() {
   const read = () => {
     const [view, arg, tab] = decodeURIComponent(location.hash.slice(1)).split("/");
     if (view in MOVED) return { view: "probes", arg: null, tab: MOVED[view] };
     return {
-      view: view && (view === "probes" || view === "settings" || view in PLANNED) ? view : "probes",
+      view: view && (view === "probes" || view === "settings" || view === "kit") ? view : "probes",
       arg: arg || null,
       tab: (PROBE_TABS as string[]).includes(tab) ? (tab as ProbeTab) : "hits" as ProbeTab,
     };
@@ -84,7 +84,7 @@ export default function App() {
                 <ProbePane />
               </div>
             </>
-          ) : route.view === "settings" ? <Settings /> : route.view === "kit" ? <PayloadKit section={route.arg} /> : <Planned view={route.view} />}
+          ) : route.view === "settings" ? <Settings /> : <PayloadKit section={route.arg} />}
         </main>
         <StatusBar />
       </div>

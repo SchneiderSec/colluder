@@ -400,11 +400,11 @@ All three are self-hosted WOFF2 (latin and latin-ext subsets, `font-display: swa
 
 The desktop is a fixed, full-height application grid that never scrolls as a page:
 
-- **Tool rail** (76px) on the left, spanning the full height: the mark, then Probes, a short Rule, then the cross-probe tools Payload kit and Listeners, with Settings pinned to the bottom. Anything that changes what a single probe answers is a tab on the probe, not a rail tool.
+- **Tool rail** (76px) on the left, spanning the full height: the mark, then Probes, a short Rule, then the cross-probe tool Payload kit, with Settings pinned to the bottom. Anything that changes what a single probe answers is a tab on the probe, not a rail tool.
 - **Banners** stack at the top of the main column when something is wrong.
 - **Composer band** on top: the "Plant a probe" heading in a 132px label column, then Tag / Target / Technique / Plant in one row, then the selected probe's DNS, HTTP and HTTPS payload variants, each with a copy button and a one-line note. While you read a probe's hits, the variants fold into one line of copy buttons (copy icon + type chip each) and "Show payloads"; opening them is remembered, and "Fold payloads while reading hits" folds them again.
 - **Probe list** (400px; 320px under 1180px): latest activity first, with a 42px header and a 40px Discord-alerts footer.
-- **Probe pane**: a 52px probe header, a 35px tab strip (Hits · HTTP response · DNS answers; Unregistered has no tabs), then on the Hits tab the hits table (capped at min(28vh, 212px) while a hit is open, so detail stays visible), a "Planted … · first hit …" caption between solid hairlines, then the hit detail filling the rest.
+- **Probe pane**: a 52px probe header, a 35px tab strip (Hits · HTTP response; Unregistered has no tabs), then on the Hits tab the hits table (capped at min(28vh, 212px) while a hit is open, min(22vh, 160px) on screens under 900px tall, so detail stays visible), a "Planted … · first hit …" caption between solid hairlines, then the hit detail filling the rest.
 - **Status bar** (28px) along the bottom of the main column: wordmark, Engine, Stream, Last hit, then the payload host and the UTC clock on the right.
 
 Spacing is tight and regular: 24px page gutter, 20px list gutter, 10px gaps between controls, 11px vertical row padding in the probe list and 6×10px table cells. The status bar spaces its items 22px apart.
@@ -467,10 +467,9 @@ Restrained, mostly outlined, with exactly one bright button per working region.
 
 ### Probe tabs
 - Underline tabs under the probe header, 24px apart, 12.5px/550 in Smoke; the active tab is Bone with a 2px Bone underline sitting on the strip's bottom Rule. No amber on the active tab.
-- Each tab carries its state after the label: the hit count on Hits, and on HTTP response and DNS answers what the probe answers with ("default" in Ash today).
+- Each tab carries its state after the label: the hit count on Hits, and on HTTP response what the probe answers with ("default" in Ash, "302, edited" for an unsaved draft).
 - Hits only count as read while the Hits tab is in view. A hit that lands while another tab is open keeps the probe unread and puts the amber new dot on the Hits tab.
 - Arrow keys, Home and End move between tabs. The tab is in the URL (`#probes/<tag>/http`) and stays put when you switch probes. j/k only act on the Hits tab. Old `#files`, `#responses` and `#rebinding` links open the matching tab.
-- DNS answers says what is planned, what the engine answers today, and why it waits.
 - The HTTP response label shows the active rule in mono Bone ("302"; Ash while the edge isn't live, because nothing serves it yet), "default" in Ash, or "302, edited" in italic Smoke while an unsaved draft exists. Drafts are kept per probe across tab and probe switches; closing the page with one asks first.
 
 ### HTTP response editor
@@ -586,3 +585,14 @@ A Bone pill (Alarm Ink when something failed) that rises 44px above the bottom e
 - **Don't** transform data when it is copied (no trimming, re-encoding, wrapping or decoding).
 - **Don't** put raccoon jokes, easter eggs or playful copy in evidence, data or error text.
 - **Don't** dress it as a hacker tool: no terminal green, glitch, neon or scanlines.
+
+## Review 4 polish (2026-11-05, PLAN-REVIEW4.md)
+- No planned surfaces ship: the Listeners page, the DNS answers tab and "DNS rebinding (planned)" are gone until they work.
+- Payload rows fold into one line of copy buttons on every tab of a probe that has hits; a fresh probe keeps them open. A preset shows three rows, then "Show all n payloads". A Redirect or Hosted-file probe without a saved rule says "default reply until you save its redirect" in amber under its tag.
+- After planting, focus goes to the next real step: Location (Redirect), Template (Hosted file), else the first copy button. Toasts sit above the editor's Save footer.
+- Hits sort by capture time. The Request cell reads request line · stage · User-Agent (Ash), so the stage is never cut off. Bursts count their own lookups, with "+n chatter" beside.
+- The probe list and the hits table are one tab stop each; arrows move the selection. Segmented toggles and select triggers show the Bone focus outline. The selected probe scrolls into view (never on first load).
+- Hit detail: "What the edge did: …" as a sentence, the follow-up caveat in Ash; TLS-only, malformed, not-UTF-8 and truncated hits each get one bold-led sentence, with "Download the exact bytes". "Mark as mine" sits beside a non-box source; its hits read "yours".
+- Parsed view: with a Query section, the start line shows each value briefly; any value over 600 characters shows "+n chars".
+- On a phone the status bar keeps short labels (Eng, Str, Edge) and rail targets are 44px.
+- Names: technique "Default reply" (was Callback), copy formats "as is · URL-encoded · JSON · XML", "Clear all hits…".

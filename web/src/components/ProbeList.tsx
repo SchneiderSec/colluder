@@ -1,8 +1,8 @@
-import { useId, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Bell, BellOff, ChevronDown, ChevronRight, Redo2 } from "lucide-react";
 import { useApp, select, unreadFor, keyOf, setDiscord, lateHit, retiredUnread, type AppState } from "@/store";
 import { PROTOS, UNTAGGED, type Counts, type Probe } from "@/lib/types";
-import { dayOrTime, dur, isoMs, plural } from "@/lib/format";
+import { dayOrTime, dur, isoMs, plural, settled } from "@/lib/format";
 import { toast } from "@/lib/toast";
 import { Switch } from "@/components/ui/switch";
 import { Chip, LineForm, NewDot, NilDot, TypeChip, inkClass, useTick } from "./bits";
@@ -54,13 +54,16 @@ function CountChips({ c }: { c: Counts }) {
 
 
 
-function Row({ s, p, k }: { s: AppState; p: Probe | (Counts & Partial<Probe>); k: string }) {
+function Row({ s, p, k, stop }: { s: AppState; p: Probe | (Counts & Partial<Probe>); k: string; stop?: boolean }) {
   const unread = unreadFor(s, k);
   const isU = k === UNTAGGED;
   const talking = p.hits > 0;
   const sel = s.sel === k;
+  const ref = useRef<HTMLButtonElement>(null);
+  // the selected probe stays in view (picked from the status bar, a link, or j/k)
+  useEffect(() => { if (sel && settled()) ref.current?.scrollIntoView({ block: "nearest" }); }, [sel]);
   return (
-    <button type="button" role="option" aria-selected={sel} data-key={k} onClick={() => select(k)}
+    <button ref={ref} type="button" role="option" aria-selected={sel} data-key={k} onClick={() => select(k)} tabIndex={sel || stop ? 0 : -1}
       className={cn("grid w-full cursor-pointer grid-cols-[12px_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-[3px] border-b border-rule-2 py-[11px] pr-4 pl-5 text-left hover:bg-[#1b1612]",
         sel && "bg-soot-2 hover:bg-soot-2", isU && "border-t border-t-rule", s.lit === k && "animate-lit")}>
       {unread ? <NewDot title="New hits since you last looked" /> : <NilDot />}
@@ -70,14 +73,14 @@ function Row({ s, p, k }: { s: AppState; p: Probe | (Counts & Partial<Probe>); k
         {!isU && !!p.muted && <BellOff aria-label="Discord alerts muted" className="size-3 flex-none text-ash" strokeWidth={1.5} />}
       </span>
       {talking
-        ? <span className="text-right text-[12.5px] whitespace-nowrap" title={p.lastHitAt ?? ""}>{dayOrTime(p.lastHitAt)}</span>
+        ? <span className="text-right text-[12.5px] whitespace-nowrap" title={p.lastHitAt ?? ""}>{p.retiredAt && !lateHit(p) && <span className="text-[11px] text-ash">Retired · </span>}{dayOrTime(p.lastHitAt)}</span>
         : p.retiredAt ? <span className="text-right text-[11px] whitespace-nowrap text-ash">Retired · silent {dur(Date.now() - isoMs(p.retiredAt))}</span>
         : <span className="flex items-center justify-end gap-1.5 text-[11px] whitespace-nowrap text-smoke"><LineForm kind="live" className="w-4 text-ash" />Armed · silent {dur(Date.now() - isoMs(p.plantedAt))}</span>}
       <span className="col-span-2 col-start-2 truncate text-[12.5px] text-smoke">
         {isU ? "Hits that carry no tag" : p.target || (p.registered ? "No target noted" : "Unregistered tag: hits arrived for a tag you did not plant")}
       </span>
       {talking ? (
-        <span className="col-start-2 flex min-w-0 gap-3 overflow-hidden text-[11px]">
+        <span className="col-start-2 flex min-w-0 flex-wrap gap-x-3 gap-y-1 text-[11px]">
           {!!unread && <Chip>{unread} new</Chip>}
           {!isU && !p.registered && <Chip grey>unregistered</Chip>}
           {lateHit(p) && <Chip grey>late hit · retired {dayOrTime(p.retiredAt!)}</Chip>}
@@ -125,20 +128,30 @@ export function ProbeList() {
     prevTops.current = next;
   }, [order]);
 
+  // one tab stop for the list; arrows move the selection (Home/End to the ends)
+  const onListKey = (e: React.KeyboardEvent) => {
+    const opts = [...(listRef.current?.querySelectorAll<HTMLButtonElement>("[role=option]") ?? [])];
+    const i = opts.indexOf(document.activeElement as HTMLButtonElement);
+    const to = e.key === "ArrowDown" ? i + 1 : e.key === "ArrowUp" ? i - 1 : e.key === "Home" ? 0 : e.key === "End" ? opts.length - 1 : null;
+    if (to == null || i === -1) return;
+    e.preventDefault();
+    const el = opts[Math.max(0, Math.min(opts.length - 1, to))];
+    el?.focus(); el?.click();
+  };
   return (
     <section aria-label="Probes" className="flex min-h-0 flex-col border-r border-rule max-[820px]:max-h-[48vh] max-[820px]:border-r-0">
       <div className="flex h-[42px] flex-none items-center gap-2 border-b border-rule pr-3 pl-5">
         <h2 className="text-[13.5px] font-[650]">Probes</h2><span className="text-[12.5px] text-smoke">{active.length}</span>
         <span className="ml-auto text-[11px] text-ash">Latest activity first</span>
       </div>
-      <div ref={listRef} role="listbox" aria-label="Probes" className="flex min-h-0 flex-1 flex-col overflow-auto">
+      <div ref={listRef} role="listbox" aria-label="Probes" onKeyDown={onListKey} className="flex min-h-0 flex-1 flex-col overflow-auto">
         {s.loaded && !active.length && !s.untagged?.hits && !retired.length && (
           <div className="max-w-[46ch] px-5 py-[22px] text-[12.5px] leading-[19px] text-smoke">
             <b className="mb-1 block text-[13.5px] font-semibold text-bone">No probes yet.</b>
             Plant one above: a tag (e.g. avatar) and where you'll put it. Then copy a payload into the target. Hits show up here the moment something calls back.
           </div>
         )}
-        {active.map((p) => <Row key={p.tag} s={s} p={p} k={p.tag} />)}
+        {active.map((p, i) => <Row key={p.tag} s={s} p={p} k={p.tag} stop={!s.sel && i === 0} />)}
         <div className="flex-1" />
         {!!retired.length && (
           <button type="button" onClick={() => setShowRetired(!showRetired)} className="flex items-center gap-1.5 border-t border-rule-2 px-5 py-2 text-[12.5px] text-smoke hover:text-bone">
