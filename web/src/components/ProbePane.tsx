@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Bell, BellOff, ChevronRight, Download, FileText, Search } from "lucide-react";
-import { useApp, keyOf, selectHit, patchProbe, saveRule, fetchTrigger, fetchReport, chatterOf, setTab, unreadFor, loadOlder, searchHits, exportUrl, PROBE_TABS, type AppState, type ProbeTab } from "@/store";
+import { useApp, keyOf, markSeen, selectHit, patchProbe, saveRule, fetchTrigger, fetchReport, chatterOf, setTab, unreadFor, loadOlder, searchHits, exportUrl, PROBE_TABS, type AppState, type ProbeTab } from "@/store";
 import { dnsSteps, mostSpecific } from "@/lib/dns";
 import { stageOf } from "@/lib/stage";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { UNTAGGED, type Interaction, type Probe } from "@/lib/types";
-import { dayOrTime, hmsms, isoMs, plural } from "@/lib/format";
+import { dayOrTime, hmsms, isoMs, newestFirst, plural } from "@/lib/format";
 import { groupHits } from "@/lib/raw";
 import { copy, toast } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
@@ -101,6 +101,7 @@ function Head({ s }: { s: AppState }) {
             <AlertDialogCancel asChild><Button variant="quiet">Cancel</Button></AlertDialogCancel>
             <AlertDialogAction asChild><Button variant="default" onClick={() => (p.httpRule && resetRule ? saveRule(p.tag, { mode: "default", delayMs: 0, schemes: { http: true, https: true } }) : Promise.resolve())
               .then(() => patchProbe(p.tag, { retired: true }))
+              .then(() => markSeen(p.tag, false)) // its hits are read: a retired probe's old hits are no longer news
               .then(() => toast(`Retired ${p.tag}: hits kept, new ones still recorded${p.httpRule && resetRule ? ", HTTP answer back to default" : ""}`), (e) => toast((e as Error).message, true))}>Retire</Button></AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -130,7 +131,7 @@ function rowKeys(fn: () => void) {
 // the labels before the payload id, for naming a longer lookup compactly
 const labelsOf = (fullId: string) => fullId.split(".").slice(0, -3).join(".") || fullId;
 
-function HitRow({ i, open, sel, arrived, child, chatter, inProbe, step, self, onClick }: { i: Interaction; open: number; sel: boolean; arrived: boolean; child?: boolean; chatter?: string; inProbe?: boolean; step?: string; self?: boolean; onClick: () => void }) {
+function HitRow({ i, open, sel, arrived, child, chatter, inProbe, step, self, onClick }: { i: Interaction; open: number; sel: boolean; arrived: boolean; child?: boolean; chatter?: string; inProbe?: boolean; step?: string; self?: "box" | "mine"; onClick: () => void }) {
   const isNew = i.id > open && !chatter && !step;
   const quiet = !!chatter || !!step;
   const web = i.protocol === "http" || i.protocol === "https";
@@ -143,7 +144,7 @@ function HitRow({ i, open, sel, arrived, child, chatter, inProbe, step, self, on
       <Td sel={sel}>{hmsms(i.timestamp)}</Td>
       <Td sel={sel}><TypeChip proto={i.protocol}>{i.protocol === "dns" ? `DNS ${i.qType || "other"}` : undefined}</TypeChip></Td>
       <Td sel={sel} className="font-mono text-[12.5px]">{i.remoteAddress}</Td>
-      <Td sel={sel} last>{web || i.protocol === "smtp" ? <><span className="font-mono text-[12.5px]">{i.summary}</span>{stageOf(i) && <span className="ml-2 text-[11px] whitespace-nowrap text-ash" title="What Colluder's edge answered. A redirect sent is not proof it was followed; a later hop is.">· {stageOf(i)}</span>}{self && <span className="ml-2 text-[11px] text-ash" title="Sent from the OOB box itself (a self-test), not a target">· this box</span>}</> : i.protocol === "dns" ? <><DnsName i={i} />{chatter && <span className="text-[11px] text-ash" title="A lookup of the bare payload id near this probe's hits: a resolver walking the name, or a client resolving the HTTPS host. Kept, never counted as new."> · resolver chatter{inProbe ? "" : ` around ${chatter}`}</span>}{step && <span className="text-[11px] text-ash" title={`The resolver asked for this on its way to ${step} (QNAME minimisation). Not exfil data.`}> · resolver step toward <span className="font-mono">{labelsOf(step)}</span></span>}</> : <span className="text-[11px] text-smoke">{i.summary}</span>}</Td>
+      <Td sel={sel} last>{web || i.protocol === "smtp" ? <><span className="font-mono text-[12.5px]">{i.summary}</span>{stageOf(i) && <span className="ml-2 text-[11px] whitespace-nowrap text-ash" title="What Colluder's edge answered. A redirect sent is not proof it was followed; a later hop is.">· {stageOf(i)}</span>}{self && <span className="ml-2 text-[11px] text-ash" title="A self-test (the OOB box, or a source you marked as yours), not a target">· {self === "mine" ? "yours" : "this box"}</span>}</> : i.protocol === "dns" ? <><DnsName i={i} />{chatter && <span className="text-[11px] text-ash" title="A lookup of the bare payload id near this probe's hits: a resolver walking the name, or a client resolving the HTTPS host. Kept, never counted as new."> · resolver chatter{inProbe ? "" : ` around ${chatter}`}</span>}{step && <span className="text-[11px] text-ash" title={`The resolver asked for this on its way to ${step} (QNAME minimisation). Not exfil data.`}> · resolver step toward <span className="font-mono">{labelsOf(step)}</span></span>}</> : <span className="text-[11px] text-smoke">{i.summary}</span>}</Td>
     </tr>
   );
 }
@@ -245,7 +246,7 @@ export function ProbePane() {
     const m = new Map<number, Interaction>();
     for (const i of s.list) if (keyOf(i) === s.sel || (s.sel !== UNTAGGED && chatterAll.get(i.id) === s.sel)) m.set(i.id, i);
     for (const i of olderRows ?? []) m.set(i.id, i);
-    return [...m.values()].sort((a, b) => b.id - a.id);
+    return [...m.values()].sort(newestFirst);
   }, [s.sel, s.list, olderRows, chatterAll]);
   const steps = useMemo(() => dnsSteps(all), [all]);
   const filtering = q.trim() !== "" || kinds.length > 0;
@@ -329,9 +330,10 @@ export function ProbePane() {
 
   const open = s.openSeen[s.sel] ?? s.seen[s.sel] ?? 0;
   const chatter = chatterAll;
-  const selfIps = new Set(s.status?.selfIps ?? []);
+  const boxIps = new Set(s.status?.selfIps ?? []), mineIps = new Set(s.status?.mineIps ?? []);
+  const selfOf = (ip: string) => (boxIps.has(ip) ? "box" as const : mineIps.has(ip) ? "mine" as const : undefined);
   const row = (i: Interaction, child?: boolean) => (
-    <HitRow key={i.id} child={child} i={i} chatter={chatter.get(i.id)} inProbe={s.sel !== UNTAGGED} step={steps.get(i.id)} self={selfIps.has(i.remoteAddress)} open={open} sel={i.id === hitId} arrived={i.id === s.arrived} onClick={() => selectHit(i.id)} />
+    <HitRow key={i.id} child={child} i={i} chatter={chatter.get(i.id)} inProbe={s.sel !== UNTAGGED} step={steps.get(i.id)} self={selfOf(i.remoteAddress)} open={open} sel={i.id === hitId} arrived={i.id === s.arrived} onClick={() => selectHit(i.id)} />
   );
   const rows: React.ReactNode[] = [];
   for (const g of groupHits(hits)) {
@@ -348,7 +350,9 @@ export function ProbePane() {
     const chatterTags = [...new Set(items.map((i) => chatter.get(i.id)).filter(Boolean))];
     const allChatter = items.every((i) => chatter.has(i.id));
     const sel = !exp && items.some((i) => i.id === hitId);
-    const toggle = () => { const n = new Set(expanded); if (exp) n.delete(first.id); else n.add(first.id); setExpanded(n); selectHit(last.id); };
+    // the burst's own lookups; resolver chatter shown alongside isn't this probe's, so it isn't counted
+    const own = items.filter((i) => !chatter.has(i.id));
+    const toggle = () => { const n = new Set(expanded); if (exp) n.delete(first.id); else n.add(first.id); setExpanded(n); selectHit((own.at(-1) ?? first).id); };
     rows.push(
       <tr key={`g${first.id}`} tabIndex={0} aria-selected={sel} aria-expanded={exp} aria-label={`${items.length} DNS queries, ${exp ? "expanded" : "collapsed"}`} onClick={toggle} onKeyDown={rowKeys(toggle)} className={cn("group cursor-pointer", items.some((i) => i.id === s.arrived) && "[&>td]:animate-lit")}>
         <Td sel={sel} first>
@@ -361,7 +365,7 @@ export function ProbePane() {
           </span>
         </Td>
         <Td sel={sel}>{hmsms(first.timestamp)}</Td>
-        <Td sel={sel}><TypeChip proto="dns">DNS ×{items.length}</TypeChip></Td>
+        <Td sel={sel}><TypeChip proto="dns">DNS ×{own.length || items.length}</TypeChip>{own.length > 0 && own.length < items.length && <span className="ml-1.5 text-[11px] text-ash" title="Lookups of the bare payload id near this probe's hits: resolver chatter, kept but not counted">+{items.length - own.length} chatter</span>}</Td>
         <Td sel={sel}>{srcs.size === 1 ? <span className="font-mono text-[12.5px]">{first.remoteAddress}</span> : `${srcs.size} resolvers`}</Td>
         <Td sel={sel} last>
           <DnsName i={top} />{names > 1 && <span className="text-[11px] text-ash"> +{names - 1} {names === 2 ? "name" : "names"}</span>}<span className="text-[11px] text-smoke"> · </span>

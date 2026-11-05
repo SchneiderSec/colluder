@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowDown, Copy, FileText, Search, Terminal } from "lucide-react";
-import { useApp, loadDetail, lookupAsn, save, chatterOf } from "@/store";
+import { useApp, loadDetail, lookupAsn, save, chatterOf, setMine } from "@/store";
 import { dnsSteps } from "@/lib/dns";
 import { stageOf } from "@/lib/stage";
 import { decodeLabels } from "@/lib/exfil";
@@ -118,7 +118,8 @@ export function HitDetail({ id }: { id: number }) {
   const probe = d.tag ? s.probes.get(d.tag) : undefined;
   const chatter = chatterOf(s.list).get(d.id);
   const step = d.protocol === "dns" ? dnsSteps(s.list).get(d.id) : undefined;
-  const self = (s.status?.selfIps ?? []).includes(d.remoteAddress);
+  const fromBox = (s.status?.selfIps ?? []).includes(d.remoteAddress);
+  const mine = (s.status?.mineIps ?? []).includes(d.remoteAddress);
   const kit = variantOf(d);
   const a = d.answer;
   const stage = a ? stageOf({ summary: d.summary, fullId: d.fullId, hop: a.hop, decoy: a.decoy, answerCode: a.code, answerTo: a.to, hopCode: a.status, answerPart: a.part, answerMode: a.mode, malformed: a.malformed }) : null;
@@ -145,7 +146,13 @@ export function HitDetail({ id }: { id: number }) {
       </div>
 
       <div className="flex flex-none flex-wrap items-center gap-x-[22px] gap-y-1 text-[12.5px] whitespace-nowrap max-[820px]:whitespace-normal">
-        <span className="flex items-center gap-2"><span className="text-smoke">{d.protocol === "dns" ? "Resolver" : "Source"}</span><span className="font-mono text-[12.5px]">{d.remoteAddress}</span>{self && <span className="text-[11px] text-ash" title="This is the OOB box itself: a self-test, not a target.">this box</span>}</span>
+        <span className="flex items-center gap-2"><span className="text-smoke">{d.protocol === "dns" ? "Resolver" : "Source"}</span><span className="font-mono text-[12.5px]">{d.remoteAddress}</span>{fromBox && <span className="text-[11px] text-ash" title="This is the OOB box itself: a self-test, not a target.">this box</span>}
+          {d.protocol !== "dns" && !fromBox && (
+            <Button variant="quiet" size="sm" title={mine ? "Hits from this address count as targets again" : "Your browser or proxy: its hits become self-tests (left out of reach and the report's first request)"}
+              onClick={() => setMine(d.remoteAddress, !mine).then(() => toast(mine ? `${d.remoteAddress} is no longer marked as yours.` : `${d.remoteAddress} is marked as yours: its hits are self-tests now.`), (x) => toast((x as Error).message, true))}>
+              {mine ? "Yours · unmark" : "Mark as mine"}
+            </Button>
+          )}</span>
         {web && forwardedFor(d.rawRequest).map(([h, v]) => (
           <span key={h} className="flex min-w-0 items-center gap-2" title={`From the ${h} header. The sender sets it, so it may be spoofed.`}>
             <span className="text-smoke">Forwarded for</span><span className="truncate font-mono text-[12.5px] text-bone">{v}</span>

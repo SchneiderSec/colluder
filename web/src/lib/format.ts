@@ -1,3 +1,10 @@
+// Hits arrive from two sources (the edge, and interactsh-client polling seconds later), so ingest
+// order isn't time order. Sort by the capture time, to the nanosecond interactsh gives, then by id.
+export const timeKey = (ts?: string | null) => String(ts ?? "").replace(/(T\d\d:\d\d:\d\d)(?:\.(\d+))?Z$/, (_, hms, f = "") => `${hms}.${f.padEnd(9, "0").slice(0, 9)}Z`);
+export const newestFirst = (a: { timestamp: string; id: number }, b: { timestamp: string; id: number }) => {
+  const x = timeKey(a.timestamp), y = timeKey(b.timestamp);
+  return x === y ? b.id - a.id : x < y ? 1 : -1;
+};
 export const isoMs = (ts?: string | null) => (ts ? Date.parse(String(ts).replace(/(\.\d{3})\d+/, "$1")) : NaN);
 export const hms = (ts?: string | null) => (ts ? ts.slice(11, 19) : "");
 export const hmsms = (ts?: string | null) => (ts ? ts.slice(11, 23) : "");

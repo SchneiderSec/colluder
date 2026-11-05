@@ -3,6 +3,7 @@
 // and serves the single-page UI, a JSON API and a Server-Sent Events stream.
 // No secrets in this file: DISCORD_WEBHOOK_URL is read from the environment at runtime.
 import http from "node:http";
+import net from "node:net";
 import { readFile, mkdir, writeFile, rename } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -138,6 +139,7 @@ function statusPayload() {
     lastClear: store.lastClear(),
     edge: edgeStatus,
     selfIps: SELF_IPS, // B5: hits from the OOB box itself read "this box"
+    mineIps: store.mine(), // sources you marked as yours: "yours", left out like self-tests
   };
 }
 
@@ -338,6 +340,9 @@ const server = http.createServer(async (req, res) => {
       const tag = String(b.tag || "").trim().toLowerCase();
       if (!TAG_RE.test(tag)) return json(res, 400, { error: "Tag must be 1–32 letters, digits or hyphens, not starting or ending with a hyphen." });
       const technique = TECHNIQUES.includes(b.technique) ? b.technique : "callback";
+      // a tag is planted once: re-planting would pin its old hits (and an old rule) on a new target
+      const had = store.probe(tag);
+      if (had?.registered) return json(res, 409, { error: `"${tag}" is already planted${had.target ? ` on ${had.target}` : ""} (${had.plantedAt.slice(0, 10)})${had.retiredAt ? ", now retired" : ""}. Pick another tag.` });
       // a preset plants with its rule, saved as the next version in the same request
       const v = b.rule ? validateHttpRule(b.rule) : null;
       if (v?.error) return json(res, 400, { error: `Couldn't set up the answer: ${v.error}` });
@@ -365,13 +370,22 @@ const server = http.createServer(async (req, res) => {
       broadcast("probe", probe);
       return json(res, 200, probe);
     }
+    if (req.method === "POST" && p === "/api/sources/mine") {
+      const b = await body(req);
+      const ip = String(b.ip || "").trim();
+      if (!/^[0-9a-f.:]{2,45}$/i.test(ip) || net.isIP(ip) === 0) return json(res, 400, { error: "Not an IP address." });
+      if (SELF_IPS.includes(ip)) return json(res, 400, { error: "That's this box: its hits are already self-tests." });
+      store.setMine(ip, b.mine !== false, nowIso());
+      broadcast("status", statusPayload());
+      return json(res, 200, { mineIps: store.mine() });
+    }
     if (req.method === "GET" && (m = /^\/api\/probes\/([a-z0-9-]+)\/report\.md$/.exec(p))) {
       const probe = store.probe(m[1]);
       if (!probe) return json(res, 404, { error: "no such probe" });
       const md = probeReport({
         probe, hits: [...store.exportRows(m[1])].map((r) => ({ ...r, answer: r.answer ? JSON.parse(r.answer) : null })),
         trigger: store.trigger(m[1]), enrich: (ip) => store.enrich(ip), domain: CFG.domain,
-        payloadId: engine.payload?.host?.split(".")[0] ?? "<payload-id>", selfIps: SELF_IPS, now: nowIso(),
+        payloadId: engine.payload?.host?.split(".")[0] ?? "<payload-id>", selfIps: SELF_IPS, mineIps: store.mine(), now: nowIso(),
       });
       res.writeHead(200, { "content-type": "text/markdown; charset=utf-8", "cache-control": "no-store" });
       return res.end(md);
@@ -382,7 +396,7 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === "GET" && (m = /^\/api\/probes\/([a-z0-9-]+)\/http-rule$/.exec(p))) {
       if (!store.probe(m[1])) return json(res, 404, { error: "no such probe" });
-      return json(res, 200, { active: activeRules()[m[1]] || null, ...store.ruleHistory(m[1]), edge: edgeStatus });
+      return json(res, 200, { active: activeRules()[m[1]] || null, ...store.ruleHistory(m[1], SELF_IPS), edge: edgeStatus });
     }
     if (req.method === "POST" && (m = /^\/api\/probes\/([a-z0-9-]+)\/http-rule(\/preview)?$/.exec(p))) {
       if (!store.probe(m[1])) return json(res, 404, { error: "no such probe" });
@@ -401,7 +415,7 @@ const server = http.createServer(async (req, res) => {
       await publishRules();
       log(`rule saved: ${m[1]} v${saved.version} (${v.rule.mode})`);
       broadcast("probe", probeOut(m[1]));
-      return json(res, 200, { active: saved, ...store.ruleHistory(m[1]), edge: edgeStatus });
+      return json(res, 200, { active: saved, ...store.ruleHistory(m[1], SELF_IPS), edge: edgeStatus });
     }
     if (req.method === "POST" && (m = /^\/api\/enrich\/([0-9a-fA-F:.]+)\/asn$/.exec(p))) {
       try {

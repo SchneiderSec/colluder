@@ -131,7 +131,16 @@ export function unreadFor(s: AppState, key: string) {
 }
 export function totalUnread(s: AppState) {
   let t = unreadFor(s, UNTAGGED);
-  for (const p of s.probes.values()) t += unreadFor(s, p.tag);
+  for (const p of s.probes.values()) if (!hiddenRetired(p)) t += unreadFor(s, p.tag);
+  return t;
+}
+// a retired probe sits in the collapsed Retired group until it hears something after retiring
+export const lateHit = (p: { retiredAt?: string | null; lastHitAt?: string | null }) => !!(p.retiredAt && p.lastHitAt && isoMs(p.lastHitAt) > isoMs(p.retiredAt));
+export const hiddenRetired = (p: { retiredAt?: string | null; lastHitAt?: string | null }) => !!p.retiredAt && !lateHit(p);
+// unread hits inside the collapsed Retired group (shown on its header; the rail badge leaves them out)
+export function retiredUnread(s: AppState) {
+  let t = 0;
+  for (const p of s.probes.values()) if (hiddenRetired(p)) t += unreadFor(s, p.tag);
   return t;
 }
 export function markSeen(key: string, keepOpen = true) {
@@ -197,6 +206,11 @@ export async function patchProbe(tag: string, body: { target?: string; note?: st
 export async function lookupAsn(ip: string) {
   const e = await api<Enrich>(`/api/enrich/${encodeURIComponent(ip)}/asn`, { method: "POST", body: {} });
   set({ enrich: new Map(state.enrich).set(ip, e) });
+}
+// a source you mark as yours (your browser, Caido) is a self-test from then on, everywhere
+export async function setMine(ip: string, mine: boolean) {
+  const r = await api<{ mineIps: string[] }>(`/api/sources/mine`, { method: "POST", body: { ip, mine } });
+  if (state.status) set({ status: { ...state.status, mineIps: r.mineIps } });
 }
 // ---------- B4: a probe's full history ----------
 const hitsPath = (key: string) => `/api/probes/${key === UNTAGGED ? "__untagged" : encodeURIComponent(key)}`;

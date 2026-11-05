@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { ChevronLeft, ChevronRight, Copy, Plus, X } from "lucide-react";
 import { useApp, getState, fetchRule, previewRule, saveRule, setRuleDraft, takeRuleSeed } from "@/store";
 import type { Decoy, HttpRule, Probe, RuleMode, RuleState, RuleVersion } from "@/lib/types";
-import { reach } from "@/lib/reach";
+import { reachOf } from "@/lib/reach";
 import { METADATA, redirectable } from "@/lib/metadata";
 import { dayOrTime, plural } from "@/lib/format";
 import { copy, toast } from "@/lib/toast";
@@ -164,6 +164,15 @@ export function HttpRuleTab({ p }: { p: Probe }) {
     return () => { live = false; };
   }, [p.tag, activeVersion]);
 
+  // a web hit on this probe changes the history's counts and reach: refresh them (the draft stays)
+  const webHits = useApp((s) => s.list.reduce((n, i) => n + (i.tag === p.tag && (i.protocol === "http" || i.protocol === "https") ? 1 : 0), 0));
+  useEffect(() => {
+    if (!rs) return;
+    let live = true;
+    const t = setTimeout(() => fetchRule(p.tag).then((r) => { if (live) setRs((prev) => (prev && prev.active?.version === r.active?.version ? r : prev)); }, () => {}), 400);
+    return () => { live = false; clearTimeout(t); };
+  }, [webHits]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const base = useMemo(() => norm(rs?.active?.rule ?? DEFAULT), [rs]);
   const dirty = rs != null && !same(draft, base);
   // the draft is kept in the store, so the tab label says "edited" and nothing is lost on a switch
@@ -194,7 +203,7 @@ export function HttpRuleTab({ p }: { p: Probe }) {
   const loop = draft.mode === "redirect" ? draft.loop ?? 0 : 0;
   const hops = loop ? loop + 1 : 1;
   const activeV = rs?.history.find((v) => v.version === rs?.active?.version);
-  const reached = !dirty && activeV ? reach(activeV.rule, activeV.maxHop) : null;
+  const reached = !dirty && activeV ? (activeV.clients ?? []).map((c) => reachOf(activeV.rule, c)).filter(Boolean) as string[] : [];
   // a missing value isn't an error until you've left the field; a wrong value is shown right away
   const pending = !!preview.error && /is required/.test(preview.error) && !touched.has(errorField(preview.error) ?? "");
   const errF = pending ? null : errorField(preview.error);
@@ -248,7 +257,11 @@ export function HttpRuleTab({ p }: { p: Probe }) {
                 <Switch aria-label="Loop through this probe first" checked={loop > 0} onCheckedChange={(on) => { set({ loop: on ? 9 : 0 }); setHop(1); }} />
                 {loop > 0 && <><Num label="Hops" value={loop} max={20} onChange={(n) => { set({ loop: Math.max(n, 1) }); setHop(1); }} /><span className="text-[12.5px] text-smoke">hops through this probe first</span></>}
               </div>
-              {reached && <p className="text-[12.5px] text-bone"><span className="text-smoke">Seen on v{rs?.active?.version}:</span> {reached}.</p>}
+              {reached.length > 0 && (
+                <div className="text-[12.5px] text-bone"><span className="text-smoke">Seen on v{rs?.active?.version}, per client (self-tests and decoy replies left out):</span>
+                  <ul className="mt-0.5 space-y-0.5">{reached.map((l) => <li key={l}>{l}.</li>)}</ul>
+                </div>
+              )}
             </Row>
             {loop > 0 && (
               <Row label="Hop codes" error={errFor("hopStatuses")} help={<>Loop hops cycle through these codes (empty: every hop is a {draft.status}). Where the run of hits stops tells you which code the client's HTTP library won't follow; 300, 305, 306, 309 and 310 are the telling ones.</>}>
@@ -424,7 +437,7 @@ function HistoryRow({ v, current, live, onLoad }: { v: RuleVersion; current: boo
   const codes = Array.isArray(r.hopStatuses) && r.hopStatuses.length ? ` (${r.hopStatuses.join("/")})` : "";
   const what = (r.mode === "default" ? "Default reply" : r.mode === "redirect" ? `Redirect ${r.status} → ${r.location}${r.loop ? `, loop ×${r.loop}${codes}` : ""}`
     : r.mode === "file" ? `Hosted file, ${r.contentType}` : r.mode === "preset" ? `XXE preset, reads ${r.params?.file}` : `Custom ${r.status}`) + (r.decoy ? ", with a decoy" : "");
-  const depth = r.mode === "redirect" && r.loop && v.maxHop ? ` · deepest hop ${v.maxHop}/${r.loop + 1}` : "";
+  const depth = r.mode === "redirect" && r.loop && v.maxHop ? ` · deepest hop ${v.maxHop}/${r.loop + 1}${(v.clients?.length ?? 0) > 1 ? ` (${v.clients!.length} clients)` : ""}` : "";
   const decoys = v.decoys ? ` · ${v.decoys} decoy` : "";
   return (
     <li className={cn("grid grid-cols-[22px_44px_minmax(0,1fr)_auto] items-baseline gap-2.5 px-3 py-[5px] text-[12.5px]", current && "bg-soot-2")}>

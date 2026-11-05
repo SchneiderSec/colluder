@@ -81,19 +81,21 @@ test("curl: rebuilt request is shell-safe and drops computed headers", () => {
   assert.equal(toCurl("garbage", "http", { id: 1, normalised: false }), null);
 });
 
-import { reach, statusAt } from "../src/lib/reach.ts";
+import { reachOf, statusAt } from "../src/lib/reach.ts";
 
 test("reach: deepest hop says how many redirects were followed and which code stopped it", () => {
   const r = { mode: "redirect", status: 302, loop: 9, hopStatuses: [305, 309] };
   assert.equal(statusAt(r, 1), 305);
   assert.equal(statusAt(r, 2), 309);
   assert.equal(statusAt(r, 10), 302);
-  assert.equal(reach(r, 1), "deepest hop 1 of 10: followed 0 redirects, then stopped at a 305");
-  assert.equal(reach(r, 2), "deepest hop 2 of 10: followed 1 redirect, then stopped at a 309");
-  assert.equal(reach(r, 10), "followed all 9 redirects to the final Location");
-  assert.equal(reach({ mode: "redirect", status: 307, loop: 3 }, 3), "deepest hop 3 of 4: followed 2 redirects, then stopped at a 307");
-  assert.equal(reach({ mode: "custom" }, 3), null);
-  assert.equal(reach(r, null), null);
+  const c = (maxHop: number, minHop = 1) => ({ ip: "203.0.113.9", ua: "Wget/1.21.4 extra", maxHop, minHop, hits: maxHop });
+  assert.equal(reachOf(r, c(1)), "Wget/1.21.4 from 203.0.113.9 reached hop 1 of 10: followed 0 redirects, then stopped at a 305");
+  assert.equal(reachOf(r, c(2)), "Wget/1.21.4 from 203.0.113.9 reached hop 2 of 10: followed 1 redirect, then stopped at a 309");
+  assert.equal(reachOf({ ...r, location: "http://169.254.169.254/latest/meta-data/" }, c(10)),
+    "Wget/1.21.4 from 203.0.113.9 reached the last hop (10 of 10) and got the 302 → 169.254.169.254; whether it followed shows in the target's response");
+  assert.match(reachOf({ mode: "redirect", status: 307, loop: 3 }, c(3, 3))!, /stopped at a 307 \(no earlier hops from this client/);
+  assert.equal(reachOf({ mode: "custom" }, c(3)), null);
+  assert.equal(reachOf(r, c(0)), null);
 });
 
 import { callbacks, bypasses, addressForms, formUrl, variantOf, encode } from "../src/lib/kit.ts";

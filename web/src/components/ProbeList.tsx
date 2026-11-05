@@ -1,6 +1,6 @@
 import { useId, useLayoutEffect, useRef, useState } from "react";
 import { Bell, BellOff, ChevronDown, ChevronRight, Redo2 } from "lucide-react";
-import { useApp, select, unreadFor, keyOf, setDiscord, type AppState } from "@/store";
+import { useApp, select, unreadFor, keyOf, setDiscord, lateHit, retiredUnread, type AppState } from "@/store";
 import { PROTOS, UNTAGGED, type Counts, type Probe } from "@/lib/types";
 import { dayOrTime, dur, isoMs, plural } from "@/lib/format";
 import { toast } from "@/lib/toast";
@@ -52,7 +52,7 @@ function CountChips({ c }: { c: Counts }) {
   );
 }
 
-const lateHit = (p: Partial<Probe>) => !!(p.retiredAt && p.lastHitAt && isoMs(p.lastHitAt) > isoMs(p.retiredAt));
+
 
 function Row({ s, p, k }: { s: AppState; p: Probe | (Counts & Partial<Probe>); k: string }) {
   const unread = unreadFor(s, k);
@@ -102,7 +102,8 @@ export function ProbeList() {
   const all = [...s.probes.values()];
   // a retired probe that hears something again comes back up: late hits are often the real bug
   const active = all.filter((p) => !p.retiredAt || lateHit(p)).sort((a, b) => activity(b) - activity(a));
-  const retired = all.filter((p) => p.retiredAt && !lateHit(p));
+  const retired = all.filter((p) => p.retiredAt && !lateHit(p)).sort((a, b) => activity(b) - activity(a));
+  const retiredNew = retiredUnread(s);
   const d = s.status?.discord;
 
   // Gate-board rerank: when a probe jumps to the top on a new hit, slide rows to their new
@@ -141,7 +142,7 @@ export function ProbeList() {
         <div className="flex-1" />
         {!!retired.length && (
           <button type="button" onClick={() => setShowRetired(!showRetired)} className="flex items-center gap-1.5 border-t border-rule-2 px-5 py-2 text-[12.5px] text-smoke hover:text-bone">
-            {showRetired ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}Retired ({retired.length})
+            {showRetired ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}Retired ({retired.length}){retiredNew > 0 && <span className="text-amber"> · {retiredNew} new</span>}
           </button>
         )}
         {showRetired && retired.map((p) => <Row key={p.tag} s={s} p={p} k={p.tag} />)}

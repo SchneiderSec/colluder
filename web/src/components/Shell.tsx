@@ -3,7 +3,7 @@ import { ArrowDownToLine, Copy, Radio, Settings2, Briefcase } from "lucide-react
 import type { LucideIcon } from "lucide-react";
 import { useApp, totalUnread, chatterOf, keyOf, select, selectHit } from "@/store";
 import { UNTAGGED } from "@/lib/types";
-import { ago, dur, hms, isoMs } from "@/lib/format";
+import { ago, dur, hms, isoMs, newestFirst } from "@/lib/format";
 import { copy } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
 import { LineForm, useTick } from "./bits";
@@ -68,7 +68,7 @@ export function StatusBar() {
   const edgeSt = s.status?.edge;
   // the newest hit that carries signal (resolver chatter skipped)
   const chatter = chatterOf(s.list);
-  const lastHit = s.list.find((i) => !chatter.has(i.id));
+  const lastHit = s.list.filter((i) => !chatter.has(i.id)).reduce<typeof s.list[number] | undefined>((m, i) => (!m || newestFirst(i, m) < 0 ? i : m), undefined);
   const now = new Date();
   const night = now.getHours() < 5;
   const Item = ({ kind, label, word, sub, bad, title }: { kind?: "live" | "dash" | "down"; label: string; word: string; sub?: string; bad?: boolean; title?: string }) => (

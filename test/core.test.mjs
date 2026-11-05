@@ -220,6 +220,10 @@ test("report: captured values stay inside code; timeline, exfil and self-tests a
   // the hostile User-Agent sits inside a longer backtick fence, so it can't close the code span
   assert.match(md, /User-Agent ````evil ``` \[click\]\(http:\/\/e\) <img src=x>````/);
   assert.match(md, /````http\nPOST \/hook HTTP\/1\.1\n\nurl=```\n````/, "fence outgrows backticks in the trigger");
+  // hits come in ingest order; the report reads them in time order (edge hits land before interactsh's)
+  const late = probeReport({ probe: { tag: "ssrf", plantedAt: at(0), target: "", note: "" }, hits: [hits[2], hits[0], hits[1]],
+    enrich: () => null, domain: D, payloadId: ID, selfIps: ["203.0.113.10"], now: at(9) });
+  assert.match(late, /first 2026-11-05 10:00:01\.000, last 2026-11-05 10:00:03\.000/);
   assert.equal(code("a\nb"), "`a\\nb`");
   assert.equal(code("`x`"), "`` `x` ``");
   assert.match(fenced("x".repeat(20000)), /more bytes not included/);
@@ -257,4 +261,25 @@ test("store: a request that isn't UTF-8 keeps its bytes, and the hash is of the 
   assert.deepEqual(s.rawRequestBytes(a.row.id), bytes);
   const untrusted = parseInteraction(o, D);
   assert.equal(untrusted.rawBytes, null, "only the edge's lines carry bytes");
+});
+
+test("store: reach is per client, without self-tests or decoys; sources marked as yours count as self", () => {
+  const s = new Store(":memory:");
+  s.saveRule("loop", { mode: "redirect", status: 302, location: "http://169.254.169.254/", loop: 3 }, "2026-11-05T10:00:00Z");
+  let n = 0;
+  const hit = (ip, ua, hop, extra = {}) => {
+    const o = { protocol: "http", "unique-id": ID, "full-id": `loop.${ID}`, "remote-address": ip, timestamp: `2026-11-05T10:00:0${n}.000Z`,
+      "raw-request": `GET /?hop=${hop} HTTP/1.1\r\nUser-Agent: ${ua}\r\n\r\n`, "raw-response": "", "colluder-answer": { by: "colluder", mode: "redirect", version: 1, hop, ...extra } };
+    s.insert(JSON.stringify(o) + n++, parseInteraction(o, D, { trusted: true }), "2026-11-05T10:00:09Z");
+  };
+  hit("203.0.113.1", "Wget/1.21", 1);
+  hit("203.0.113.2", "curl/8.5.0", 1); hit("203.0.113.2", "curl/8.5.0", 2); hit("203.0.113.2", "curl/8.5.0", 3);
+  hit("203.0.113.10", "curl/8.5.0", 4);
+  hit("198.51.100.7", "Mozilla/5.0", 4);
+  hit("203.0.113.3", "HeadChecker", 1, { decoy: "method" });
+  s.setMine("198.51.100.7", true, "2026-11-05T10:01:00Z");
+  const v = s.ruleHistory("loop", ["203.0.113.10"]).history[0];
+  assert.equal(v.maxHop, 3, "the box's and your own hop 4 don't count");
+  assert.deepEqual(v.clients.map((c) => [c.ip, c.maxHop]).sort(), [["203.0.113.1", 1], ["203.0.113.2", 3]]);
+  assert.deepEqual(s.mine(), ["198.51.100.7"]);
 });

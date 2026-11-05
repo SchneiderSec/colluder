@@ -86,7 +86,7 @@ export interface HttpRule {
 }
 // who gets interactsh's harmless default reply instead of the rule (sources: a string while typed)
 export interface Decoy { first?: number; ua?: string; sources?: string[] | string }
-export interface RuleVersion { version: number; createdAt: string; rule: HttpRule; hits?: number; maxHop?: number | null; decoys?: number }
+export interface RuleVersion { version: number; createdAt: string; rule: HttpRule; hits?: number; maxHop?: number | null; decoys?: number; clients?: { ip: string; ua: string; maxHop: number; minHop: number; hits: number }[] }
 export interface RuleState { active: RuleVersion | null; history: RuleVersion[]; defaultHits: number; interactshHits: number; edge: EdgeStatus }
 
 export interface EdgeStatus {
@@ -139,6 +139,7 @@ export interface Status {
   lastClear: { at: string; count: number } | null;
   edge?: EdgeStatus;
   selfIps?: string[];
+  mineIps?: string[]; // sources you marked as yours
 }
 
 export interface StateResponse {
