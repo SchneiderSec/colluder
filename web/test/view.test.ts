@@ -95,3 +95,48 @@ test("reach: deepest hop says how many redirects were followed and which code st
   assert.equal(reach({ mode: "custom" }, 3), null);
   assert.equal(reach(r, null), null);
 });
+
+import { callbacks, bypasses, addressForms, formUrl, variantOf, encode } from "../src/lib/kit.ts";
+
+test("kit: callbacks and bypasses carry their code next to the tag; codes are unique", () => {
+  const H = "abcdefghij0123456789klmnopqrstuvw.oob.example";
+  const cb = callbacks("fetch", H), by = bypasses("fetch", H, "api.shop.example");
+  const codes = [...cb, ...by].map((p) => p.code);
+  assert.equal(new Set(codes).size, codes.length);
+  assert.equal(cb[0].text, `http://kc1.fetch.${H}/`);
+  assert.equal(cb[1].text, `https://${H}/fetch/k/kc2`);
+  assert.equal(cb.find((p) => p.code === "kc6")!.text, `\\\\kc6.fetch.${H}\\k`);
+  assert.equal(by[0].text, `http://api.shop.example@ka1.fetch.${H}/`);
+  assert.equal(by[2].text, `http://ka3.fetch.${H}#@api.shop.example/`);
+  assert.equal(by[4].text, `http://ka5.fetch.${H}\\@api.shop.example/`);
+  assert.equal(by[8].text, `http://ka9。fetch。${H.replace(/\./g, "。")}/`);
+  for (const p of [...cb, ...by]) assert.match(p.text, /fetch/, p.code);
+});
+
+test("kit: every numeric address form is the same 32-bit address", () => {
+  // inet_aton rules: 1–4 parts, each decimal, 0x hex or 0-led octal; the last part fills the rest
+  const aton = (s: string) => {
+    const parts = s.split(".").map((x) => (/^0x/i.test(x) ? parseInt(x, 16) : /^0\d/.test(x) ? parseInt(x, 8) : Number(x)));
+    const last = parts.pop()!;
+    return parts.reduce((acc, p, i) => acc + p * 2 ** (24 - 8 * i), 0) + last;
+  };
+  const forms = addressForms("169.254.169.254")!;
+  const numeric = forms.filter((f) => /^[0-9x.a-f]+$/i.test(f.host) && !f.host.includes("nip"));
+  assert.ok(numeric.length >= 8);
+  for (const f of numeric) assert.equal(aton(f.host), 0xa9fea9fe, `${f.name}: ${f.host}`);
+  assert.equal(forms.find((f) => f.name === "Decimal")!.host, "2852039166");
+  assert.equal(forms.find((f) => f.name === "IPv6, mapped hex")!.host, "[::ffff:a9fe:a9fe]");
+  assert.equal(formUrl(forms[0], "latest/meta-data/"), "http://169.254.169.254/latest/meta-data/");
+  assert.ok(addressForms("127.0.0.1")!.some((f) => f.host === "0"));
+  assert.equal(addressForms("256.1.1.1"), null);
+  assert.equal(addressForms("10.0.0"), null);
+});
+
+test("kit: a hit names the payload that fired", () => {
+  assert.equal(variantOf({ extraLabels: ["api", "shop", "example", "ka6"] })!.name, "Expected host as a subdomain");
+  assert.equal(variantOf({ extraLabels: [], summary: "GET /fetch/k/kc2 HTTP/1.1 · curl/8" })!.code, "kc2");
+  assert.equal(variantOf({ protocol: "smtp", rawRequest: "MAIL FROM:<a@b>\r\nRCPT TO:<kc5@fetch.x>\r\n" })!.code, "kc5");
+  assert.equal(variantOf({ extraLabels: ["726f6f74"], summary: "GET /fetch/k/zz9 HTTP/1.1" }), null);
+  assert.equal(encode("http://a/?b=c&d", "once"), "http%3A%2F%2Fa%2F%3Fb%3Dc%26d");
+  assert.equal(encode("a b", "twice"), "a%2520b");
+});

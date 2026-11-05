@@ -3,6 +3,7 @@ import { ArrowDown, Copy, FileText, Search, Terminal } from "lucide-react";
 import { useApp, loadDetail, lookupAsn, save, chatterOf } from "@/store";
 import { dnsSteps } from "@/lib/dns";
 import { decodeLabels } from "@/lib/exfil";
+import { variantOf, SECTION_LABEL } from "@/lib/kit";
 import { toCurl } from "@/lib/curl";
 import type { Enrich } from "@/lib/types";
 import { byteCount, lineCount } from "@/lib/format";
@@ -117,6 +118,7 @@ export function HitDetail({ id }: { id: number }) {
   const chatter = chatterOf(s.list).get(d.id);
   const step = d.protocol === "dns" ? dnsSteps(s.list).get(d.id) : undefined;
   const self = (s.status?.selfIps ?? []).includes(d.remoteAddress);
+  const kit = variantOf(d);
   const curl = web ? toCurl(d.rawRequest, d.protocol === "https" ? "https" : "http", { id: d.id, normalised: !d.answer }) : null;
   // who wrote the bytes: the edge records them off the socket; interactsh re-serialises them
   const capture = d.answer ? "edge" as const : "engine" as const;
@@ -169,7 +171,8 @@ export function HitDetail({ id }: { id: number }) {
           <b className="font-semibold text-bone">Resolver step, not data.</b> The same resolver asked for <span className="font-mono text-bone">{step}</span> within seconds. Resolvers that minimise queries ask for the name one label at a time, so the labels here are part of that longer name.
         </p>
       )}
-      {!step && !!d.extraLabels?.length && (
+      {kit && <p className="flex-none text-[12.5px] text-smoke">Payload kit: <span className="text-bone">{SECTION_LABEL[kit.section]}, {kit.name}</span> <span className="font-mono text-ash">({kit.code})</span></p>}
+      {!step && !!d.extraLabels?.length && !(kit && d.extraLabels.length === 1) && (
         <p className="flex-none text-[12.5px] text-smoke">
           Extra labels before the tag: <span className="font-mono text-bone">{d.extraLabels.join(".")}</span>
           {decodeLabels(d.extraLabels).map(({ label, decoded }) => (

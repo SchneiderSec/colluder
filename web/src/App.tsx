@@ -7,6 +7,7 @@ import { Composer } from "@/components/Composer";
 import { ProbeList } from "@/components/ProbeList";
 import { ProbePane } from "@/components/ProbePane";
 import { Settings, Planned, PLANNED } from "@/components/Pages";
+import { PayloadKit } from "@/components/PayloadKit";
 import { MarkSvg, setFavicon } from "@/components/Mark";
 import { Toaster } from "@/components/bits";
 import { cn } from "@/lib/utils";
@@ -83,7 +84,7 @@ export default function App() {
                 <ProbePane />
               </div>
             </>
-          ) : route.view === "settings" ? <Settings /> : <Planned view={route.view} />}
+          ) : route.view === "settings" ? <Settings /> : route.view === "kit" ? <PayloadKit section={route.arg} /> : <Planned view={route.view} />}
         </main>
         <StatusBar />
       </div>
