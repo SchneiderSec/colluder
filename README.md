@@ -97,6 +97,7 @@ in a once-a-minute count, never dropped. See PLAN-REVIEW3.md A1): put `DISCORD_W
 | `COLLUDER_ALLOWED_HOSTS` | `box.tailnet.ts.net,user` (plus host:port) |
 | `COLLUDER_DOMAIN` | `oob.example` |
 | `DISCORD_WEBHOOK_URL` | unset (alerts off) |
+| `COLLUDER_SELF_IPS` | `203.0.113.10` (comma-separated; hits from these read "this box") |
 | `COLLUDER_EDGE_HTTP` / `COLLUDER_EDGE_HTTPS` (edge) | `203.0.113.10:80` / `:443` (`off` disables HTTPS) |
 | `COLLUDER_UPSTREAM_HTTP` / `COLLUDER_UPSTREAM_HTTPS` (edge) | `127.0.0.1:8081` / `127.0.0.1:8444` (cutover writes the real ones to `~/.config/colluder/edge.env`) |
 | `COLLUDER_EDGE_CERT` / `COLLUDER_EDGE_KEY` (edge) | `~/caido-cert/fullchain.pem` / `privkey.pem` (kept fresh by `colluder-cert-sync.timer`) |

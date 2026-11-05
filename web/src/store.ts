@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import type { Counts, Enrich, HttpRule, Interaction, InteractionDetail, Probe, RuleState, StateResponse, Status } from "@/lib/types";
 import { UNTAGGED } from "@/lib/types";
+import { dnsSteps } from "@/lib/dns";
 import { toast } from "@/lib/toast";
 import { isoMs, plural } from "@/lib/format";
 
@@ -22,6 +23,8 @@ export interface AppState {
   sel: string | null;
   hit: number | null;
   hitPicked: boolean; // the researcher chose this hit; otherwise the selection follows new hits
+  older: Record<string, Interaction[]>; // B4: hits older than the live list, loaded on demand per probe
+  olderDone: Record<string, boolean>;
   tab: ProbeTab; // which probe tab is open; kept across probe switches
   ruleDrafts: Record<string, HttpRule>; // unsaved HTTP rule edits per probe; survive tab and probe switches
   ruleSeed: { tag: string; mode: "redirect" | "file" } | null; // planted with a technique: open its editor in that mode
@@ -40,7 +43,7 @@ export function save(k: string, v: unknown) {
 
 let state: AppState = {
   loaded: false, loadError: null, status: null, probes: new Map(), untagged: null, list: [], details: new Map(), enrich: new Map(),
-  seen: load<Record<string, number> | null>("colluder.seen", null) ?? {}, openSeen: {}, sel: null, hit: null, hitPicked: false, tab: "hits", ruleDrafts: {}, ruleSeed: null,
+  seen: load<Record<string, number> | null>("colluder.seen", null) ?? {}, openSeen: {}, sel: null, hit: null, hitPicked: false, older: {}, olderDone: {}, tab: "hits", ruleDrafts: {}, ruleSeed: null,
   stream: { state: "connecting", since: Date.now(), lastEventAt: 0 }, arrived: null, lit: null, pulse: 0,
 };
 const firstVisit = load("colluder.seen", null) == null;
@@ -117,8 +120,9 @@ export const EVENT_GAP_MS = 3_000;
 export function unreadFor(s: AppState, key: string) {
   const seen = s.seen[key] || 0;
   const chatter = key === UNTAGGED ? chatterOf(s.list) : null;
+  const steps = dnsSteps(s.list); // resolver steps toward a longer name are part of that lookup, not news
   const times: number[] = [];
-  for (const i of s.list) { if (i.id <= seen) break; if (keyOf(i) === key && !chatter?.has(i.id)) times.push(isoMs(i.timestamp)); }
+  for (const i of s.list) { if (i.id <= seen) break; if (keyOf(i) === key && !chatter?.has(i.id) && !steps.has(i.id)) times.push(isoMs(i.timestamp)); }
   if (!times.length) return 0;
   times.sort((a, b) => a - b);
   let n = 1;
@@ -193,6 +197,20 @@ export async function lookupAsn(ip: string) {
   const e = await api<Enrich>(`/api/enrich/${encodeURIComponent(ip)}/asn`, { method: "POST", body: {} });
   set({ enrich: new Map(state.enrich).set(ip, e) });
 }
+// ---------- B4: a probe's full history ----------
+const hitsPath = (key: string) => `/api/probes/${key === UNTAGGED ? "__untagged" : encodeURIComponent(key)}`;
+export async function loadOlder(key: string, before: number) {
+  const r = await api<{ hits: Interaction[] }>(`${hitsPath(key)}/hits?before=${before}&limit=200`);
+  const have = new Set((state.older[key] ?? []).map((i) => i.id));
+  set({
+    older: { ...state.older, [key]: [...(state.older[key] ?? []), ...r.hits.filter((i) => !have.has(i.id))] },
+    olderDone: { ...state.olderDone, [key]: r.hits.length < 200 },
+  });
+}
+export const searchHits = (key: string, q: string, types: string[]) =>
+  api<{ hits: Interaction[] }>(`${hitsPath(key)}/hits?limit=500&q=${encodeURIComponent(q)}&type=${types.join(",")}`).then((r) => r.hits);
+export const exportUrl = (key: string) => `${hitsPath(key)}/export.jsonl`;
+
 // ---------- HTTP answer rules (phase 2) ----------
 export const fetchRule = (tag: string) => api<RuleState>(`/api/probes/${tag}/http-rule`);
 export const previewRule = (tag: string, rule: HttpRule, scheme: "http" | "https", hop: number) =>

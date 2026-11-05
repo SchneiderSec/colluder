@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowDownToLine, Copy, RefreshCw } from "lucide-react";
-import { useApp, plant } from "@/store";
+import { useApp, plant, save } from "@/store";
 import { TAG_RE, UNTAGGED } from "@/lib/types";
 import { variants } from "@/lib/raw";
 import { copy } from "@/lib/toast";
@@ -37,6 +37,12 @@ export function Composer() {
   const preview = tag && TAG_RE.test(tag) && !s.probes.has(tag) ? tag : null;
   const shownTag = preview || (s.sel && s.sel !== UNTAGGED ? s.sel : null);
   const vs = variants(host, domain, shownTag);
+  // B6: while you read a probe's hits, its payloads fold into one line of copy buttons, so the hit
+  // detail gets the room. "Show payloads" keeps them open (remembered).
+  const [pinned, setPinned] = useState<boolean>(() => { try { return JSON.parse(localStorage.getItem("colluder.payloadsOpen") ?? "false"); } catch { return false; } });
+  const pin = (v: boolean) => { setPinned(v); save("colluder.payloadsOpen", v); };
+  const reading = !preview && !!shownTag && (s.probes.get(shownTag)?.hits ?? 0) > 0 && s.tab === "hits";
+  const folded = reading && !pinned && !!vs;
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -87,6 +93,16 @@ export function Composer() {
         {preview ? "Preview for" : shownTag ? "Payloads for" : "Base payload"}
         <span className="block truncate font-mono text-[12.5px] text-bone">{shownTag ?? "no tag"}</span>
       </div>
+      {folded ? (
+        <div ref={varsRef} className="flex min-w-0 flex-wrap items-center gap-1">
+          {vs!.map((v) => (
+            <Button key={v.proto} data-copy variant="ghost" size="sm" title={v.value} aria-label={`Copy ${v.proto.toUpperCase()} payload`} onClick={() => copy(v.value, `${v.proto.toUpperCase()} payload`)}>
+              <Copy /><TypeChip proto={v.proto} />
+            </Button>
+          ))}
+          <Button variant="ghost" size="sm" className="ml-1 text-ash" onClick={() => pin(true)}>Show payloads</Button>
+        </div>
+      ) : (
       <div ref={varsRef} className="grid min-w-0 auto-rows-[24px] grid-cols-[62px_minmax(0,max-content)_54px_minmax(0,1fr)] items-center gap-x-2.5 max-[820px]:grid-cols-[52px_minmax(0,1fr)_54px]">
         {!vs ? (
           <p className="col-span-full flex items-center gap-2 text-[12.5px] text-smoke">
@@ -125,9 +141,11 @@ export function Composer() {
               </div>
             ))}
             {preview && <p className="col-span-full text-[11px] text-ash">Not planted yet: these already work, but Plant records the tag and target so the hits read as a story.</p>}
+            {reading && pinned && <Button variant="ghost" size="sm" className="col-span-full justify-self-start text-ash" onClick={() => pin(false)}>Fold payloads while reading hits</Button>}
           </>
         )}
       </div>
+      )}
     </section>
   );
 }

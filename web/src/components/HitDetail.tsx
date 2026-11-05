@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowDown, Copy, FileText, Search } from "lucide-react";
 import { useApp, loadDetail, lookupAsn, save, chatterOf } from "@/store";
+import { dnsSteps } from "@/lib/dns";
 import type { Enrich } from "@/lib/types";
 import { byteCount, lineCount } from "@/lib/format";
 import { answeredBy, decode, evidence } from "@/lib/raw";
@@ -112,6 +113,8 @@ export function HitDetail({ id }: { id: number }) {
   const recvMs = Date.parse(d.receivedAt) - Date.parse(d.timestamp.replace(/(\.\d{3})\d+/, "$1"));
   const probe = d.tag ? s.probes.get(d.tag) : undefined;
   const chatter = chatterOf(s.list).get(d.id);
+  const step = d.protocol === "dns" ? dnsSteps(s.list).get(d.id) : undefined;
+  const self = (s.status?.selfIps ?? []).includes(d.remoteAddress);
   // who wrote the bytes: the edge records them off the socket; interactsh re-serialises them
   const capture = d.answer ? "edge" as const : "engine" as const;
   const reqP = web && parsed ? parseHttp(cut(d.rawRequest)) : null;
@@ -133,7 +136,7 @@ export function HitDetail({ id }: { id: number }) {
       </div>
 
       <div className="flex flex-none flex-wrap items-center gap-x-[22px] gap-y-1 text-[12.5px] whitespace-nowrap max-[820px]:whitespace-normal">
-        <span className="flex items-center gap-2"><span className="text-smoke">{d.protocol === "dns" ? "Resolver" : "Source"}</span><span className="font-mono text-[12.5px]">{d.remoteAddress}</span></span>
+        <span className="flex items-center gap-2"><span className="text-smoke">{d.protocol === "dns" ? "Resolver" : "Source"}</span><span className="font-mono text-[12.5px]">{d.remoteAddress}</span>{self && <span className="text-[11px] text-ash" title="This is the OOB box itself: a self-test, not a target.">this box</span>}</span>
         {web && forwardedFor(d.rawRequest).map(([h, v]) => (
           <span key={h} className="flex min-w-0 items-center gap-2" title={`From the ${h} header. The sender sets it, so it may be spoofed.`}>
             <span className="text-smoke">Forwarded for</span><span className="truncate font-mono text-[12.5px] text-bone">{v}</span>
@@ -158,7 +161,12 @@ export function HitDetail({ id }: { id: number }) {
         </p>
       )}
       {d.protocol === "dns" && <p className="flex-none text-[12.5px] text-smoke">DNS hits come from the resolver that asked on the target's behalf. It is often a public or ISP resolver, not the target itself.</p>}
-      {!!d.extraLabels?.length && <p className="flex-none text-[12.5px] text-smoke">Extra labels before the tag: <span className="font-mono text-bone">{d.extraLabels.join(".")}</span></p>}
+      {step && (
+        <p className="flex-none text-[12.5px] text-smoke">
+          <b className="font-semibold text-bone">Resolver step, not data.</b> The same resolver asked for <span className="font-mono text-bone">{step}</span> within seconds. Resolvers that minimise queries ask for the name one label at a time, so the labels here are part of that longer name.
+        </p>
+      )}
+      {!step && !!d.extraLabels?.length && <p className="flex-none text-[12.5px] text-smoke">Extra labels before the tag: <span className="font-mono text-bone">{d.extraLabels.join(".")}</span></p>}
 
       <div className="mt-0.5 flex flex-none flex-wrap items-center gap-2">
         {web ? (

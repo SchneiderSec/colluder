@@ -158,3 +158,27 @@ test("store: dedupe, auto-probe for unknown tags, soft clear and restore", () =>
   assert.equal(s.restoreLastClear(), 1);
   assert.equal(s.recent().length, 1);
 });
+
+test("store: a probe's hits page by id, search escapes LIKE wildcards, filter by type, export", () => {
+  const s = new Store(":memory:");
+  const add = (n, protocol, req, ip = "192.0.2.1") => {
+    const raw = { protocol, "unique-id": ID, "full-id": protocol === "dns" ? `n${n}.pg.${ID}` : ID, "q-type": "A", "remote-address": ip,
+      timestamp: `2026-11-05T10:00:${String(n).padStart(2, "0")}.0Z`, "raw-request": protocol === "dns" ? "q" : `GET /pg/${req} HTTP/1.1\r\nHost: ${ID}.${D}\r\n\r\n`, "raw-response": "r" };
+    s.insert(JSON.stringify(raw), parseInteraction(raw, D), "2026-11-05T10:01:00Z");
+  };
+  for (let n = 0; n < 7; n++) add(n, n % 2 ? "http" : "dns", n === 3 ? "a_100%25" : `x${n}`);
+  const all = s.hits("pg");
+  assert.equal(all.length, 7);
+  const page = s.hits("pg", { limit: 3 });
+  assert.equal(page.length, 3);
+  const next = s.hits("pg", { before: page.at(-1).id, limit: 3 });
+  assert.ok(next.every((r) => r.id < page.at(-1).id));
+  assert.equal(s.hits("pg", { types: ["http"] }).length, 3);
+  assert.equal(s.hits("pg", { q: "a_100%" }).length, 1, "% and _ match literally");
+  assert.equal(s.hits("pg", { q: "a%" }).length, 0);
+  assert.equal(s.hits("pg", { q: "n4.pg" }).length, 1, "searches the DNS name");
+  assert.equal(s.hits(null).length, 0);
+  const ex = [...s.exportRows("pg")];
+  assert.equal(ex.length, 7);
+  assert.ok(ex[0].rawRequest && ex[0].reqSha256);
+});

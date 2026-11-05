@@ -402,7 +402,7 @@ The desktop is a fixed, full-height application grid that never scrolls as a pag
 
 - **Tool rail** (76px) on the left, spanning the full height: the mark, then Probes, a short Rule, then the cross-probe tools Payload kit and Listeners, with Settings pinned to the bottom. Anything that changes what a single probe answers is a tab on the probe, not a rail tool.
 - **Banners** stack at the top of the main column when something is wrong.
-- **Composer band** on top: the "Plant a probe" heading in a 132px label column, then Tag / Target / Technique / Plant in one row, then the selected probe's DNS, HTTP and HTTPS payload variants, each with a copy button and a one-line note.
+- **Composer band** on top: the "Plant a probe" heading in a 132px label column, then Tag / Target / Technique / Plant in one row, then the selected probe's DNS, HTTP and HTTPS payload variants, each with a copy button and a one-line note. While you read a probe's hits, the variants fold into one line of copy buttons (copy icon + type chip each) and "Show payloads"; opening them is remembered, and "Fold payloads while reading hits" folds them again.
 - **Probe list** (400px; 320px under 1180px): latest activity first, with a 42px header and a 40px Discord-alerts footer.
 - **Probe pane**: a 52px probe header, a 35px tab strip (Hits · HTTP response · DNS answers; Unregistered has no tabs), then on the Hits tab the hits table (capped at min(28vh, 212px) while a hit is open, so detail stays visible), a "Planted … · first hit …" caption between solid hairlines, then the hit detail filling the rest.
 - **Status bar** (28px) along the bottom of the main column: wordmark, Engine, Stream, Last hit, then the payload host and the UTC clock on the right.
@@ -491,7 +491,7 @@ Restrained, mostly outlined, with exactly one bright button per working region.
 - **Banners:** full-width strips at the top of the main column, Alarm (engine down or degraded, load failure) or Caution (stream paused, correlation id changed). Each leads with its line form, states what is wrong and what it means, and offers the fix inline (a copyable command, "Got it").
 
 ### Probe list row
-A three-line row: new-dot slot, mono tag and hit count, last-activity time; then the target in Smoke; then count chips (amber "n new", protocol counts) and the **Ringed Tail**. Silent probes read "Armed · silent 3m" with a solid live line, and "No callbacks yet · planted 09:06". The Unregistered row sits at the bottom, separated by a Rule, in sans rather than mono.
+A three-line row: new-dot slot, mono tag and hit count, last-activity time; then the target in Smoke; then count chips (amber "n new", protocol counts) and the **Ringed Tail**. Silent probes read "Armed · silent 3m" with a solid live line, and "No callbacks yet · planted 09:06"; retired ones read "Retired · silent 4h" in Ash. A retired probe that gets a hit after retirement comes back into the active list with a grey "late hit · retired 14:02" chip. The Unregistered row sits at the bottom, separated by a Rule, in sans rather than mono.
 
 ### Ringed Tail (signature)
 A 120×10px raccoon tail as the probe's time axis: Fur at 40% opacity, tapering from a deep root at planting time (left) to a rounded tip at now (right), crossed by four faint Soot rings. Each hit is a 2px tick in its protocol ink at its relative time. The tail stays quiet so the ticks carry the signal.
@@ -500,7 +500,13 @@ A 120×10px raccoon tail as the probe's time axis: Fur at 40% opacity, tapering 
 When a hit moves a probe to the top, the rows slide to their new places (FLIP, 420ms, ease-out-expo) so the eye can follow what moved, and the arriving row flashes Lit for 1.4s.
 
 ### Hits table and DNS bursts
-Fixed columns `#`, `Time (UTC)` (to the millisecond), `Type`, `Source` (mono), `Request` (mono request line plus User-Agent for web, the mail sender for SMTP; for DNS the queried name, with the tag highlighted, any exfil labels in Bone, and the id shortened to `c0ffee12…`). It has a sticky Soot header with 11px Smoke labels. DNS lookups that arrive together collapse into one burst row ("#18–21", "DNS ×4", "2 resolvers", query types, span in ms, per-IP counts) with a chevron that expands its children, indented, on a slightly darker ground. Selected rows fill Soot 2.
+Fixed columns `#`, `Time (UTC)` (to the millisecond), `Type`, `Source` (mono), `Request` (mono request line plus User-Agent for web, the mail sender for SMTP; for DNS the queried name, with the tag highlighted, any exfil labels in Bone, and the id shortened to `c0ffee12…`). It has a sticky Soot header with 11px Smoke labels. DNS lookups that arrive together collapse into one burst row ("#18–21", "DNS ×4", "2 resolvers", then the most specific name asked, "+n names" when there were others, query types (blank ones read "other"), span in ms, per-IP counts) with a chevron that expands its children, indented, on a slightly darker ground. Selected rows fill Soot 2.
+
+- **Filters:** DNS / HTTP(S) / SMTP toggles, a search field ("Search names, paths, bodies, IPs") and Export (every stored hit as JSON lines). They sit at the right of the tab strip when the probe pane is at least 900px wide, and in their own row under it otherwise (and on Unregistered). Search and type filters run on the server over every stored hit, not only the loaded ones, and say "n matches".
+- **History:** the live list holds the newest 2000 hits across all probes; a probe with more shows "Load older hits (2000 of 2100 shown)" at the end of its table.
+- **Resolver steps:** a lookup whose name is a proper suffix of a longer name the same resolver asked within 5 s reads "· resolver step toward ip-10-0-3-17.root…" in Ash (QNAME minimisation), never counts as new, and its detail says "Resolver step, not data." instead of listing extra labels.
+- **Chatter on the probe:** bare-id lookups attributed to a probe also appear in that probe's table, greyed, as "· resolver chatter", never new.
+- **This box:** hits from the OOB box itself (`COLLUDER_SELF_IPS`) read "this box" in Ash next to the source.
 
 ### Resolver-chatter labelling
 A bare-id lookup within 10s of a tagged hit is labelled "resolver chatter around ‹tag›" in Ash. It is kept but never counted as new (no dot, no chip). Hit detail explains it in one sentence (QNAME minimisation or HTTPS host resolution).

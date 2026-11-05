@@ -1,6 +1,8 @@
-import { useEffect, useRef, useState } from "react";
-import { ChevronRight } from "lucide-react";
-import { useApp, keyOf, selectHit, patchProbe, saveRule, chatterOf, setTab, unreadFor, PROBE_TABS, type AppState, type ProbeTab } from "@/store";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ChevronRight, Download, Search } from "lucide-react";
+import { useApp, keyOf, selectHit, patchProbe, saveRule, chatterOf, setTab, unreadFor, loadOlder, searchHits, exportUrl, PROBE_TABS, type AppState, type ProbeTab } from "@/store";
+import { dnsSteps, mostSpecific } from "@/lib/dns";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { UNTAGGED, type Interaction, type Probe } from "@/lib/types";
 import { dayOrTime, hmsms, isoMs, plural } from "@/lib/format";
 import { groupHits } from "@/lib/raw";
@@ -104,19 +106,23 @@ function rowKeys(fn: () => void) {
   return (e: React.KeyboardEvent) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fn(); } };
 }
 
-function HitRow({ i, open, sel, arrived, child, chatter, onClick }: { i: Interaction; open: number; sel: boolean; arrived: boolean; child?: boolean; chatter?: string; onClick: () => void }) {
-  const isNew = i.id > open && !chatter;
+// the labels before the payload id, for naming a longer lookup compactly
+const labelsOf = (fullId: string) => fullId.split(".").slice(0, -3).join(".") || fullId;
+
+function HitRow({ i, open, sel, arrived, child, chatter, inProbe, step, self, onClick }: { i: Interaction; open: number; sel: boolean; arrived: boolean; child?: boolean; chatter?: string; inProbe?: boolean; step?: string; self?: boolean; onClick: () => void }) {
+  const isNew = i.id > open && !chatter && !step;
+  const quiet = !!chatter || !!step;
   const web = i.protocol === "http" || i.protocol === "https";
   const ref = useRef<HTMLTableRowElement>(null);
   useEffect(() => { if (sel) ref.current?.scrollIntoView({ block: "nearest" }); }, [sel]);
   return (
     <tr ref={ref} tabIndex={0} aria-selected={sel} onClick={(e) => { e.stopPropagation(); onClick(); }} onKeyDown={rowKeys(onClick)}
-      className={cn("group cursor-pointer", arrived && "[&>td]:animate-lit", child && "[&>td]:bg-[#191510] [&>td:first-child]:pl-11")}>
+      className={cn("group cursor-pointer", arrived && "[&>td]:animate-lit", child && "[&>td]:bg-[#191510] [&>td:first-child]:pl-11", quiet && !sel && "[&>td]:text-smoke")}>
       <Td sel={sel} first><span className={cn("flex items-center gap-1.5 font-semibold", isNew ? "text-bone" : "text-smoke")}>{isNew ? <NewDot /> : <NilDot />}#{i.id}</span></Td>
       <Td sel={sel}>{hmsms(i.timestamp)}</Td>
-      <Td sel={sel}><TypeChip proto={i.protocol}>{i.protocol === "dns" && i.qType ? `DNS ${i.qType}` : undefined}</TypeChip></Td>
+      <Td sel={sel}><TypeChip proto={i.protocol}>{i.protocol === "dns" ? `DNS ${i.qType || "other"}` : undefined}</TypeChip></Td>
       <Td sel={sel} className="font-mono text-[12.5px]">{i.remoteAddress}</Td>
-      <Td sel={sel} last>{web || i.protocol === "smtp" ? <><span className="font-mono text-[12.5px]">{i.summary}</span>{i.hop != null && <span className="ml-2 text-[11px] whitespace-nowrap text-ash" title="Redirect loop hop Colluder answered">hop {i.hop}</span>}</> : i.protocol === "dns" ? <><DnsName i={i} />{chatter && <span className="text-[11px] text-ash"> · resolver chatter around {chatter}</span>}</> : <span className="text-[11px] text-smoke">{i.summary}</span>}</Td>
+      <Td sel={sel} last>{web || i.protocol === "smtp" ? <><span className="font-mono text-[12.5px]">{i.summary}</span>{i.hop != null && <span className="ml-2 text-[11px] whitespace-nowrap text-ash" title="Redirect loop hop Colluder answered">hop {i.hop}</span>}{self && <span className="ml-2 text-[11px] text-ash" title="Sent from the OOB box itself (a self-test), not a target">· this box</span>}</> : i.protocol === "dns" ? <><DnsName i={i} />{chatter && <span className="text-[11px] text-ash" title="A lookup of the bare payload id near this probe's hits: a resolver walking the name, or a client resolving the HTTPS host. Kept, never counted as new."> · resolver chatter{inProbe ? "" : ` around ${chatter}`}</span>}{step && <span className="text-[11px] text-ash" title={`The resolver asked for this on its way to ${step} (QNAME minimisation). Not exfil data.`}> · resolver step toward <span className="font-mono">{labelsOf(step)}</span></span>}</> : <span className="text-[11px] text-smoke">{i.summary}</span>}</Td>
     </tr>
   );
 }
@@ -139,7 +145,7 @@ const TAB_PLANNED: Record<"dns", { title: string; what: string; today: string; w
 };
 const TAB_LABEL: Record<ProbeTab, string> = { hits: "Hits", http: "HTTP response", dns: "DNS answers" };
 
-function ProbeTabs({ s, p }: { s: AppState; p: Probe }) {
+function ProbeTabs({ s, p, right }: { s: AppState; p: Probe; right?: React.ReactNode }) {
   const unread = s.tab !== "hits" ? unreadFor(s, p.tag) : 0;
   const ref = useRef<HTMLDivElement>(null);
   const onKeyDown = (e: React.KeyboardEvent) => {
@@ -152,8 +158,9 @@ function ProbeTabs({ s, p }: { s: AppState; p: Probe }) {
     ref.current?.querySelectorAll<HTMLButtonElement>("[role=tab]")[next]?.focus();
   };
   return (
+    <div className="flex h-[35px] min-w-0 items-stretch border-b border-rule pr-5 max-[820px]:pr-3.5">
     <div ref={ref} role="tablist" aria-label={`Probe ${p.tag}`} onKeyDown={onKeyDown}
-      className="flex h-[35px] items-stretch gap-6 overflow-x-auto border-b border-rule pr-5 pl-6 max-[820px]:gap-5 max-[820px]:px-3.5">
+      className="flex flex-none items-stretch gap-6 overflow-x-auto pl-6 max-[820px]:gap-5 max-[820px]:pl-3.5">
       {PROBE_TABS.map((t) => {
         const on = s.tab === t;
         return (
@@ -172,6 +179,8 @@ function ProbeTabs({ s, p }: { s: AppState; p: Probe }) {
           </button>
         );
       })}
+    </div>
+    {right}
     </div>
   );
 }
@@ -201,7 +210,32 @@ function PlannedTab({ tab }: { tab: "dns" }) {
 export function ProbePane() {
   const s = useApp((x) => x);
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
-  useEffect(() => setExpanded(new Set()), [s.sel]);
+  const [q, setQ] = useState("");
+  const [kinds, setKinds] = useState<string[]>([]);
+  const [results, setResults] = useState<Interaction[] | null>(null);
+  useEffect(() => { setExpanded(new Set()); setQ(""); setKinds([]); setResults(null); }, [s.sel]);
+
+  // the pane's rows: live hits, older pages loaded on demand, and (on a tagged probe) the resolver
+  // chatter around it, which belongs to its story even though it carries no tag
+  const chatterAll = chatterOf(s.list);
+  const olderRows = s.sel ? s.older[s.sel] : undefined;
+  const all = useMemo(() => {
+    if (!s.sel) return [];
+    const m = new Map<number, Interaction>();
+    for (const i of s.list) if (keyOf(i) === s.sel || (s.sel !== UNTAGGED && chatterAll.get(i.id) === s.sel)) m.set(i.id, i);
+    for (const i of olderRows ?? []) m.set(i.id, i);
+    return [...m.values()].sort((a, b) => b.id - a.id);
+  }, [s.sel, s.list, olderRows, chatterAll]);
+  const steps = useMemo(() => dnsSteps(all), [all]);
+  const filtering = q.trim() !== "" || kinds.length > 0;
+  // search and type filters run on the server, over every stored hit of this probe
+  useEffect(() => {
+    if (!s.sel || !filtering) { setResults(null); return; }
+    const types = kinds.flatMap((k) => (k === "web" ? ["http", "https"] : [k]));
+    const t = setTimeout(() => { searchHits(s.sel!, q.trim(), types).then(setResults, () => setResults([])); }, 250);
+    return () => clearTimeout(t);
+  }, [s.sel, q, kinds, filtering, s.list[0]?.id]);
+  const hits = filtering ? results ?? [] : all;
 
   // keyboard: j / k move through hits
   useEffect(() => {
@@ -210,7 +244,6 @@ export function ProbePane() {
       if (document.querySelector("[role=dialog],[role=alertdialog]")) return; // never move hits behind an open dialog
       if ((e.key !== "j" && e.key !== "k") || !s.sel) return;
       if (s.sel !== UNTAGGED && s.tab !== "hits") return;
-      const hits = s.list.filter((i) => keyOf(i) === s.sel);
       const idx = hits.findIndex((i) => i.id === s.hit);
       const next = hits[Math.min(Math.max(idx + (e.key === "j" ? 1 : -1), 0), hits.length - 1)];
       if (!next) return;
@@ -221,15 +254,14 @@ export function ProbePane() {
     };
     addEventListener("keydown", onKey);
     return () => removeEventListener("keydown", onKey);
-  }, [s.sel, s.list, s.hit, s.tab]);
+  }, [s.sel, hits, s.hit, s.tab]);
 
-  const hits = s.sel ? s.list.filter((i) => keyOf(i) === s.sel) : [];
   // until the researcher picks a hit, the selection follows the newest one, preferring a web hit over
   // the DNS lookups that arrive around it (a fetch usually lands a moment after its lookup)
-  const hitId = s.hitPicked && hits.some((i) => i.id === s.hit) ? s.hit : autoHit(hits);
+  const hitId = s.hitPicked && hits.some((i) => i.id === s.hit) ? s.hit : autoHit(hits.filter((i) => !chatterAll.has(i.id) && !steps.has(i.id)).concat(hits.slice(0, 1)));
   useEffect(() => { if (hitId !== s.hit && hitId != null) selectHit(hitId, false); }, [hitId, s.hit]);
 
-  const wrap = "grid min-h-0 min-w-0 grid-rows-[52px_minmax(0,auto)_minmax(0,1fr)] max-[820px]:grid-rows-[auto_auto_auto]";
+  const wrap = "@container/probe grid min-h-0 min-w-0 grid-rows-[52px_minmax(0,auto)_minmax(0,1fr)] max-[820px]:grid-rows-[auto_auto_auto]";
   if (!s.sel) {
     return (
       <section className={wrap}>
@@ -251,7 +283,7 @@ export function ProbePane() {
       </section>
     );
   }
-  if (!hits.length) {
+  if (!all.length) {
     const capturing = s.status?.engine?.state === "capturing";
     return (
       <section className={cn(wrap, tabbed)} aria-label={`Probe ${s.sel}`}>
@@ -275,16 +307,23 @@ export function ProbePane() {
   }
 
   const open = s.openSeen[s.sel] ?? s.seen[s.sel] ?? 0;
-  const chatter = s.sel === UNTAGGED ? chatterOf(s.list) : new Map<number, string>();
+  const chatter = chatterAll;
+  const selfIps = new Set(s.status?.selfIps ?? []);
+  const row = (i: Interaction, child?: boolean) => (
+    <HitRow key={i.id} child={child} i={i} chatter={chatter.get(i.id)} inProbe={s.sel !== UNTAGGED} step={steps.get(i.id)} self={selfIps.has(i.remoteAddress)} open={open} sel={i.id === hitId} arrived={i.id === s.arrived} onClick={() => selectHit(i.id)} />
+  );
   const rows: React.ReactNode[] = [];
   for (const g of groupHits(hits)) {
-    if (g.kind === "one") { const i = g.items[0]; rows.push(<HitRow key={i.id} i={i} chatter={chatter.get(i.id)} open={open} sel={i.id === hitId} arrived={i.id === s.arrived} onClick={() => selectHit(i.id)} />); continue; }
+    if (g.kind === "one") { rows.push(row(g.items[0])); continue; }
     const items = g.items, first = items[items.length - 1], last = items[0];
     const exp = expanded.has(first.id);
     const srcs = new Map<string, number>();
     for (const i of items) srcs.set(i.remoteAddress, (srcs.get(i.remoteAddress) || 0) + 1);
-    const qtypes = [...new Set(items.map((i) => i.qType).filter(Boolean))].join(", ");
-    const anyNew = items.some((i) => i.id > open && !chatter.has(i.id));
+    const qtypes = [...new Set(items.map((i) => i.qType || "other"))].join(", ");
+    const anyNew = items.some((i) => i.id > open && !chatter.has(i.id) && !steps.has(i.id));
+    // the name that matters: the longest one asked (resolver steps toward it don't count as names)
+    const top = mostSpecific(items);
+    const names = new Set(items.filter((i) => !steps.has(i.id)).map((i) => i.fullId.toLowerCase())).size;
     const chatterTags = [...new Set(items.map((i) => chatter.get(i.id)).filter(Boolean))];
     const allChatter = items.every((i) => chatter.has(i.id));
     const sel = !exp && items.some((i) => i.id === hitId);
@@ -304,20 +343,40 @@ export function ProbePane() {
         <Td sel={sel}><TypeChip proto="dns">DNS ×{items.length}</TypeChip></Td>
         <Td sel={sel}>{srcs.size === 1 ? <span className="font-mono text-[12.5px]">{first.remoteAddress}</span> : `${srcs.size} resolvers`}</Td>
         <Td sel={sel} last>
-          {new Set(items.map((i) => i.fullId)).size === 1 && <><DnsName i={first} /><span className="text-[11px] text-smoke"> · </span></>}
-          <span className="text-[11px] text-smoke">{qtypes || "DNS"} · {Math.max(...items.map((i) => isoMs(i.timestamp))) - Math.min(...items.map((i) => isoMs(i.timestamp)))} ms · </span>
+          <DnsName i={top} />{names > 1 && <span className="text-[11px] text-ash"> +{names - 1} {names === 2 ? "name" : "names"}</span>}<span className="text-[11px] text-smoke"> · </span>
+          <span className="text-[11px] text-smoke">{qtypes} · {Math.max(...items.map((i) => isoMs(i.timestamp))) - Math.min(...items.map((i) => isoMs(i.timestamp)))} ms · </span>
           {allChatter && <span className="text-[11px] text-ash">resolver chatter around {chatterTags.join(", ")} · </span>}
           <span className="font-mono text-[11px] text-smoke">{[...srcs].sort((a, b) => b[1] - a[1]).map(([ip, n]) => `${ip} ×${n}`).join(" · ")}</span>
         </Td>
       </tr>,
     );
-    if (exp) for (const i of items) rows.push(<HitRow key={i.id} child i={i} chatter={chatter.get(i.id)} open={open} sel={i.id === hitId} arrived={i.id === s.arrived} onClick={() => selectHit(i.id)} />);
+    if (exp) for (const i of items) rows.push(row(i, true));
   }
-  const firstHit = hits[hits.length - 1];
+  const filterBar = (where: "tabs" | "bar") => (
+    <>
+      <ToggleGroup type="multiple" value={kinds} onValueChange={setKinds} aria-label="Show only" className="flex-none overflow-hidden rounded-[3px] border border-rule">
+        {[["dns", "DNS"], ["web", "HTTP(S)"], ["smtp", "SMTP"]].map(([v, l], n) => (
+          <ToggleGroupItem key={v} value={v} className={cn("h-6 rounded-none px-2.5 text-[11px] text-smoke data-[state=on]:bg-soot-2 data-[state=on]:font-semibold data-[state=on]:text-bone", n > 0 && "border-l border-rule")}>{l}</ToggleGroupItem>
+        ))}
+      </ToggleGroup>
+      <label className={cn("flex h-6 min-w-[140px] flex-1 items-center gap-1.5 rounded-[3px] border border-rule bg-soot px-2 focus-within:border-smoke", where === "bar" && "max-[820px]:basis-full", where === "tabs" && "max-w-[340px]")}>
+        <Search className="size-3.5 flex-none text-ash" strokeWidth={1.5} />
+        <input aria-label={`Search ${p ? p.tag : "Unregistered"}'s hits`} value={q} onChange={(e) => setQ(e.target.value)} spellCheck={false}
+          placeholder="Search names, paths, bodies, IPs" className="h-full w-full min-w-0 bg-transparent font-mono text-[12.5px] text-bone outline-none placeholder:font-sans placeholder:text-ash" />
+      </label>
+      {filtering && <span className="text-[11px] whitespace-nowrap text-ash">{results === null ? "searching…" : `${results.length}${results.length === 500 ? "+" : ""} ${results.length === 1 ? "match" : "matches"}`}</span>}
+      <Button variant="ghost" size="sm" asChild className="flex-none"><a href={exportUrl(s.sel!)} download title="Every stored hit of this probe as JSON lines, raw bytes included"><Download />Export</a></Button>
+    </>
+  );
+  const firstHit = all[all.length - 1];
+  const ownCount = all.filter((i) => keyOf(i) === s.sel).length;
   return (
     <section className={cn(wrap, tabbed)} aria-label={`Probe ${s.sel === UNTAGGED ? "Unregistered" : s.sel}`}>
-      <Head s={s} />{tabs}
-      <div id={p ? "probe-panel" : undefined} role={p ? "tabpanel" : undefined} aria-labelledby={p ? "probe-tab-hits" : undefined} className="max-h-[min(28vh,212px)] min-h-0 overflow-auto max-[820px]:max-h-none">
+      <Head s={s} />{p && <ProbeTabs s={s} p={p} right={<div className="ml-auto hidden min-w-0 flex-1 items-center justify-end gap-2.5 pl-6 @min-[900px]/probe:flex">{filterBar("tabs")}</div>} />}
+      <div id={p ? "probe-panel" : undefined} role={p ? "tabpanel" : undefined} aria-labelledby={p ? "probe-tab-hits" : undefined} className="flex min-h-0 flex-col">
+      {/* the filters sit in the tab strip when the pane is wide; below it otherwise (and on Unregistered) */}
+      <div className={cn("flex flex-none flex-wrap items-center gap-x-2.5 gap-y-1.5 border-b border-rule-2 py-1.5 pr-5 pl-6 max-[820px]:px-3.5", p && "@min-[900px]/probe:hidden")}>{filterBar("bar")}</div>
+      <div className="max-h-[min(28vh,212px)] min-h-0 overflow-auto max-[820px]:max-h-none">
         <table className="w-full table-fixed border-collapse">
           <colgroup><col className="w-[112px] max-[820px]:w-[84px]" /><col className="w-[116px] max-[820px]:w-[96px]" /><col className="w-[92px] max-[820px]:w-[84px]" /><col className="w-[150px] max-[820px]:w-auto" /><col className="max-[820px]:w-0" /></colgroup>
           <thead>
@@ -325,13 +384,23 @@ export function ProbePane() {
               <th key={t} scope="col" className={cn("sticky top-0 z-[1] border-b border-rule bg-soot px-2.5 py-[5px] text-left text-[11px] font-semibold tracking-[.03em] text-smoke", i === 0 && "pl-6 max-[820px]:pl-3.5", i === 4 && "max-[820px]:hidden")}>{t}</th>
             ))}</tr>
           </thead>
-          <tbody>{rows}</tbody>
+          <tbody>
+            {rows}
+            {filtering && results?.length === 0 && <tr><td colSpan={5} className="px-6 py-3 text-[12.5px] text-ash">No stored hits match. Search covers names, request lines, raw requests and source IPs.</td></tr>}
+          </tbody>
         </table>
+        {!filtering && !s.olderDone[s.sel] && ownCount < (p ? p.hits : s.untagged?.hits ?? 0) && (
+          <button type="button" onClick={() => loadOlder(s.sel!, all[all.length - 1].id).catch((e) => toast((e as Error).message, true))}
+            className="w-full cursor-pointer border-b border-rule-2 px-6 py-1.5 text-left text-[12.5px] text-smoke hover:bg-[#211b16] hover:text-bone">
+            Load older hits <span className="text-ash">({ownCount} of {p ? p.hits : s.untagged?.hits} shown)</span>
+          </button>
+        )}
         <div className="flex items-center gap-2.5 px-6 py-1.5 text-[11px] text-ash">
           <hr className="flex-1 border-0 border-t border-rule-2" />
           {p ? `Planted ${dayOrTime(p.plantedAt)} UTC · first hit ${hmsms(firstHit.timestamp)}` : `First hit ${dayOrTime(firstHit.timestamp)} UTC · ${plural(hits.length, "hit")}`}
           <hr className="flex-1 border-0 border-t border-rule-2" />
         </div>
+      </div>
       </div>
       {hitId != null && <HitDetail id={hitId} />}
     </section>

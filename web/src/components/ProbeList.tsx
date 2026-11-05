@@ -52,6 +52,8 @@ function CountChips({ c }: { c: Counts }) {
   );
 }
 
+const lateHit = (p: Partial<Probe>) => !!(p.retiredAt && p.lastHitAt && isoMs(p.lastHitAt) > isoMs(p.retiredAt));
+
 function Row({ s, p, k }: { s: AppState; p: Probe | (Counts & Partial<Probe>); k: string }) {
   const unread = unreadFor(s, k);
   const isU = k === UNTAGGED;
@@ -68,6 +70,7 @@ function Row({ s, p, k }: { s: AppState; p: Probe | (Counts & Partial<Probe>); k
       </span>
       {talking
         ? <span className="text-right text-[12.5px] whitespace-nowrap" title={p.lastHitAt ?? ""}>{dayOrTime(p.lastHitAt)}</span>
+        : p.retiredAt ? <span className="text-right text-[11px] whitespace-nowrap text-ash">Retired · silent {dur(Date.now() - isoMs(p.retiredAt))}</span>
         : <span className="flex items-center justify-end gap-1.5 text-[11px] whitespace-nowrap text-smoke"><LineForm kind="live" className="w-4 text-ash" />Armed · silent {dur(Date.now() - isoMs(p.plantedAt))}</span>}
       <span className="col-span-2 col-start-2 truncate text-[12.5px] text-smoke">
         {isU ? "Hits that carry no tag" : p.target || (p.registered ? "No target noted" : "Unregistered tag: hits arrived for a tag you did not plant")}
@@ -76,6 +79,7 @@ function Row({ s, p, k }: { s: AppState; p: Probe | (Counts & Partial<Probe>); k
         <span className="col-start-2 flex min-w-0 gap-3 overflow-hidden text-[11px]">
           {!!unread && <Chip>{unread} new</Chip>}
           {!isU && !p.registered && <Chip grey>unregistered</Chip>}
+          {lateHit(p) && <Chip grey>late hit · retired {dayOrTime(p.retiredAt!)}</Chip>}
           <CountChips c={p} />
         </span>
       ) : <span className="col-start-2 text-[11px] text-ash">No callbacks yet · planted {dayOrTime(p.plantedAt)}</span>}
@@ -95,8 +99,9 @@ export function ProbeList() {
   const [showRetired, setShowRetired] = useState(false);
   useTick(30000);
   const all = [...s.probes.values()];
-  const active = all.filter((p) => !p.retiredAt).sort((a, b) => activity(b) - activity(a));
-  const retired = all.filter((p) => p.retiredAt);
+  // a retired probe that hears something again comes back up: late hits are often the real bug
+  const active = all.filter((p) => !p.retiredAt || lateHit(p)).sort((a, b) => activity(b) - activity(a));
+  const retired = all.filter((p) => p.retiredAt && !lateHit(p));
   const d = s.status?.discord;
 
   // Gate-board rerank: when a probe jumps to the top on a new hit, slide rows to their new

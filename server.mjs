@@ -33,6 +33,7 @@ const CFG = {
   clientBin: env.COLLUDER_CLIENT_BIN || join(homedir(), "go/bin/interactsh-client"),
   extraHosts: (env.COLLUDER_ALLOWED_HOSTS || "box.tailnet.ts.net,user").split(",").map((s) => s.trim()).filter(Boolean),
 };
+const SELF_IPS = (env.COLLUDER_SELF_IPS || "203.0.113.10").split(",").map((s) => s.trim()).filter(Boolean);
 const PUBLIC_URL = env.COLLUDER_PUBLIC_URL || `http://${CFG.host}:${CFG.port}/`;
 const ALLOWED_HOSTS = new Set([CFG.host, ...CFG.extraHosts, "127.0.0.1", "localhost"].map((h) => `${h}:${CFG.port}`.toLowerCase()));
 
@@ -133,6 +134,7 @@ function statusPayload() {
     discord: { available: discord.available, enabled: discordEnabled() },
     lastClear: store.lastClear(),
     edge: edgeStatus,
+    selfIps: SELF_IPS, // B5: hits from the OOB box itself read "this box"
   };
 }
 
@@ -290,6 +292,28 @@ const server = http.createServer(async (req, res) => {
       if (!it) return json(res, 404, { error: "no such interaction" });
       if (!it.enrich || !it.enrich.rdnsAt) enrichRdns(it.remoteAddress); // backfilled rows: resolve lazily, arrives as an "enrich" event
       return json(res, 200, it);
+    }
+    // B4: a probe's older hits, search and filter (q, type=dns,http,https,smtp), and a JSONL export
+    if (req.method === "GET" && (m = /^\/api\/probes\/([a-z0-9-]{1,32}|__untagged)\/hits$/.exec(p))) {
+      const tag = m[1] === "__untagged" ? null : m[1];
+      const types = (url.searchParams.get("type") || "").split(",").filter((t) => ["dns", "http", "https", "smtp", "ldap", "ftp"].includes(t));
+      const rows = store.hits(tag, {
+        before: Number(url.searchParams.get("before")) || undefined,
+        limit: Number(url.searchParams.get("limit")) || 200,
+        q: (url.searchParams.get("q") || "").slice(0, 200),
+        types,
+      });
+      return json(res, 200, { hits: rows });
+    }
+    if (req.method === "GET" && (m = /^\/api\/probes\/([a-z0-9-]{1,32}|__untagged)\/export\.jsonl$/.exec(p))) {
+      const tag = m[1] === "__untagged" ? null : m[1];
+      res.writeHead(200, {
+        "content-type": "application/x-ndjson; charset=utf-8",
+        "content-disposition": `attachment; filename="colluder-${tag ?? "unregistered"}-${nowIso().slice(0, 10)}.jsonl"`,
+        "cache-control": "no-store",
+      });
+      for (const r of store.exportRows(tag)) res.write(JSON.stringify({ ...r, answer: r.answer ? JSON.parse(r.answer) : null }) + "\n");
+      return res.end();
     }
     if (req.method === "POST" && p === "/api/probes") {
       const b = await body(req);

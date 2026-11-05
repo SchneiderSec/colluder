@@ -36,3 +36,24 @@ test("query: decoded values keep + and show control characters", () => {
   ]);
   assert.deepEqual(showControls("a\nb\tc\u0001"), [["text", "a"], ["ctl", "\\n"], ["text", "b"], ["ctl", "\\t"], ["text", "c"], ["ctl", "\\x01"]]);
 });
+
+import { dnsSteps, mostSpecific } from "../src/lib/dns.ts";
+
+test("dns: resolver steps toward a longer name are flagged, real names are not", () => {
+  const id = "c0ffee12c0ffee12c0ffk3m9qx7wz2pdn";
+  const at = (s: number) => `2026-11-05T10:00:${String(s).padStart(2, "0")}.000Z`;
+  const list = [
+    { id: 1, protocol: "dns", fullId: `bbop.${id}`, remoteAddress: "1.1.1.1", timestamp: at(0) },
+    { id: 2, protocol: "dns", fullId: `root.bbop.${id}`, remoteAddress: "1.1.1.1", timestamp: at(1) },
+    { id: 3, protocol: "dns", fullId: `ip-10-0-3-17.root.bbop.${id}`, remoteAddress: "1.1.1.1", timestamp: at(1) },
+    { id: 4, protocol: "dns", fullId: `root.bbop.${id}`, remoteAddress: "8.8.8.8", timestamp: at(2) }, // other resolver: real
+    { id: 5, protocol: "dns", fullId: `x.root.bbop.${id}`, remoteAddress: "1.1.1.1", timestamp: at(30) }, // too late
+  ];
+  const steps = dnsSteps(list);
+  assert.equal(steps.get(1), `ip-10-0-3-17.root.bbop.${id}`);
+  assert.equal(steps.get(2), `ip-10-0-3-17.root.bbop.${id}`);
+  assert.equal(steps.has(3), false);
+  assert.equal(steps.has(4), false);
+  assert.equal(steps.has(5), false);
+  assert.equal(mostSpecific(list).id, 3);
+});

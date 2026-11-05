@@ -113,6 +113,7 @@ export interface Status {
   discord: { available: boolean; enabled: boolean };
   lastClear: { at: string; count: number } | null;
   edge?: EdgeStatus;
+  selfIps?: string[];
 }
 
 export interface StateResponse {
