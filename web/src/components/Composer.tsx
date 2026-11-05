@@ -29,7 +29,7 @@ function ssrfRule(url: string, headDecoy: boolean): HttpRule {
 const XXE_FILES: [string, string][] = [
   ["/etc/hostname", "/etc/hostname (one line, works on Java)"],
   ["php://filter/convert.base64-encode/resource=/etc/passwd", "/etc/passwd through php://filter (PHP)"],
-  ["file:///c:/windows/win.ini", "C:\\Windows\\win.ini (Windows)"],
+  ["file:///c:/windows/win.ini", "C:\\Windows\\win.ini (Windows; multi-line, so only clients that send raw newlines)"],
   ["custom", "Another file…"],
 ];
 function xxeRule(probeHost: string, file: string): HttpRule {

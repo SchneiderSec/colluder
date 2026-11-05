@@ -3,19 +3,36 @@
 
 import { decodeExfil } from "./exfil.ts"; // with the extension: Node runs this file in tests and the report
 
-type Hit = { summary?: string; fullId?: string; answerMode?: string | null; malformed?: string | null; hop?: number | null; decoy?: string | null; answerCode?: number | null; answerTo?: string | null; hopCode?: number | null; answerPart?: string | null };
+type Hit = { summary?: string; fullId?: string; rawRequest?: string; answerMode?: string | null; malformed?: string | null; hop?: number | null; decoy?: string | null; answerCode?: number | null; answerTo?: string | null; hopCode?: number | null; answerPart?: string | null };
 
-// XXE: the DTD sends the file to kx0.<tag>…/d?d=<contents>. Shown decoded, one line, control
-// characters as escapes; php://filter output is base64, so that is decoded too.
-export function xxeData(h: Hit): string | null {
+// XXE: the DTD sends the file to kx0.<tag>…/d?d=<contents>. The value is everything after the first
+// "d=" (a file can hold & and =; an old Java client even sends raw spaces and newlines, which the
+// edge records as a malformed request). php://filter output is base64, so that is decoded too.
+// From the raw request when there is one (the list row only has the summary, cut at the first line).
+export function xxeValue(h: Hit): { text: string; base64: boolean } | null {
   if (!/^kx0\./.test(h.fullId ?? "")) return null;
-  const m = /^[A-Z]+ \S*[?&]d=([^ &#]*)/.exec(h.summary ?? "");
-  if (!m) return null;
-  let v = m[1];
+  let target: string | null = null;
+  if (h.rawRequest) {
+    const m = /^\S+ ([\s\S]*?) HTTP\/\d\.\d\r?\n/.exec(h.rawRequest);
+    target = m ? m[1] : null;
+  } else if (h.summary) {
+    const line = h.summary.split(" · ")[0];
+    const sp = line.indexOf(" "), end = line.lastIndexOf(" HTTP/");
+    target = sp > 0 ? line.slice(sp + 1, end > sp ? end : undefined) : null;
+  }
+  const at = target ? /[?&]d=/.exec(target) : null;
+  if (!target || !at) return null;
+  let v = target.slice(at.index + 3);
   try { v = decodeURIComponent(v); } catch { /* keep as sent */ }
-  const b64 = /^[A-Za-z0-9+/]{8,}={0,2}$/.test(v) ? decodeExfil(v) : null;
-  const text = b64?.kind === "base64url" ? b64.text : v;
-  return text.replace(/\r/g, "\\r").replace(/\n/g, "\\n").replace(/\t/g, "\\t") + (b64?.kind === "base64url" ? " (base64, decoded)" : "");
+  const b64 = /^[A-Za-z0-9+/]{8,}={0,2}$/.test(v) ? decodeExfil(v, { max: 1 << 20 }) : null;
+  return b64?.kind === "base64url" ? { text: b64.text, base64: true } : { text: v, base64: false };
+}
+const esc = (t: string) => t.replace(/\r/g, "\\r").replace(/\n/g, "\\n").replace(/\t/g, "\\t");
+export function xxeData(h: Hit): string | null {
+  const v = xxeValue(h);
+  if (!v) return null;
+  if (!v.text) return "empty (the DTD ran; the read returned nothing)";
+  return esc(v.text) + (v.base64 ? " (base64, decoded)" : "");
 }
 
 export function stageOf(h: Hit): string | null {

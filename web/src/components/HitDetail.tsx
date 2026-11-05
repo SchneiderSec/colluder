@@ -122,9 +122,9 @@ export function HitDetail({ id }: { id: number }) {
   const mine = (s.status?.mineIps ?? []).includes(d.remoteAddress);
   const kit = variantOf(d);
   const a = d.answer;
-  const stage = a ? stageOf({ summary: d.summary, fullId: d.fullId, hop: a.hop, decoy: a.decoy, answerCode: a.code, answerTo: a.to, hopCode: a.status, answerPart: a.part, answerMode: a.mode, malformed: a.malformed }) : null;
+  const stage = a ? stageOf({ summary: d.summary, fullId: d.fullId, rawRequest: d.rawRequest, hop: a.hop, decoy: a.decoy, answerCode: a.code, answerTo: a.to, hopCode: a.status, answerPart: a.part, answerMode: a.mode, malformed: a.malformed }) : null;
   const tlsOnly = a?.mode === "tls" ? a.tls : null;
-  const curl = web && d.rawRequest ? toCurl(d.rawRequest, d.protocol === "https" ? "https" : "http", { id: d.id, normalised: !d.answer }) : null;
+  const curl = web && d.rawRequest ? toCurl(d.rawRequest, d.protocol === "https" ? "https" : "http", { id: d.id, normalised: !d.answer, truncated: d.answer?.droppedBytes ?? 0, binary: !!d.binary }) : null;
   // who wrote the bytes: the edge records them off the socket; interactsh re-serialises them
   const capture = d.answer ? "edge" as const : "engine" as const;
   const reqP = web && parsed ? parseHttp(cut(d.rawRequest)) : null;

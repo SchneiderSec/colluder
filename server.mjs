@@ -387,7 +387,8 @@ const server = http.createServer(async (req, res) => {
         trigger: store.trigger(m[1]), enrich: (ip) => store.enrich(ip), domain: CFG.domain,
         payloadId: engine.payload?.host?.split(".")[0] ?? "<payload-id>", selfIps: SELF_IPS, mineIps: store.mine(), now: nowIso(),
       });
-      res.writeHead(200, { "content-type": "text/markdown; charset=utf-8", "cache-control": "no-store" });
+      // captured values are in it: never sniffed as HTML, never a live document
+      res.writeHead(200, { "content-type": "text/markdown; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff", "content-security-policy": "sandbox" });
       return res.end(md);
     }
     if (req.method === "GET" && (m = /^\/api\/probes\/([a-z0-9-]+)\/trigger$/.exec(p))) {

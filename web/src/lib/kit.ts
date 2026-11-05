@@ -135,9 +135,14 @@ export function xxePayloads(tag: string, host: string): Payload[] {
 }
 // the hit that carries the file: the DTD sends it to kx0 (registered so the hit is named)
 const XXE_DATA: Payload = { code: "kx0", section: "xxe", name: "File data from the DTD", text: "" };
+// feed.xml and sitemap.xml pull the DTD through these
+const XXE_DOCS: Payload[] = [
+  { code: "kx8", section: "xxe", name: "DTD pulled by feed.xml", text: "" },
+  { code: "kx9", section: "xxe", name: "DTD pulled by sitemap.xml", text: "" },
+];
 
 // ---------- which payload a hit came from ----------
-const ALL: Variant[] = [...callbacks("t", "h"), ...bypasses("t", "h", "e"), ...ssrfPayloads("t", "h"), ...xxePayloads("t", "h"), XXE_DATA].map(({ code, section, name }) => ({ code, section, name }));
+const ALL: Variant[] = [...callbacks("t", "h"), ...bypasses("t", "h", "e"), ...ssrfPayloads("t", "h"), ...xxePayloads("t", "h"), XXE_DATA, ...XXE_DOCS].map(({ code, section, name }) => ({ code, section, name }));
 const BY_CODE = new Map(ALL.map((v) => [v.code, v]));
 export const SECTION_LABEL = { ...Object.fromEntries(SECTIONS.map((s) => [s.id, s.label])), ssrf: "SSRF → cloud metadata", xxe: "XXE" } as Record<string, string>;
 

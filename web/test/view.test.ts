@@ -76,8 +76,11 @@ test("curl: rebuilt request is shell-safe and drops computed headers", () => {
   const raw = "POST /hook?a=1 HTTP/1.1\r\nHost: x.example\r\nContent-Length: 9\r\nContent-Type: application/json\r\nX-Evil: it's $(id)\r\n\r\n{\"a\":\"'\"}";
   assert.equal(toCurl(raw, "https", { id: 7, normalised: true }),
     "# Rebuilt from Colluder hit #7; interactsh normalised header order and name case\n" +
-    "curl -sS 'https://x.example/hook?a=1' -H 'Content-Type: application/json' -H 'X-Evil: it'\\''s $(id)' --data-binary '{\"a\":\"'\\''\"}'");
-  assert.equal(toCurl("PUT /x HTTP/1.1\r\nHost: h\r\n\r\n", "http", { id: 1, normalised: false }), "# Rebuilt from Colluder hit #1\ncurl -sS -X PUT 'http://h/x'");
+    "curl -sS -g --path-as-is 'https://x.example/hook?a=1' -H 'Content-Type: application/json' -H 'X-Evil: it'\\''s $(id)' --data-binary '{\"a\":\"'\\''\"}'");
+  assert.equal(toCurl("PUT /x HTTP/1.1\r\nHost: h\r\n\r\n", "http", { id: 1, normalised: false }), "# Rebuilt from Colluder hit #1\ncurl -sS -g --path-as-is -X PUT 'http://h/x'");
+  const odd = toCurl("GET /a/../../etc/passwd?q={{7*7}}&ip=[::1] HTTP/1.1\r\nHost: h\r\nAccept-Encoding: gzip\r\n\r\nbody", "http", { id: 2, normalised: false, truncated: 5 })!;
+  assert.match(odd, /curl -sS -g --path-as-is --compressed -X GET 'http:\/\/h\/a\/\.\.\/\.\.\/etc\/passwd\?q=\{\{7\*7\}\}&ip=\[::1\]'/);
+  assert.match(odd, /^# The body was truncated at capture \(5 bytes dropped\)/m);
   assert.equal(toCurl("garbage", "http", { id: 1, normalised: false }), null);
 });
 
@@ -182,4 +185,14 @@ test("xxe: payloads load the DTD over HTTP with their code; the data hit decodes
   assert.equal(stageOf({ fullId: "kx0.x1.abc", summary: "GET /d?d=user%0A HTTP/1.1" }), "file data: user\\n");
   assert.equal(xxeData({ fullId: "kx0.x1.abc", summary: "GET /d?d=cm9vdDp4OjA6MDpyb290Oi9yb290Oi9iaW4vYmFzaAo= HTTP/1.1" }), "root:x:0:0:root:/root:/bin/bash\\n (base64, decoded)");
   assert.equal(xxeData({ fullId: "kx1.x1.abc", summary: "GET /d?d=x HTTP/1.1" }), null, "only the DTD's own exfil hit");
+});
+
+test("review 4: XXE data takes all after d=, says when empty; DNS exfil skips the variant code", () => {
+  assert.equal(xxeData({ fullId: "kx0.x1.abc", summary: "GET /d?d=DB_USER=app&DB_PASS=x HTTP/1.1 · Java/1.8" }), "DB_USER=app&DB_PASS=x");
+  assert.equal(xxeData({ fullId: "kx0.x1.abc", summary: "GET /d?d= HTTP/1.1" }), "empty (the DTD ran; the read returned nothing)");
+  assert.equal(xxeData({ fullId: "kx0.x1.abc", rawRequest: "GET /d?d=line one\nline two HTTP/1.1\r\nHost: h\r\n\r\n" }), "line one\\nline two");
+  assert.equal(stageOf({ answerMode: "tls" }), "TLS handshake only: no request arrived");
+  assert.equal(stageOf({ malformed: "bad request line", answerPart: "x.dtd" }), "malformed request · served x.dtd");
+  const hex = Buffer.from("uid=1000(user) gid=1000").toString("hex");
+  assert.equal(decodeLabels([hex.slice(0, 30), hex.slice(30), "kc3"])[0].decoded.text, "uid=1000(user) gid=1000");
 });

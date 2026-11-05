@@ -50,8 +50,10 @@ function base64url(s: string): string | null {
   try { return atob(t + "=".repeat((4 - (t.length % 4)) % 4)); } catch { return null; }
 }
 
-export function decodeExfil(s: string, { dns = false } = {}): Decoded | null {
-  if (!s || s.length > 4096) return null;
+// max: values longer than this aren't tried (4 KB: a guess at random strings is cheap only when short;
+// an XXE file read asks for more, since it is known to be data)
+export function decodeExfil(s: string, { dns = false, max = 4096 } = {}): Decoded | null {
+  if (!s || s.length > max) return null;
   const tries: [Decoded["kind"], (x: string) => string | null][] = [["hex", hex], ["base32", base32]];
   if (!dns) tries.push(["base64url", base64url]);
   for (const [kind, f] of tries) {
@@ -63,7 +65,9 @@ export function decodeExfil(s: string, { dns = false } = {}): Decoded | null {
 
 // labels before the tag, one value split across labels (DNS labels max out at 63 bytes): try the
 // joined string first, then each label on its own
-export function decodeLabels(labels: string[]): { label: string; decoded: Decoded }[] {
+// A payload's variant code (kc3, kx0…) sits right before the tag; it isn't part of the data.
+export function decodeLabels(all: string[]): { label: string; decoded: Decoded }[] {
+  const labels = all.length && /^k[a-z]\d{1,2}$/.test(all[all.length - 1]) ? all.slice(0, -1) : all;
   if (!labels.length) return [];
   if (labels.length > 1) {
     const joined = decodeExfil(labels.join(""), { dns: true });
