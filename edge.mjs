@@ -122,6 +122,10 @@ function record(o) {
 const ipOf = (sock) => String(sock.remoteAddress || "").replace(/^::ffff:/, "");
 const plain = (status) => Buffer.from(`HTTP/1.1 ${status} ${reason(status)}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`, "latin1");
 
+// requests answered per probe and rule version, for a decoy's "first N" (in memory: an edge restart
+// or a new rule version starts the count again)
+const answered = new Map();
+
 // ---------- connections ----------
 async function handle(sock, scheme) {
   const t0 = Date.now();
@@ -157,7 +161,10 @@ async function handle(sock, scheme) {
     wire = plain(failed.status);
     answer = { by: "colluder", mode: "error", version: null, error: failed.message };
   } else {
-    const res = respond(entry?.rule || null, entry?.version ?? null, { scheme, method: head.method, target: head.target, host, uniqueId: own.uniqueId, domain: CFG.domain });
+    const key = `${tag}\0${entry?.version}`;
+    const seen = answered.get(key) ?? 0;
+    const res = respond(entry?.rule || null, entry?.version ?? null, { scheme, method: head.method, target: head.target, host, uniqueId: own.uniqueId, domain: CFG.domain, ua: head.get("user-agent")?.[0] ?? "", ip, seen });
+    if (entry?.rule?.decoy && res.answer.version != null) { answered.delete(key); answered.set(key, seen + 1); if (answered.size > 5000) answered.delete(answered.keys().next().value); }
     wire = serialize(res, head.method);
     answer = res.answer;
     if (res.delayMs) {

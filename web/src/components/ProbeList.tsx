@@ -1,5 +1,5 @@
 import { useId, useLayoutEffect, useRef, useState } from "react";
-import { Bell, ChevronDown, ChevronRight, Redo2 } from "lucide-react";
+import { Bell, BellOff, ChevronDown, ChevronRight, Redo2 } from "lucide-react";
 import { useApp, select, unreadFor, keyOf, setDiscord, type AppState } from "@/store";
 import { PROTOS, UNTAGGED, type Counts, type Probe } from "@/lib/types";
 import { dayOrTime, dur, isoMs, plural } from "@/lib/format";
@@ -67,6 +67,7 @@ function Row({ s, p, k }: { s: AppState; p: Probe | (Counts & Partial<Probe>); k
       <span className={cn("flex min-w-0 items-center gap-[9px] overflow-hidden font-mono text-[13.5px]", !talking && "text-smoke", isU && "font-sans text-[13.5px] font-semibold text-smoke")}>
         <span className="truncate">{isU ? "Unregistered" : p.tag}</span>
         {talking && <b className="font-sans text-[12.5px] font-medium whitespace-nowrap text-smoke">{plural(p.hits, "hit")}</b>}
+        {!isU && !!p.muted && <BellOff aria-label="Discord alerts muted" className="size-3 flex-none text-ash" strokeWidth={1.5} />}
       </span>
       {talking
         ? <span className="text-right text-[12.5px] whitespace-nowrap" title={p.lastHitAt ?? ""}>{dayOrTime(p.lastHitAt)}</span>

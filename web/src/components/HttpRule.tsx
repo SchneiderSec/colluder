@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { ChevronLeft, ChevronRight, Copy, Plus, X } from "lucide-react";
 import { useApp, getState, fetchRule, previewRule, saveRule, setRuleDraft, takeRuleSeed } from "@/store";
-import type { HttpRule, Probe, RuleMode, RuleState, RuleVersion } from "@/lib/types";
+import type { Decoy, HttpRule, Probe, RuleMode, RuleState, RuleVersion } from "@/lib/types";
+import { reach } from "@/lib/reach";
 import { dayOrTime, plural } from "@/lib/format";
 import { copy, toast } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
@@ -60,7 +61,7 @@ const norm = (r: HttpRule): HttpRule => (r.mode === "default" ? DEFAULT : { ...D
 // The draft keeps every mode's fields (switching mode loses nothing); this is the part that counts.
 const KEYS: Record<RuleMode, (keyof HttpRule)[]> = {
   default: [],
-  redirect: ["status", "location", "loop"],
+  redirect: ["status", "location", "loop", "hopStatuses"],
   custom: ["status", "headers", "body", "bodyEncoding"],
   file: ["contentType", "body", "bodyEncoding", "template"],
 };
@@ -69,13 +70,28 @@ function effective(r: HttpRule): HttpRule {
   const n = norm(r);
   const out: Record<string, unknown> = { mode: n.mode, delayMs: n.delayMs, schemes: { http: n.schemes.http, https: n.schemes.https } };
   for (const k of KEYS[n.mode]) out[k] = n[k];
+  if (n.mode === "redirect") {
+    const hs = typeof n.hopStatuses === "string" ? n.hopStatuses.split(/[\s,]+/).filter(Boolean).map((x) => (/^\d+$/.test(x) ? Number(x) : x)) : n.hopStatuses ?? [];
+    if (n.loop && hs.length) out.hopStatuses = hs; else delete out.hopStatuses;
+  }
+  const d = decoyOf(n.decoy);
+  if (d) out.decoy = d;
   return out as unknown as HttpRule;
 }
+// the decoy as the server stores it: empty parts dropped, all empty is none
+function decoyOf(d?: Decoy | null): Decoy | null {
+  if (!d) return null;
+  const sources = (Array.isArray(d.sources) ? d.sources : String(d.sources ?? "").split(/[\s,]+/)).map((x) => x.trim().toLowerCase()).filter(Boolean);
+  const ua = (d.ua ?? "").trim();
+  const out: Decoy = { ...(d.first ? { first: d.first } : {}), ...(ua ? { ua } : {}), ...(sources.length ? { sources } : {}) };
+  return Object.keys(out).length ? out : null;
+}
+const ODD: [string, string][] = [["300", "300 Multiple Choices"], ["305", "305 Use Proxy"], ["306", "306 (unused)"], ["309", "309 (non-standard)"], ["310", "310 (non-standard)"]];
 const same = (a: HttpRule, b: HttpRule) => JSON.stringify(effective(a)) === JSON.stringify(effective(b));
 // which field a validation message is about, so the field itself can say so
 function errorField(msg?: string) {
   if (!msg) return null;
-  for (const [re, f] of [[/^Location/, "location"], [/^(Redirect status|Status)/, "status"], [/^Loop/, "loop"], [/[Hh]eader/, "headers"],
+  for (const [re, f] of [[/^Location/, "location"], [/^(Redirect status|Status)/, "status"], [/^Loop/, "loop"], [/^(Hop codes|Up to 10 hop)/, "hopStatuses"], [/^(Decoy|Up to 20 decoy)/, "decoy"], [/[Hh]eader/, "headers"],
     [/^Body/, "body"], [/^Delay/, "delay"], [/^Content type/, "contentType"], [/HTTP, HTTPS or both/, "schemes"]] as [RegExp, string][]) if (re.test(msg)) return f;
   return null;
 }
@@ -126,7 +142,7 @@ export function HttpRuleTab({ p }: { p: Probe }) {
   const [saving, setSaving] = useState(false);
   const [touched, setTouched] = useState<Set<string>>(new Set());
   useEffect(() => setTouched(new Set()), [p.tag]);
-  const FIELD_OF: Record<string, string> = { Location: "location", Body: "body", Status: "status", "Delay in milliseconds": "delay", "Content type": "contentType" };
+  const FIELD_OF: Record<string, string> = { Location: "location", Body: "body", Status: "status", "Delay in milliseconds": "delay", "Content type": "contentType", "Hop codes": "hopStatuses", "Decoy source IPs": "decoy" };
   const onLeave = (e: React.FocusEvent) => {
     const l = (e.target as HTMLElement).getAttribute("aria-label") ?? "";
     const f = FIELD_OF[l] ?? (/^Header \d+/.test(l) ? "headers" : null);
@@ -177,6 +193,8 @@ export function HttpRuleTab({ p }: { p: Probe }) {
   const tpl = templates(p.tag, host);
   const loop = draft.mode === "redirect" ? draft.loop ?? 0 : 0;
   const hops = loop ? loop + 1 : 1;
+  const activeV = rs?.history.find((v) => v.version === rs?.active?.version);
+  const reached = !dirty && activeV ? reach(activeV.rule, activeV.maxHop) : null;
   // a missing value isn't an error until you've left the field; a wrong value is shown right away
   const pending = !!preview.error && /is required/.test(preview.error) && !touched.has(errorField(preview.error) ?? "");
   const errF = pending ? null : errorField(preview.error);
@@ -206,7 +224,13 @@ export function HttpRuleTab({ p }: { p: Probe }) {
         {draft.mode === "redirect" && (
           <>
             <Row label="Status" error={errFor("status")} help="302 and 303 usually turn a POST into a GET; 307 and 308 keep the method and body.">
-              <Seg label="Redirect status" mono value={String(draft.status)} onChange={(v) => set({ status: Number(v) })} items={["301", "302", "303", "307", "308"].map((s) => [s, s])} />
+              <div className="flex flex-wrap items-center gap-2">
+                <Seg label="Redirect status" mono value={String(draft.status)} onChange={(v) => set({ status: Number(v) })} items={["301", "302", "303", "307", "308"].map((s) => [s, s])} />
+                <Select value={ODD.some(([c]) => c === String(draft.status)) ? String(draft.status) : ""} onValueChange={(v) => set({ status: Number(v) })}>
+                  <SelectTrigger aria-label="Unusual redirect status" className={cn("h-[28px] w-auto gap-1.5 rounded-[3px] border-rule bg-transparent px-2.5 font-mono text-[12.5px]", ODD.some(([c]) => c === String(draft.status)) && "bg-soot-2 font-semibold text-bone")}><SelectValue placeholder="Unusual…" /></SelectTrigger>
+                  <SelectContent>{ODD.map(([c, l]) => <SelectItem key={c} value={c}>{l}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
             </Row>
             <Row label="Location" error={errFor("location")} help="Scheme switches (gopher, dict, file) only land if the client follows them. Cloud targets listed here need no extra request headers.">
               <div className="flex min-w-0 gap-2">
@@ -222,7 +246,13 @@ export function HttpRuleTab({ p }: { p: Probe }) {
                 <Switch aria-label="Loop through this probe first" checked={loop > 0} onCheckedChange={(on) => { set({ loop: on ? 9 : 0 }); setHop(1); }} />
                 {loop > 0 && <><Num label="Hops" value={loop} max={20} onChange={(n) => { set({ loop: Math.max(n, 1) }); setHop(1); }} /><span className="text-[12.5px] text-smoke">hops through this probe first</span></>}
               </div>
+              {reached && <p className="text-[12.5px] text-bone"><span className="text-smoke">Seen on v{rs?.active?.version}:</span> {reached}.</p>}
             </Row>
+            {loop > 0 && (
+              <Row label="Hop codes" error={errFor("hopStatuses")} help={<>Loop hops cycle through these codes (empty: every hop is a {draft.status}). Where the run of hits stops tells you which code the client's HTTP library won't follow; 300, 305, 306, 309 and 310 are the telling ones.</>}>
+                <label className={cn(fld, "w-[220px]", bad("hopStatuses"))}><input aria-label="Hop codes" spellCheck={false} value={Array.isArray(draft.hopStatuses) ? draft.hopStatuses.join(" ") : draft.hopStatuses ?? ""} placeholder={`e.g. 301 305 309`} className={cn(inputCls, "placeholder:font-sans")} onChange={(e) => { set({ hopStatuses: e.target.value }); }} /></label>
+              </Row>
+            )}
           </>
         )}
 
@@ -281,6 +311,22 @@ export function HttpRuleTab({ p }: { p: Probe }) {
                 <span className="text-smoke">any path under the probe</span>
               </div>
             </Row>
+            <Row label="Decoy" error={errFor("decoy")} help={draft.decoy ? <>Matching requests get interactsh's default reply at once, so a validator that fetches the URL before saving it sees nothing odd; everyone else gets the rule. The first-requests count starts again with each saved version{live ? " and if the edge restarts" : ""}.</> : "Send a harmless reply to some requests first: beats validators that fetch the URL before accepting it."}>
+              <div className="flex items-center gap-2">
+                <Switch aria-label="Decoy reply" checked={!!draft.decoy} onCheckedChange={(on) => set({ decoy: on ? { first: 1, ua: "", sources: "" } : null })} />
+                {draft.decoy && <span className="text-[12.5px] text-smoke">default reply for any of these</span>}
+              </div>
+              {draft.decoy && (
+                <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2.5 gap-y-1.5 text-[12.5px] text-smoke">
+                  <span>First</span>
+                  <span className="flex items-center gap-2"><Num label="Decoy first requests" value={draft.decoy.first ?? 0} max={20} w="w-[52px]" onChange={(n) => set({ decoy: { ...draft.decoy, first: n } })} />requests</span>
+                  <span>User-Agent has</span>
+                  <label className={cn(fld, "max-w-[320px]")}><input aria-label="Decoy User-Agent text" spellCheck={false} value={draft.decoy.ua ?? ""} placeholder="e.g. Slackbot, python-requests" className={cn(inputCls, "placeholder:font-sans")} onChange={(e) => set({ decoy: { ...draft.decoy, ua: e.target.value } })} /></label>
+                  <span>Source IPs</span>
+                  <label className={cn(fld, "max-w-[320px]", bad("decoy"))}><input aria-label="Decoy source IPs" spellCheck={false} value={Array.isArray(draft.decoy.sources) ? draft.decoy.sources.join(" ") : draft.decoy.sources ?? ""} placeholder="space-separated" className={cn(inputCls, "placeholder:font-sans")} onChange={(e) => set({ decoy: { ...draft.decoy, sources: e.target.value } })} /></label>
+                </div>
+              )}
+            </Row>
           </>
         )}
       </dl>
@@ -289,7 +335,11 @@ export function HttpRuleTab({ p }: { p: Probe }) {
         <div className="flex flex-col rounded-[3px] border border-rule-2 bg-well">
           <div className="flex h-8 items-center gap-2 border-b border-rule-2 pr-1.5 pl-3 text-[12.5px] font-[650]">
             <span className="whitespace-nowrap">{live ? "Next answer" : "Answer after cutover"}</span>
-            <span className="truncate text-[11px] font-normal text-ash" title={dirty ? "Includes your unsaved changes" : undefined}>{scheme.toUpperCase()}{loop ? ` · hop ${hop}/${hops}` : ""}{dirty ? " · unsaved" : ""}{preview.delayMs ? ` · after ${preview.delayMs} ms` : ""}</span>
+            {(() => {
+              const meta = `${scheme.toUpperCase()}${loop ? ` · hop ${hop}/${hops}` : ""}${draft.mode !== "default" && decoyOf(draft.decoy) ? " · past the decoy" : ""}${dirty ? " · unsaved" : ""}${preview.delayMs ? ` · after ${preview.delayMs} ms` : ""}`;
+              const why = [draft.mode !== "default" && decoyOf(draft.decoy) && "what a request past the decoy gets", dirty && "includes your unsaved changes"].filter(Boolean).join("; ");
+              return <span className="truncate text-[11px] font-normal text-ash" title={why ? `${meta}: ${why}` : meta}>{meta}</span>;
+            })()}
             <span className="ml-auto flex items-center gap-0.5">
               <Seg label="Preview scheme" value={scheme} onChange={setScheme} items={[["http", "HTTP"], ["https", "HTTPS"]]} />
               {loop > 0 && <>
@@ -355,14 +405,17 @@ function plantHint(template: string, tag: string, host: string) {
 
 function HistoryRow({ v, current, live, onLoad }: { v: RuleVersion; current: boolean; live: boolean; onLoad: () => void }) {
   const r = v.rule;
-  const what = r.mode === "default" ? "Default reply" : r.mode === "redirect" ? `Redirect ${r.status} → ${r.location}${r.loop ? `, loop ×${r.loop}` : ""}`
-    : r.mode === "file" ? `Hosted file, ${r.contentType}` : `Custom ${r.status}`;
+  const codes = Array.isArray(r.hopStatuses) && r.hopStatuses.length ? ` (${r.hopStatuses.join("/")})` : "";
+  const what = (r.mode === "default" ? "Default reply" : r.mode === "redirect" ? `Redirect ${r.status} → ${r.location}${r.loop ? `, loop ×${r.loop}${codes}` : ""}`
+    : r.mode === "file" ? `Hosted file, ${r.contentType}` : `Custom ${r.status}`) + (r.decoy ? ", with a decoy" : "");
+  const depth = r.mode === "redirect" && r.loop && v.maxHop ? ` · deepest hop ${v.maxHop}/${r.loop + 1}` : "";
+  const decoys = v.decoys ? ` · ${v.decoys} decoy` : "";
   return (
     <li className={cn("grid grid-cols-[22px_44px_minmax(0,1fr)_auto] items-baseline gap-2.5 px-3 py-[5px] text-[12.5px]", current && "bg-soot-2")}>
       <span className="text-[11px] text-smoke">v{v.version}</span>
       <span className="font-semibold">{dayOrTime(v.createdAt)}</span>
       <button type="button" className="cursor-pointer truncate text-left text-smoke hover:text-bone" title={`Load v${v.version} into the editor`} onClick={onLoad}>{what}</button>
-      <span className="text-[11px] whitespace-nowrap text-ash">{current ? (live ? "active · " : "saved · not served yet · ") : ""}answered {plural(v.hits ?? 0, "hit")}</span>
+      <span className="text-[11px] whitespace-nowrap text-ash">{current ? (live ? "active · " : "saved · not served yet · ") : ""}answered {plural(v.hits ?? 0, "hit")}{decoys}{depth}</span>
     </li>
   );
 }

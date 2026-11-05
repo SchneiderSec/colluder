@@ -77,7 +77,7 @@ export function Settings() {
         {!st?.discord.available ? <span className="text-ash">Not configured: set DISCORD_WEBHOOK_URL in ~/.config/colluder/colluder.env and restart colluder.service.</span> : (
           <>
             <Switch checked={st.discord.enabled} aria-label="Discord alerts" onCheckedChange={(v) => setDiscord(v).catch((x) => toast((x as Error).message, true))} />
-            <b className="font-semibold text-bone">{st.discord.enabled ? "On" : "Off"}</b><span className="text-ash">first hit per probe, then a 60 s roll-up</span>
+            <b className="font-semibold text-bone">{st.discord.enabled ? "On" : "Off"}</b><span className="text-ash">per probe: the first hit, the first web hit, new sources and late hits; the rest in a roll-up each minute. Mute a probe with the bell in its header.</span>
           </>
         )}
       </div>

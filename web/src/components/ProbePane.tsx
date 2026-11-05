@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronRight, Download, FileText, Search } from "lucide-react";
+import { Bell, BellOff, ChevronRight, Download, FileText, Search } from "lucide-react";
 import { useApp, keyOf, selectHit, patchProbe, saveRule, fetchTrigger, fetchReport, chatterOf, setTab, unreadFor, loadOlder, searchHits, exportUrl, PROBE_TABS, type AppState, type ProbeTab } from "@/store";
 import { dnsSteps, mostSpecific } from "@/lib/dns";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -70,6 +70,14 @@ function Head({ s }: { s: AppState }) {
         {p.note && <span className="truncate text-ash" title={p.note}>Note: {p.note}</span>}
       </div>
       <div className="ml-auto flex gap-1.5">
+        {s.status?.discord.available && (
+          <Button variant="ghost" size="icon" aria-pressed={!!p.muted} aria-label={p.muted ? `Unmute Discord alerts for ${p.tag}` : `Mute Discord alerts for ${p.tag}`}
+            title={p.muted ? "Alerts muted: hits are recorded and shown, but not posted to Discord. Click to unmute." : "Mute Discord alerts for this probe (hits are still recorded)"}
+            className={cn(p.muted && "text-ash")}
+            onClick={() => patchProbe(p.tag, { muted: !p.muted }).then(() => toast(p.muted ? `Alerts on for ${p.tag}` : `Muted ${p.tag}: no Discord posts, hits still recorded`), (e) => toast((e as Error).message, true))}>
+            {p.muted ? <BellOff /> : <Bell />}
+          </Button>
+        )}
         <Button variant="quiet" title={`Markdown for a bug report: summary, ${p.triggerBytes ? "the triggering request, " : ""}timeline, sources, decoded exfil and the first web request`}
           onClick={() => fetchReport(p.tag).then((md) => copy(md, `${p.tag} report`), (e) => toast((e as Error).message, true))}><FileText />Copy report</Button>
         <Button variant="quiet" onClick={() => setEdit(true)}>Edit</Button>

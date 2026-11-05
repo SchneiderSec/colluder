@@ -80,3 +80,18 @@ test("curl: rebuilt request is shell-safe and drops computed headers", () => {
   assert.equal(toCurl("PUT /x HTTP/1.1\r\nHost: h\r\n\r\n", "http", { id: 1, normalised: false }), "# Rebuilt from Colluder hit #1\ncurl -sS -X PUT 'http://h/x'");
   assert.equal(toCurl("garbage", "http", { id: 1, normalised: false }), null);
 });
+
+import { reach, statusAt } from "../src/lib/reach.ts";
+
+test("reach: deepest hop says how many redirects were followed and which code stopped it", () => {
+  const r = { mode: "redirect", status: 302, loop: 9, hopStatuses: [305, 309] };
+  assert.equal(statusAt(r, 1), 305);
+  assert.equal(statusAt(r, 2), 309);
+  assert.equal(statusAt(r, 10), 302);
+  assert.equal(reach(r, 1), "deepest hop 1 of 10: followed 0 redirects, then stopped at a 305");
+  assert.equal(reach(r, 2), "deepest hop 2 of 10: followed 1 redirect, then stopped at a 309");
+  assert.equal(reach(r, 10), "followed all 9 redirects to the final Location");
+  assert.equal(reach({ mode: "redirect", status: 307, loop: 3 }, 3), "deepest hop 3 of 4: followed 2 redirects, then stopped at a 307");
+  assert.equal(reach({ mode: "custom" }, 3), null);
+  assert.equal(reach(r, null), null);
+});

@@ -45,6 +45,8 @@ export interface Answer {
   version: number | null;
   tag?: string | null;
   hop?: number;
+  status?: number; // a loop hop's own redirect code, when it differs from the rule's
+  decoy?: "first" | "user-agent" | "source"; // got the default reply as a decoy
   error?: string;
   droppedBytes?: number;
   delaySkipped?: boolean;
@@ -58,13 +60,17 @@ export interface HttpRule {
   status?: number;
   location?: string;
   loop?: number;
+  hopStatuses?: number[] | string; // a string while being typed; the server gets numbers
+  decoy?: Decoy | null;
   headers?: [string, string][];
   body?: string;
   bodyEncoding?: "text" | "base64";
   contentType?: string;
   template?: string;
 }
-export interface RuleVersion { version: number; createdAt: string; rule: HttpRule; hits?: number }
+// who gets interactsh's harmless default reply instead of the rule (sources: a string while typed)
+export interface Decoy { first?: number; ua?: string; sources?: string[] | string }
+export interface RuleVersion { version: number; createdAt: string; rule: HttpRule; hits?: number; maxHop?: number | null; decoys?: number }
 export interface RuleState { active: RuleVersion | null; history: RuleVersion[]; defaultHits: number; interactshHits: number; edge: EdgeStatus }
 
 export interface EdgeStatus {
@@ -98,7 +104,8 @@ export interface Probe extends Counts {
   plantedAt: string;
   registered: number;
   retiredAt: string | null;
-  triggerBytes?: number; // C2: size of the saved triggering request (the text itself loads on demand)
+  triggerBytes?: number;
+  muted?: number; // 1: no Discord posts for this probe (hits are still recorded) // C2: size of the saved triggering request (the text itself loads on demand)
   httpRule?: { version: number; mode: RuleMode; createdAt: string; short: string; line: string; scope: string } | null;
 }
 

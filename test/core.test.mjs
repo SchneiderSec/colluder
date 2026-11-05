@@ -183,6 +183,21 @@ test("store: a probe's hits page by id, search escapes LIKE wildcards, filter by
   assert.ok(ex[0].rawRequest && ex[0].reqSha256);
 });
 
+test("store: rule history reports the deepest hop and decoy hits per version", () => {
+  const s = new Store(":memory:");
+  s.saveRule("lp", { mode: "redirect", status: 302, location: "http://x/", loop: 3, delayMs: 0, schemes: { http: true, https: true } }, "2026-11-05T10:00:00Z");
+  const add = (n, answer) => {
+    const raw = { protocol: "http", "unique-id": ID, "full-id": ID, "remote-address": "192.0.2.1", timestamp: `2026-11-05T10:00:0${n}.0Z`,
+      "raw-request": `GET /lp/x?hop=${n} HTTP/1.1\r\nHost: ${ID}.${D}\r\n\r\n`, "raw-response": "r" };
+    s.insert(JSON.stringify(raw), { ...parseInteraction(raw, D), answer }, "2026-11-05T10:01:00Z");
+  };
+  add(1, { by: "colluder", mode: "redirect", version: 1, decoy: "first" });
+  add(2, { by: "colluder", mode: "redirect", version: 1, hop: 1 });
+  add(3, { by: "colluder", mode: "redirect", version: 1, hop: 3 });
+  const [v1] = s.ruleHistory("lp").history;
+  assert.deepEqual([v1.hits, v1.maxHop, v1.decoys], [3, 3, 1]);
+});
+
 import { probeReport, code, fenced } from "../lib/report.mjs";
 
 test("report: captured values stay inside code; timeline, exfil and self-tests are named", () => {

@@ -189,7 +189,7 @@ export async function plant(tag: string, target: string, technique: string) {
   select(p.tag);
   toast(existed ? `${tag} already planted: target updated` : seed ? `Planted ${tag}: set up its ${seed === "file" ? "hosted file" : "redirect"}, then copy a payload` : `Planted ${tag}: copy a payload above`);
 }
-export async function patchProbe(tag: string, body: { target?: string; note?: string; trigger?: string; retired?: boolean }) {
+export async function patchProbe(tag: string, body: { target?: string; note?: string; trigger?: string; retired?: boolean; muted?: boolean }) {
   const p = await api<Probe>(`/api/probes/${tag}`, { method: "PATCH", body });
   set({ probes: new Map(state.probes).set(p.tag, p) });
 }

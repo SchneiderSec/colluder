@@ -75,6 +75,7 @@ function ingest(line, source = "engine") {
   else broadcast("untagged", store.probes().untagged);
   enrichRdns(row.remoteAddress).then((rdns) => {
     if (!discordEnabled()) return;
+    if (row.tag && store.probe(row.tag)?.muted) return; // muted probe: recorded and shown, never posted
     discord.onHit(row, {
       prevHitAt: store.priorHitForTag(row.tag, row.id),
       rdns,
@@ -181,9 +182,11 @@ function previewRequest(tag, scheme, hop) {
   const host = engine.payload?.host || `${"x".repeat(33)}.${CFG.domain}`;
   const id = host.split(".")[0];
   const q = hop > 1 ? `?hop=${hop}` : "";
+  // the preview shows the rule's own answer: a request past any decoy (the editor names the decoy)
+  const past = { ua: "", ip: "", seen: Number.MAX_SAFE_INTEGER };
   return scheme === "https"
-    ? { scheme, method: "GET", target: `/${tag}/${q}`, host, uniqueId: id, domain: CFG.domain }
-    : { scheme, method: "GET", target: `/${q}`, host: `${tag}.${host}`, uniqueId: id, domain: CFG.domain };
+    ? { scheme, method: "GET", target: `/${tag}/${q}`, host, uniqueId: id, domain: CFG.domain, ...past }
+    : { scheme, method: "GET", target: `/${q}`, host: `${tag}.${host}`, uniqueId: id, domain: CFG.domain, ...past };
 }
 
 // ---------- HTTP ----------
@@ -332,6 +335,7 @@ const server = http.createServer(async (req, res) => {
         target: b.target === undefined ? undefined : String(b.target).slice(0, 300),
         note: b.note === undefined ? undefined : String(b.note).slice(0, 2000),
         trigger: b.trigger === undefined ? undefined : String(b.trigger).slice(0, 32_768),
+        muted: b.muted === undefined ? undefined : Boolean(b.muted),
       });
       if (b.retired !== undefined) probe = store.retire(m[1], b.retired ? nowIso() : null);
       probe = decorate(probe);

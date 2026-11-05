@@ -154,7 +154,9 @@ export function Banners() {
   if (ch && acked !== JSON.stringify(ch)) {
     out.push(
       <div key="corr" className="flex items-center gap-3 border-b border-rule bg-[#2b2113] px-6 py-[9px] max-[820px]:px-3.5 text-[12.5px] text-[#f3d9a4]">
-        The engine's correlation id changed at {ch.replace("T", " ").slice(0, 16)} UTC. Payloads planted before then no longer reach this dashboard; copy fresh ones.
+        {s.status?.edge?.state === "running"
+          ? <>The engine's correlation id changed at {ch.replace("T", " ").slice(0, 16)} UTC. Older payloads still bring HTTP(S) hits here through Colluder's edge, but not their DNS lookups; copy fresh ones for DNS.</>
+          : <>The engine's correlation id changed at {ch.replace("T", " ").slice(0, 16)} UTC. Payloads planted before then no longer reach this dashboard; copy fresh ones.</>}
         <Button variant="ghost" className="ml-auto" onClick={() => { try { localStorage.setItem("colluder.ackCorr", JSON.stringify(ch)); } catch { /* */ } location.reload(); }}>Got it</Button>
       </div>,
     );

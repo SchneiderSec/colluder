@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PassThrough } from "node:stream";
-import { validateHttpRule, respond, serialize, describeRule } from "../lib/rules.mjs";
+import { validateHttpRule, respond, serialize, describeRule, describeDecoy } from "../lib/rules.mjs";
 import { Reader, readHead, readBody, HttpError } from "../lib/http1.mjs";
 import { ownership, sniOf } from "../edge.mjs";
 
@@ -52,6 +52,40 @@ test("rules: redirect loop walks hops through the probe, then leaves", () => {
   assert.equal(last.headers.find(([n]) => n === "Location")[1], "http://169.254.169.254/latest/");
   assert.equal(last.status, 307);
   assert.equal(describeRule(rule).line, "loop ×2, then 307 → 169.254.169.254");
+});
+
+test("rules: loop hops cycle through odd 3xx codes; the exit keeps the redirect status", () => {
+  const { rule } = validateHttpRule({ mode: "redirect", status: 302, location: "http://169.254.169.254/", loop: 3, hopStatuses: "305, 309" });
+  assert.deepEqual(rule.hopStatuses, [305, 309]);
+  const req = (target) => ({ scheme: "http", method: "GET", target, host: `${ID}.${DOMAIN}`, uniqueId: ID, domain: DOMAIN });
+  assert.deepEqual([1, 2, 3, 4].map((h) => respond(rule, 1, req(`/x?hop=${h}`)).status), [305, 309, 305, 302]);
+  assert.equal(respond(rule, 1, req("/x")).answer.status, 305);
+  assert.match(serialize(respond(rule, 1, req("/x?hop=2"))).toString("latin1"), /^HTTP\/1\.1 309 Redirect\r\n/);
+  assert.equal(describeRule(rule).line, "loop ×3 (305/309), then 302 → 169.254.169.254");
+  assert.equal(validateHttpRule({ mode: "redirect", location: "http://x/", loop: 2, hopStatuses: [200] }).error, "Hop codes must be redirects: 301, 302, 303, 307, 308, 300, 305, 306, 309, 310.");
+  assert.equal(validateHttpRule({ mode: "redirect", status: 310, location: "http://x/" }).rule.status, 310);
+  assert.equal(validateHttpRule({ mode: "redirect", location: "http://x/", hopStatuses: [305] }).rule.hopStatuses, undefined, "no loop, no hop codes");
+});
+
+test("rules: a decoy sends the default reply to the first requests, a User-Agent or a source", () => {
+  const { rule } = validateHttpRule({ mode: "redirect", status: 302, location: "http://169.254.169.254/", delayMs: 500, decoy: { first: 1, ua: "Slackbot", sources: "203.0.113.9" } });
+  assert.deepEqual(rule.decoy, { first: 1, ua: "Slackbot", sources: ["203.0.113.9"] });
+  const req = (o) => ({ scheme: "http", method: "GET", target: "/x", host: `${ID}.${DOMAIN}`, uniqueId: ID, domain: DOMAIN, ua: "curl/8", ip: "198.51.100.1", seen: 1, ...o });
+  const first = respond(rule, 2, req({ seen: 0 }));
+  assert.equal(first.status, 200);
+  assert.equal(first.delayMs, 0, "a decoy answers at once");
+  assert.deepEqual(first.answer, { by: "colluder", mode: "redirect", version: 2, decoy: "first" });
+  assert.equal(respond(rule, 2, req({ ua: "Slackbot-LinkExpanding 1.0" })).answer.decoy, "user-agent");
+  assert.equal(respond(rule, 2, req({ ip: "203.0.113.9" })).answer.decoy, "source");
+  const real = respond(rule, 2, req({}));
+  assert.equal(real.status, 302);
+  assert.equal(real.answer.decoy, undefined);
+  assert.equal(describeDecoy(rule.decoy), 'the first request, User-Agents containing "Slackbot", 203.0.113.9');
+  assert.equal(describeRule(rule).line, "decoy first, 302 → 169.254.169.254");
+  assert.equal(validateHttpRule({ mode: "custom", decoy: { first: "", ua: "", sources: "" } }).rule.decoy, undefined, "an empty decoy is none");
+  assert.equal(validateHttpRule({ mode: "custom", decoy: { sources: "evil.example" } }).error, 'Decoy source "evil.example" is not an IP address.');
+  assert.equal(validateHttpRule({ mode: "custom", decoy: { first: 21 } }).error, "Decoy count must be 0 to 20 requests.");
+  assert.equal(validateHttpRule({ mode: "default", decoy: { first: 1 } }).rule.decoy, undefined);
 });
 
 test("rules: custom and file answers; HEAD gets no body; scheme switch falls back to default", () => {
@@ -177,6 +211,23 @@ test("edge: a saved rule answers within a second, over HTTPS with the tag in the
   assert.equal(a.protocol, "https");
   assert.deepEqual(a["colluder-answer"], { by: "colluder", mode: "redirect", version: 3, hop: 1, tag: "fetch" });
   assert.equal(b["colluder-answer"].hop, 2);
+});
+
+test("edge: a decoy for the first request, then the rule; a new version counts again", async () => {
+  const save = (version) => {
+    const rule = validateHttpRule({ mode: "redirect", status: 302, location: "http://169.254.169.254/", decoy: { first: 1 } }).rule;
+    writeFileSync(join(dir, "rules.next"), JSON.stringify({ cids: [CID], rules: { pre: { version, rule } } }));
+    renameSync(join(dir, "rules.next"), join(dir, "rules.json"));
+  };
+  save(1);
+  await sleep(1600);
+  const get = () => request(ports.http, `GET /x HTTP/1.1\r\nHost: pre.${ID}.${DOMAIN}\r\n\r\n`);
+  assert.match(await get(), /^HTTP\/1\.1 200 OK\r\n/);
+  assert.match(await get(), /^HTTP\/1\.1 302 Found\r\n/);
+  assert.equal(edgeLines().at(-2)["colluder-answer"].decoy, "first");
+  save(2);
+  await sleep(1600);
+  assert.match(await get(), /^HTTP\/1\.1 200 OK\r\n/, "version 2 starts its own count");
 });
 
 test("edge: foreign traffic is relayed with the real client IP; a spoofed origin header is replaced", async () => {
