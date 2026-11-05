@@ -31,7 +31,7 @@ if pgrep -x nuclei >/dev/null && (( ! FORCE )); then die "a nuclei scan is runni
 [[ -f $APP/web/dist/index.html ]] || die "UI not built: run npm run build in $APP as $U"
 as_user "$NODE" --test "$APP/test/edge.test.mjs" >/dev/null 2>&1 || die "edge tests fail: run npm test in $APP"
 ok "edge tests pass"
-install -m 755 "$APP/deploy/cert-sync.sh" /usr/local/libexec/colluder-cert-sync
+install -D -m 755 "$APP/deploy/cert-sync.sh" /usr/local/libexec/colluder-cert-sync
 /usr/local/libexec/colluder-cert-sync | sed 's/^/   /'
 for p in 8081 8444; do
   if ss -ltnH "sport = :$p" | grep -q . && ! systemctl is-active -q interactsh; then die "port $p is already in use"; fi
