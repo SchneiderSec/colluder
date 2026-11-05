@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronRight } from "lucide-react";
-import { useApp, keyOf, selectHit, patchProbe, chatterOf, setTab, unreadFor, PROBE_TABS, type AppState, type ProbeTab } from "@/store";
+import { useApp, keyOf, selectHit, patchProbe, saveRule, chatterOf, setTab, unreadFor, PROBE_TABS, type AppState, type ProbeTab } from "@/store";
 import { UNTAGGED, type Interaction, type Probe } from "@/lib/types";
 import { dayOrTime, hmsms, isoMs, plural } from "@/lib/format";
 import { groupHits } from "@/lib/raw";
@@ -37,6 +37,7 @@ function EditDialog({ p, open, onOpenChange }: { p: Probe; open: boolean; onOpen
 function Head({ s }: { s: AppState }) {
   const [edit, setEdit] = useState(false);
   const [retire, setRetire] = useState(false);
+  const [resetRule, setResetRule] = useState(true);
   const cls = "flex min-w-0 items-center gap-3.5 border-b border-rule pr-5 pl-6 max-[820px]:flex-wrap max-[820px]:gap-2 max-[820px]:px-3.5 max-[820px]:py-2.5";
   if (s.sel === UNTAGGED) {
     return (
@@ -67,9 +68,17 @@ function Head({ s }: { s: AppState }) {
             <AlertDialogTitle>Retire {p.tag}?</AlertDialogTitle>
             <AlertDialogDescription>It moves to Retired at the bottom of the list. Its hits stay, and new hits on this tag are still recorded.</AlertDialogDescription>
           </AlertDialogHeader>
+          {p.httpRule && (
+            <label className="flex items-start gap-2 text-[12.5px] text-smoke">
+              <input type="checkbox" className="mt-[3px] accent-bone" checked={resetRule} onChange={(e) => setResetRule(e.target.checked)} />
+              <span>Also reset its HTTP answer to the default reply, so it stops answering with <span className="font-mono text-bone">{p.httpRule.line}</span></span>
+            </label>
+          )}
           <AlertDialogFooter>
             <AlertDialogCancel asChild><Button variant="quiet">Cancel</Button></AlertDialogCancel>
-            <AlertDialogAction asChild><Button variant="default" onClick={() => patchProbe(p.tag, { retired: true }).then(() => toast(`Retired ${p.tag}: hits kept, new ones still recorded`), (e) => toast((e as Error).message, true))}>Retire</Button></AlertDialogAction>
+            <AlertDialogAction asChild><Button variant="default" onClick={() => (p.httpRule && resetRule ? saveRule(p.tag, { mode: "default", delayMs: 0, schemes: { http: true, https: true } }) : Promise.resolve())
+              .then(() => patchProbe(p.tag, { retired: true }))
+              .then(() => toast(`Retired ${p.tag}: hits kept, new ones still recorded${p.httpRule && resetRule ? ", HTTP answer back to default" : ""}`), (e) => toast((e as Error).message, true))}>Retire</Button></AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -107,7 +116,7 @@ function HitRow({ i, open, sel, arrived, child, chatter, onClick }: { i: Interac
       <Td sel={sel}>{hmsms(i.timestamp)}</Td>
       <Td sel={sel}><TypeChip proto={i.protocol}>{i.protocol === "dns" && i.qType ? `DNS ${i.qType}` : undefined}</TypeChip></Td>
       <Td sel={sel} className="font-mono text-[12.5px]">{i.remoteAddress}</Td>
-      <Td sel={sel} last>{web || i.protocol === "smtp" ? <span className="font-mono text-[12.5px]">{i.summary}</span> : i.protocol === "dns" ? <><DnsName i={i} />{chatter && <span className="text-[11px] text-ash"> · resolver chatter around {chatter}</span>}</> : <span className="text-[11px] text-smoke">{i.summary}</span>}</Td>
+      <Td sel={sel} last>{web || i.protocol === "smtp" ? <><span className="font-mono text-[12.5px]">{i.summary}</span>{i.hop != null && <span className="ml-2 text-[11px] whitespace-nowrap text-ash" title="Redirect loop hop Colluder answered">hop {i.hop}</span>}</> : i.protocol === "dns" ? <><DnsName i={i} />{chatter && <span className="text-[11px] text-ash"> · resolver chatter around {chatter}</span>}</> : <span className="text-[11px] text-smoke">{i.summary}</span>}</Td>
     </tr>
   );
 }
@@ -154,8 +163,10 @@ function ProbeTabs({ s, p }: { s: AppState; p: Probe }) {
               on && "text-bone after:absolute after:inset-x-0 after:-bottom-px after:h-0.5 after:rounded-[1px] after:bg-bone")}>
             {TAB_LABEL[t]}
             {t === "hits" ? <span className="font-normal text-smoke">{p.hits}</span>
-              : t === "http" && s.ruleDirty === p.tag ? <span className="text-[11px] font-normal text-smoke italic">{p.httpRule?.short ?? "default"}, edited</span>
-              : t === "http" && p.httpRule ? <span className="font-mono text-[11px] font-normal text-bone" title={p.httpRule.line}>{p.httpRule.short}</span>
+              : t === "http" && s.ruleDrafts[p.tag] ? <span className="text-[11px] font-normal text-smoke italic" title="Unsaved changes, kept until you save or discard">{p.httpRule?.short ?? "default"}, edited</span>
+              : t === "http" && p.httpRule ? (s.status?.edge?.state === "running"
+                ? <span className="font-mono text-[11px] font-normal text-bone" title={p.httpRule.line}>{p.httpRule.short}</span>
+                : <span className="font-mono text-[11px] font-normal text-ash" title={`v${p.httpRule.version} saved, not served until the cutover`}>{p.httpRule.short}</span>)
               : <span className="text-[11px] font-normal text-ash" title="interactsh-server's standard answer">default</span>}
             {t === "hits" && unread > 0 && <NewDot title={`${plural(unread, "new hit")} since you switched tabs`} />}
           </button>
@@ -163,6 +174,13 @@ function ProbeTabs({ s, p }: { s: AppState; p: Probe }) {
       })}
     </div>
   );
+}
+
+function autoHit(hits: Interaction[]) {
+  const top = hits[0];
+  if (!top) return null;
+  const near = hits.filter((i) => isoMs(top.timestamp) - isoMs(i.timestamp) < 5000);
+  return (near.find((i) => i.protocol !== "dns") ?? top).id;
 }
 
 function PlannedTab({ tab }: { tab: "dns" }) {
@@ -206,8 +224,10 @@ export function ProbePane() {
   }, [s.sel, s.list, s.hit, s.tab]);
 
   const hits = s.sel ? s.list.filter((i) => keyOf(i) === s.sel) : [];
-  const hitId = s.hit && hits.some((i) => i.id === s.hit) ? s.hit : hits[0]?.id ?? null;
-  useEffect(() => { if (hitId !== s.hit && hitId != null) selectHit(hitId); }, [hitId, s.hit]);
+  // until the researcher picks a hit, the selection follows the newest one, preferring a web hit over
+  // the DNS lookups that arrive around it (a fetch usually lands a moment after its lookup)
+  const hitId = s.hitPicked && hits.some((i) => i.id === s.hit) ? s.hit : autoHit(hits);
+  useEffect(() => { if (hitId !== s.hit && hitId != null) selectHit(hitId, false); }, [hitId, s.hit]);
 
   const wrap = "grid min-h-0 min-w-0 grid-rows-[52px_minmax(0,auto)_minmax(0,1fr)] max-[820px]:grid-rows-[auto_auto_auto]";
   if (!s.sel) {

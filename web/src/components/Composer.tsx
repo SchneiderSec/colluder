@@ -43,7 +43,7 @@ export function Composer() {
     if (!TAG_RE.test(tag)) { setErr(tag ? BAD_TAG : "Give the probe a tag first, e.g. avatar."); tagRef.current?.focus(); return; }
     try {
       await plant(tag, target.trim(), technique);
-      setTag(""); setTarget(""); setErr("");
+      setTag(""); setTarget(""); setErr(""); setTechnique("callback");
       // next step is copying a payload: put focus there, not back in an emptied field
       requestAnimationFrame(() => varsRef.current?.querySelector<HTMLButtonElement>("button[data-copy]")?.focus());
     }

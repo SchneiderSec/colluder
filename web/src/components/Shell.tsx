@@ -76,7 +76,7 @@ export function StatusBar() {
       {kind && <LineForm kind={kind} className={bad ? "text-bad" : "text-bone"} />}
       <span className={cn("text-smoke", kind && "max-[820px]:sr-only")}>{label}</span>
       <b className={cn("font-[650]", bad && "text-bad")}>{word}</b>
-      {sub && <span className="text-ash max-[820px]:hidden">{sub}</span>}
+      {sub && <span className="text-ash max-[1280px]:hidden">{sub}</span>}
     </div>
   );
   return (
@@ -98,16 +98,16 @@ export function StatusBar() {
           select(k, false);
           selectHit(lastHit.id);
         }} className="flex min-w-0 cursor-pointer items-center gap-[7px] rounded-[3px] hover:text-bone">
-          <span className="text-smoke">Last hit</span>
-          <b className="truncate font-mono font-[650]">{lastHit.tag ?? "unregistered"}</b>
-          <span className="text-smoke">{lastHit.protocol.toUpperCase()}</span>
+          <span className="text-smoke max-[820px]:hidden">Last hit</span>
+          <b className="min-w-[5ch] truncate font-mono font-[650]">{lastHit.tag ?? "unregistered"}</b>
+          <span className="text-smoke max-[820px]:hidden">{lastHit.protocol.toUpperCase()}</span>
           <b className="font-[650] whitespace-nowrap">{ago(Date.now() - isoMs(lastHit.timestamp))}</b>
-          <span className="text-ash max-[820px]:hidden">{hms(lastHit.timestamp)}</span>
+          <span className="text-ash max-[1280px]:hidden">{hms(lastHit.timestamp)}</span>
         </button>
       ) : <Item label="Last hit" word={last ? ago(Date.now() - isoMs(last)) : "none yet"} sub={last ? hms(last) : ""} />}
-      <div className="ml-auto flex items-center gap-[18px] max-[820px]:hidden">
+      <div className="ml-auto flex flex-none items-center gap-[18px] max-[820px]:hidden">
         {night && <span className="text-[11px] text-ash">Night shift</span>}
-        {host && <span className="font-mono text-[11px] text-smoke max-[820px]:hidden">{host.slice(0, 8)}….{s.status!.payload!.domain}</span>}
+        {host && <span className="font-mono text-[11px] text-smoke max-[1380px]:hidden">{host.slice(0, 8)}….{s.status!.payload!.domain}</span>}
         <span className="font-semibold tracking-[.02em]">{now.toISOString().slice(11, 19)}<span className="ml-[3px] text-[11px] font-medium text-smoke">UTC</span></span>
       </div>
     </footer>
@@ -133,6 +133,18 @@ export function Banners() {
       <div key="stream" className="flex items-center gap-3 border-b border-rule bg-[#2b2113] px-6 py-[9px] max-[820px]:px-3.5 text-[12.5px] text-[#f3d9a4]">
         <LineForm kind="dash" />
         Live updates paused: reconnecting to the dashboard{s.stream.lastEventAt ? `, last update ${ago(Date.now() - s.stream.lastEventAt)}` : ""}. What you see may be out of date.
+      </div>,
+    );
+  }
+  // once the edge owns :80/:443, it being down means HTTP hits go uncaptured, not just unanswered
+  const ed = s.status?.edge;
+  if (ed && (ed.state === "stale" || ed.state === "stopped")) {
+    const fix = "sudo systemctl restart colluder-edge";
+    out.push(
+      <div key="edge" className="flex flex-wrap items-center gap-3 border-b border-rule bg-[#2a1914] px-6 py-[9px] text-[12.5px] text-[#f4c6b8] max-[820px]:px-3.5">
+        <LineForm kind="down" />
+        <span><b>Colluder's edge isn't answering. </b>HTTP and HTTPS hits on your probes are not being captured{ed.heartbeatAt ? ` (last heartbeat ${ago(Date.now() - isoMs(ed.heartbeatAt))})` : ""}. DNS still is.</span>
+        <Button variant="quiet" className="ml-auto max-w-full overflow-hidden" onClick={() => copy(fix, "fix command")}><Copy /><span className="truncate font-mono text-bone">{fix}</span></Button>
       </div>,
     );
   }

@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowDown, Copy, FileText, Search } from "lucide-react";
 import { useApp, loadDetail, lookupAsn, save, chatterOf } from "@/store";
-import type { Enrich, InteractionDetail } from "@/lib/types";
+import type { Enrich } from "@/lib/types";
 import { byteCount, lineCount } from "@/lib/format";
-import { decode, evidence } from "@/lib/raw";
+import { answeredBy, decode, evidence } from "@/lib/raw";
 import { copy, toast } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -61,14 +61,6 @@ function RawPane({ title, sub, text, exact, http }: { title: string; sub: string
   );
 }
 
-// who sent the response this hit got (phase 2: Colluder's edge answers its own probes)
-function answeredBy(a: InteractionDetail["answer"]) {
-  if (!a) return "sent by interactsh-server";
-  if (a.mode === "error") return `refused by Colluder (${a.error ?? "bad request"})`;
-  if (a.mode === "default") return "sent by Colluder · default reply";
-  const what = a.mode === "redirect" ? `redirect${a.hop ? `, hop ${a.hop}` : ""}` : a.mode === "file" ? "hosted file" : "custom response";
-  return `sent by Colluder · rule v${a.version}, ${what}${a.delaySkipped ? " (delay skipped: too many waiting)" : ""}`;
-}
 
 export function HitDetail({ id }: { id: number }) {
   const s = useApp((x) => x);

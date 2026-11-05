@@ -51,7 +51,7 @@ test("rules: redirect loop walks hops through the probe, then leaves", () => {
   const last = respond(rule, 4, req("/fetch/?hop=3"));
   assert.equal(last.headers.find(([n]) => n === "Location")[1], "http://169.254.169.254/latest/");
   assert.equal(last.status, 307);
-  assert.equal(describeRule(rule).line, "307 → 169.254.169.254, loop ×2");
+  assert.equal(describeRule(rule).line, "loop ×2, then 307 → 169.254.169.254");
 });
 
 test("rules: custom and file answers; HEAD gets no body; scheme switch falls back to default", () => {

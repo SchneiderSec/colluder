@@ -81,8 +81,9 @@ function Row({ s, p, k }: { s: AppState; p: Probe | (Counts & Partial<Probe>); k
       ) : <span className="col-start-2 text-[11px] text-ash">No callbacks yet · planted {dayOrTime(p.plantedAt)}</span>}
       {talking ? <Timeline s={s} k={k} start={isU ? null : p.plantedAt ?? null} /> : <span className="col-start-3 w-[120px]" />}
       {!isU && p.httpRule && (
-        <span className="col-span-2 col-start-2 flex min-w-0 items-center gap-[5px] text-[11px] text-smoke" title={`HTTP rule v${p.httpRule.version}`}>
-          <Redo2 className="size-3 flex-none text-ash" strokeWidth={1.5} /><span className="truncate">Answers HTTP with {p.httpRule.line}</span>
+        <span className={cn("col-span-2 col-start-2 flex min-w-0 items-center gap-[5px] text-[11px]", s.status?.edge?.state === "running" ? "text-smoke" : "text-ash")} title={`HTTP rule v${p.httpRule.version}: ${p.httpRule.line}`}>
+          <Redo2 className="size-3 flex-none text-ash" strokeWidth={1.5} />
+          <span className="truncate">{s.status?.edge?.state === "running" ? `Answers ${p.httpRule.scope} with ${p.httpRule.line}` : `Rule v${p.httpRule.version} saved, not served yet: ${p.httpRule.line}`}</span>
         </span>
       )}
     </button>

@@ -37,6 +37,15 @@ export function decode(raw: string, protocol: string) {
   return lines.join("\n") + (sep ? "\n\n" + body : "");
 }
 
+// who sent the response this hit got (phase 2: Colluder's edge answers its own probes)
+export function answeredBy(a: InteractionDetail["answer"]) {
+  if (!a) return "sent by interactsh-server";
+  if (a.mode === "error") return `refused by Colluder (${a.error ?? "bad request"})`;
+  if (a.mode === "default") return "sent by Colluder · default reply";
+  const what = a.mode === "redirect" ? `redirect${a.hop ? `, hop ${a.hop}` : ""}` : a.mode === "file" ? "hosted file" : "custom response";
+  return `sent by Colluder · rule v${a.version}, ${what}${a.delaySkipped ? " (delay skipped: too many waiting)" : ""}`;
+}
+
 export function evidence(d: InteractionDetail, e: Partial<Enrich>, probe: Probe | undefined, domain: string | undefined) {
   return [
     `Colluder evidence · ${d.tag ? "probe " + d.tag : "untagged"} · interaction #${d.id}`,
@@ -44,13 +53,13 @@ export function evidence(d: InteractionDetail, e: Partial<Enrich>, probe: Probe 
     `Source: ${d.remoteAddress}${e.rdns ? ` (rDNS ${e.rdns})` : ""}${e.asn ? " · " + [e.asn, e.asnName, e.asnCc].filter(Boolean).join(" ") : ""}`,
     `Full id: ${d.fullId}${domain ? `  (payload domain ${domain})` : ""}`,
     probe?.target ? `Planted on: ${probe.target} (at ${probe.plantedAt})` : null,
-    `Captured by engine: ${d.timestamp}`,
+    `Captured by ${d.answer ? "Colluder's edge (it answered this hit)" : "engine (interactsh-client)"}: ${d.timestamp}`,
     `Received by dashboard: ${d.receivedAt}`,
-    `SHA-256 of raw request (UTF-8, as logged by the engine): ${d.reqSha256}`,
+    `SHA-256 of raw request (UTF-8, as logged by the ${d.answer ? "edge" : "engine"}): ${d.reqSha256}`,
     "",
     "--- Raw request ---",
     d.rawRequest,
-    "--- Raw response (sent by interactsh-server) ---",
+    `--- Raw response (${d.protocol === "dns" ? "sent by interactsh-server" : answeredBy(d.answer)}) ---`,
     d.rawResponse,
   ].filter((x) => x !== null).join("\n");
 }

@@ -13,6 +13,7 @@ export interface Interaction {
   tag: string | null;
   tagSource: "subdomain" | "path" | null;
   summary: string;
+  hop?: number | null; // which hop of a redirect loop Colluder's edge answered (phase 2)
 }
 
 export interface Enrich {
@@ -64,7 +65,7 @@ export interface HttpRule {
   template?: string;
 }
 export interface RuleVersion { version: number; createdAt: string; rule: HttpRule; hits?: number }
-export interface RuleState { active: RuleVersion | null; history: RuleVersion[]; defaultHits: number; edge: EdgeStatus }
+export interface RuleState { active: RuleVersion | null; history: RuleVersion[]; defaultHits: number; interactshHits: number; edge: EdgeStatus }
 
 export interface EdgeStatus {
   state: "running" | "stale" | "stopped" | "absent" | "unreadable";
@@ -97,7 +98,7 @@ export interface Probe extends Counts {
   plantedAt: string;
   registered: number;
   retiredAt: string | null;
-  httpRule?: { version: number; mode: RuleMode; createdAt: string; short: string; line: string } | null;
+  httpRule?: { version: number; mode: RuleMode; createdAt: string; short: string; line: string; scope: string } | null;
 }
 
 export type EngineState = "capturing" | "starting" | "degraded" | "down" | "missing" | "unknown";

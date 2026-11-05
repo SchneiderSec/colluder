@@ -162,7 +162,7 @@ const activeRules = () => store.activeRules();
 function decorate(p, rules = activeRules()) {
   if (!p) return p;
   const r = rules[p.tag];
-  return { ...p, httpRule: r && r.rule.mode !== "default" ? { version: r.version, mode: r.rule.mode, createdAt: r.createdAt, ...describeRule(r.rule) } : null };
+  return { ...p, httpRule: r && r.rule.mode !== "default" ? { version: r.version, mode: r.rule.mode, createdAt: r.createdAt, ...describeRule(r.rule, CFG.domain) } : null };
 }
 const probeOut = (tag) => decorate(store.probe(tag));
 

@@ -465,15 +465,17 @@ Restrained, mostly outlined, with exactly one bright button per working region.
 - Hits only count as read while the Hits tab is in view. A hit that lands while another tab is open keeps the probe unread and puts the amber new dot on the Hits tab.
 - Arrow keys, Home and End move between tabs. The tab is in the URL (`#probes/<tag>/http`) and stays put when you switch probes. j/k only act on the Hits tab. Old `#files`, `#responses` and `#rebinding` links open the matching tab.
 - DNS answers says what is planned, what the engine answers today, and why it waits.
-- The HTTP response label shows the active rule in mono Bone ("302"), "default" in Ash, or "302, edited" in italic Smoke while the editor holds unsaved changes.
+- The HTTP response label shows the active rule in mono Bone ("302"; Ash while the edge isn't live, because nothing serves it yet), "default" in Ash, or "302, edited" in italic Smoke while an unsaved draft exists. Drafts are kept per probe across tab and probe switches; closing the page with one asks first.
 
 ### HTTP response editor
-- Two columns: a 96px-label form on the left; on the right a 400px aside with **Next answer** (a raw pane on Well showing the exact bytes the edge will send, from the server's own code, with an HTTP/HTTPS toggle and hop arrows for loops) and **Rule history** (versions with time, what they did and "answered n hits"; clicking one loads it into the editor). Under 1180px the aside drops below.
+- Two columns when the panel is at least 940px wide (a container query on the panel, not the window): a 96px-label form on the left; on the right a 400px aside with **Next answer** (a raw pane on Well showing the exact bytes the edge will send, from the server's own code, with an HTTP/HTTPS toggle and hop arrows for loops) and **Rule history** (versions with time, what they did and "answered n hits"; clicking one loads it into the editor). Narrower panels put the aside below the form.
 - Fields use the composer's field style (Well ground, 3px Rule border, mono values, Smoke border on focus), not stock inputs. Mode, status and encoding are segmented toggles like the hit detail's view toggle.
 - A sticky footer: "Unsaved changes" with a hollow Smoke dot, **Save as vN** (primary, disabled while the draft is invalid or unchanged), Discard, and the rule that earlier hits keep the answer they got.
-- An invalid draft never errors loudly: the preview says "Can't answer like this yet: …" in Ember and Save stays disabled.
-- Before the cutover a Caution strip at the top says the edge isn't in front of interactsh yet.
-- Probe rows with a rule add a fourth line: a Redo icon in Ash and "Answers HTTP with 302 → 169.254.169.254, loop ×9" in Smoke.
+- An invalid draft never errors loudly: the field at fault gets an Ember border and a one-line reason under it, the preview says "Can't answer like this yet: …", and Save stays disabled. Switching mode keeps each mode's fields.
+- Hosted file shows what to plant (the DOCTYPE line for XXE, an img tag for SVG, the page URL for headless) and the fetch URLs, each with a copy button.
+- Before the cutover a Caution strip says rules aren't served yet, with the cutover command to copy. After it, if the edge stops, an Alarm strip there and an Alarm banner across the app say HTTP hits aren't being captured, with the restart command.
+- Probe rows with a rule add a fourth line: a Redo icon in Ash and "Answers HTTP(S) with loop ×9, then 302 → 169.254.169.254" in Smoke (loop first so it survives truncation; hosts on the payload domain read "your … host"). Before the cutover it reads "Rule v1 saved, not served yet: …" in Ash.
+- Hits answered as part of a redirect loop show "hop n" after the request line, so a loop reads as a sequence. Copy as evidence names who answered and who captured.
 - The response pane names who answered: "sent by Colluder · rule v2, redirect, hop 3", "sent by Colluder · default reply", or "sent by interactsh-server" for older hits; the custody line says Edge instead of Engine for hits the edge recorded.
 - The status bar adds **Edge answering** (live line) once the edge exists, and **Edge down** in Ember if its heartbeat stops.
 

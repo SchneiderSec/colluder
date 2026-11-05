@@ -21,8 +21,9 @@ export interface AppState {
   openSeen: Record<string, number>; // marker as it was when the probe was opened (keeps rows marked "new")
   sel: string | null;
   hit: number | null;
+  hitPicked: boolean; // the researcher chose this hit; otherwise the selection follows new hits
   tab: ProbeTab; // which probe tab is open; kept across probe switches
-  ruleDirty: string | null; // probe whose HTTP rule has unsaved edits (tab label says so)
+  ruleDrafts: Record<string, HttpRule>; // unsaved HTTP rule edits per probe; survive tab and probe switches
   ruleSeed: { tag: string; mode: "redirect" | "file" } | null; // planted with a technique: open its editor in that mode
   stream: { state: StreamState; since: number; lastEventAt: number };
   arrived: number | null; // id that just arrived (row flash)
@@ -39,7 +40,7 @@ export function save(k: string, v: unknown) {
 
 let state: AppState = {
   loaded: false, loadError: null, status: null, probes: new Map(), untagged: null, list: [], details: new Map(), enrich: new Map(),
-  seen: load<Record<string, number> | null>("colluder.seen", null) ?? {}, openSeen: {}, sel: null, hit: null, tab: "hits", ruleDirty: null, ruleSeed: null,
+  seen: load<Record<string, number> | null>("colluder.seen", null) ?? {}, openSeen: {}, sel: null, hit: null, hitPicked: false, tab: "hits", ruleDrafts: {}, ruleSeed: null,
   stream: { state: "connecting", since: Date.now(), lastEventAt: 0 }, arrived: null, lit: null, pulse: 0,
 };
 const firstVisit = load("colluder.seen", null) == null;
@@ -143,7 +144,7 @@ export function select(key: string | null, push = true) {
   if (state.sel !== key) {
     const openSeen = { ...state.openSeen };
     if (key) delete openSeen[key];
-    set({ sel: key, hit: null, openSeen });
+    set({ sel: key, hit: null, hitPicked: false, openSeen });
   }
   if (key && !document.hidden && viewingHits()) markSeen(key);
   if (push && key) writeHash();
@@ -162,7 +163,7 @@ export function setTab(tab: ProbeTab, push = true) {
   if (state.sel && !document.hidden && viewingHits()) markSeen(state.sel);
   if (push) writeHash();
 }
-export const selectHit = (id: number | null) => set({ hit: id });
+export const selectHit = (id: number | null, picked = true) => set({ hit: id, hitPicked: picked && id != null });
 
 export async function loadDetail(id: number) {
   if (state.details.has(id)) return;
@@ -198,7 +199,7 @@ export const previewRule = (tag: string, rule: HttpRule, scheme: "http" | "https
   api<{ raw?: string; delayMs?: number; error?: string }>(`/api/probes/${tag}/http-rule/preview`, { method: "POST", body: { rule, scheme, hop } });
 export async function saveRule(tag: string, rule: HttpRule) {
   const r = await api<RuleState>(`/api/probes/${tag}/http-rule`, { method: "POST", body: { rule } });
-  set({ ruleDirty: null });
+  setRuleDraft(tag, null);
   return r;
 }
 export const takeRuleSeed = (tag: string) => {
@@ -207,7 +208,14 @@ export const takeRuleSeed = (tag: string) => {
   set({ ruleSeed: null });
   return s.mode;
 };
-export const setRuleDirty = (tag: string | null) => { if (state.ruleDirty !== tag) set({ ruleDirty: tag }); };
+export function setRuleDraft(tag: string, draft: HttpRule | null) {
+  if (!draft && !(tag in state.ruleDrafts)) return;
+  const ruleDrafts = { ...state.ruleDrafts };
+  if (draft) ruleDrafts[tag] = draft; else delete ruleDrafts[tag];
+  set({ ruleDrafts });
+}
+// drafts live in memory only: ask before a reload or close throws them away
+addEventListener("beforeunload", (e) => { if (Object.keys(state.ruleDrafts).length) e.preventDefault(); });
 export const setDiscord = (on: boolean) => api("/api/settings", { method: "POST", body: { discord: on } });
 export const clearAll = () => api("/api/clear", { method: "POST", body: {} });
 export const restoreClear = () => api("/api/restore", { method: "POST", body: {} });
