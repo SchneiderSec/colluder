@@ -224,3 +224,21 @@ test("report: captured values stay inside code; timeline, exfil and self-tests a
   assert.equal(code("`x`"), "`` `x` ``");
   assert.match(fenced("x".repeat(20000)), /more bytes not included/);
 });
+
+import { edgeCodeHash, EDGE_FILES } from "../lib/codehash.mjs";
+import { mkdtempSync as mkd, mkdirSync as mkdir2, writeFileSync as wf, rmSync as rmrf } from "node:fs";
+import { tmpdir as tmp2 } from "node:os";
+import { join as j2 } from "node:path";
+
+test("codehash: the edge fingerprint changes when any edge file changes", () => {
+  const dir = mkd(j2(tmp2(), "ch-"));
+  try {
+    mkdir2(j2(dir, "lib"));
+    for (const f of EDGE_FILES) wf(j2(dir, f), `// ${f}\n`);
+    const a = edgeCodeHash(dir);
+    assert.equal(a, edgeCodeHash(dir));
+    wf(j2(dir, "lib/rules.mjs"), "// changed\n");
+    assert.notEqual(edgeCodeHash(dir), a);
+    assert.match(edgeCodeHash(), /^[0-9a-f]{16}$/, "the real tree hashes");
+  } finally { rmrf(dir, { recursive: true }); }
+});

@@ -148,6 +148,16 @@ export function Banners() {
       </div>,
     );
   }
+  // the edge is a root service: new rule features only reach the internet after it restarts
+  if (ed?.state === "running" && ed.codeStale) {
+    const fix = "sudo systemctl restart colluder-edge";
+    out.push(
+      <div key="edge-code" className="flex flex-wrap items-center gap-3 border-b border-rule bg-[#2b2113] px-6 py-[9px] text-[12.5px] text-[#f3d9a4] max-[820px]:px-3.5">
+        <span><b className="font-semibold">The edge is running older code than what's installed.</b> Rules still answer, but features added since it started aren't served yet. A restart takes about a second.</span>
+        <Button variant="quiet" className="ml-auto max-w-full overflow-hidden" onClick={() => copy(fix, "restart command")}><Copy /><span className="truncate font-mono text-bone">{fix}</span></Button>
+      </div>,
+    );
+  }
   const ch = s.status?.correlationChangedAt;
   let acked = "";
   try { acked = localStorage.getItem("colluder.ackCorr") ?? ""; } catch { /* */ }

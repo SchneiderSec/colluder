@@ -3,20 +3,39 @@ import { ArrowDownToLine, Copy, RefreshCw } from "lucide-react";
 import { useApp, plant, save } from "@/store";
 import { TAG_RE, UNTAGGED } from "@/lib/types";
 import { variants } from "@/lib/raw";
+import { METADATA, redirectable, hostOf } from "@/lib/metadata";
+import { ssrfPayloads, jsonEscape, xmlEscape, type Payload } from "@/lib/kit";
+import type { HttpRule } from "@/lib/types";
 import { copy } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { LineForm, TypeChip } from "./bits";
+import { Marked } from "./PayloadKit";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib/utils";
 
 const BAD_TAG = "Letters, digits and hyphens; can't start or end with a hyphen.";
+
+// SSRF → cloud metadata (PLAN-PRESETS.md P1): 302 (a POSTing webhook turns it into a GET), two hops
+// back through the probe first so a blind SSRF shows ?hop=2/3 as hits (301 then 307, codes every
+// common client follows), and optionally the decoy reply for HEAD checks.
+const CLOUDS = METADATA.filter(redirectable).filter((r) => /^(aws|alibaba|oracle|do|hetzner|openstack)/.test(r.id));
+function ssrfRule(url: string, headDecoy: boolean): HttpRule {
+  return { mode: "redirect", delayMs: 0, schemes: { http: true, https: true }, status: 302, location: url, loop: 2, hopStatuses: [301, 307], ...(headDecoy ? { decoy: { methods: ["HEAD"] } } : {}) } as HttpRule;
+}
+type CopyAs = "raw" | "url" | "json" | "xml";
+const asCopy = (s: string, c: CopyAs) => (c === "url" ? encodeURIComponent(s) : c === "json" ? jsonEscape(s) : c === "xml" ? xmlEscape(s) : s);
 
 export function Composer() {
   const s = useApp((x) => x);
   const [tag, setTag] = useState("");
   const [target, setTarget] = useState("");
   const [technique, setTechnique] = useState("callback");
+  const [cloud, setCloud] = useState(CLOUDS[0].id);
+  const [headDecoy, setHeadDecoy] = useState(true);
+  const [copyAs, setCopyAs] = useState<CopyAs>("raw");
+  const [plain, setPlain] = useState(false);
   const [err, setErr] = useState("");
   const tagRef = useRef<HTMLInputElement>(null);
   const varsRef = useRef<HTMLDivElement>(null);
@@ -37,6 +56,10 @@ export function Composer() {
   const preview = tag && TAG_RE.test(tag) && !s.probes.has(tag) ? tag : null;
   const shownTag = preview || (s.sel && s.sel !== UNTAGGED ? s.sel : null);
   const vs = variants(host, domain, shownTag);
+  // a preset probe's own payloads replace the plain three (which stay behind "Plain callbacks")
+  const shownTechnique = preview ? technique : shownTag ? s.probes.get(shownTag)?.technique : null;
+  useEffect(() => setPlain(false), [shownTag]);
+  const presetRows: Payload[] | null = host && shownTag && shownTechnique === "ssrf-metadata" ? ssrfPayloads(shownTag, host) : null;
   // B6: while you read a probe's hits, its payloads fold into one line of copy buttons, so the hit
   // detail gets the room. "Show payloads" keeps them open (remembered).
   const [pinned, setPinned] = useState<boolean>(() => { try { return JSON.parse(localStorage.getItem("colluder.payloadsOpen") ?? "false"); } catch { return false; } });
@@ -48,8 +71,10 @@ export function Composer() {
     e.preventDefault();
     if (!TAG_RE.test(tag)) { setErr(tag ? BAD_TAG : "Give the probe a tag first, e.g. avatar."); tagRef.current?.focus(); return; }
     try {
-      await plant(tag, target.trim(), technique);
-      setTag(""); setTarget(""); setErr(""); setTechnique("callback");
+      const c = CLOUDS.find((x) => x.id === cloud)!;
+      if (technique === "ssrf-metadata") await plant(tag, target.trim(), technique, ssrfRule(c.url, headDecoy), `302 → ${hostOf(c.url)} (${c.provider}: ${c.name}) after 2 hops`);
+      else await plant(tag, target.trim(), technique);
+      setTag(""); setTarget(""); setErr(""); setTechnique("callback"); setPlain(false);
       // next step is copying a payload: put focus there, not back in an emptied field
       requestAnimationFrame(() => varsRef.current?.querySelector<HTMLButtonElement>("button[data-copy]")?.focus());
     }
@@ -82,10 +107,21 @@ export function Composer() {
             <SelectItem value="callback">Callback</SelectItem>
             <SelectItem value="redirect">Redirect</SelectItem>
             <SelectItem value="file">Hosted file</SelectItem>
+            <SelectItem value="ssrf-metadata">SSRF → metadata</SelectItem>
             <SelectItem value="rebind" disabled>DNS rebinding (planned)</SelectItem>
           </SelectContent>
         </Select>
         <Button type="submit" variant="default" size="lg" className="h-9"><ArrowDownToLine />Plant</Button>
+        {technique === "ssrf-metadata" && (
+          <div className="col-span-full flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[12.5px] text-smoke">
+            <Select value={cloud} onValueChange={setCloud}>
+              <SelectTrigger aria-label="Cloud" className="h-8 w-auto gap-[9px] rounded-[3px] border-rule bg-soot text-[12.5px]"><span className="font-[550] text-smoke">Cloud</span><SelectValue /></SelectTrigger>
+              <SelectContent>{CLOUDS.map((c) => <SelectItem key={c.id} value={c.id}>{c.provider}: {c.name}</SelectItem>)}</SelectContent>
+            </Select>
+            <label className="flex cursor-pointer items-center gap-[7px]"><input type="checkbox" className="size-3.5 accent-bone" checked={headDecoy} onChange={(e) => setHeadDecoy(e.target.checked)} />Decoy reply for HEAD checks</label>
+            <span className="text-ash">Serves at once: two hops back through the probe (301, 307), then 302 → <span className="font-mono">{hostOf(CLOUDS.find((x) => x.id === cloud)!.url)}</span>. A redirect can't do IMDSv2's PUT, so a 401 in the target's response means v2 is enforced.</span>
+          </div>
+        )}
       </form>
       {err && <p id="tag-err" className="col-start-2 -mt-1 text-[12.5px] text-[#f3b4a3] max-[820px]:col-start-1">{err}</p>}
 
@@ -93,7 +129,28 @@ export function Composer() {
         {preview ? "Preview for" : shownTag ? "Payloads for" : "Base payload"}
         <span className="block truncate font-mono text-[12.5px] text-bone">{shownTag ?? "no tag"}</span>
       </div>
-      {folded ? (
+      {presetRows && !plain ? (
+        <div ref={varsRef} className="grid min-w-0 grid-cols-[164px_minmax(0,max-content)_28px_minmax(0,1fr)] items-center gap-x-2.5 gap-y-0.5 max-[820px]:grid-cols-[minmax(0,1fr)_28px]">
+          {presetRows.map((p) => (
+            <div key={p.code} className="contents">
+              <span className="flex items-center gap-2 text-[12.5px] whitespace-nowrap text-smoke max-[820px]:col-span-full"><TypeChip proto={p.text.startsWith("https") ? "https" : "http"} />{p.name}</span>
+              <span className="truncate font-mono text-[12.5px] text-smoke" title={p.text}><Marked text={p.text} tag={shownTag!} code={p.code} /></span>
+              <Button data-copy variant="ghost" size="icon-sm" aria-label={`Copy ${p.name} payload`} onClick={() => copy(asCopy(p.text, copyAs), `${p.name} payload${copyAs === "raw" ? "" : `, ${copyAs === "url" ? "URL-encoded" : copyAs === "json" ? "JSON-escaped" : "XML-escaped"}`}`)}><Copy /></Button>
+              <span className="truncate pl-2 text-[11px] text-ash max-[1180px]:hidden" title={p.note}>{p.note}</span>
+            </div>
+          ))}
+          <div className="col-span-full mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-ash">
+            <span className="flex items-center gap-2">Copy
+              <ToggleGroup type="single" value={copyAs} onValueChange={(v) => v && setCopyAs(v as CopyAs)} aria-label="Copy as" className="overflow-hidden rounded-[3px] border border-rule">
+                {([["raw", "as is"], ["url", "URL"], ["json", "JSON"], ["xml", "XML"]] as [CopyAs, string][]).map(([v, l]) => (
+                  <ToggleGroupItem key={v} value={v} className="h-[22px] rounded-none border-l border-rule px-2 text-[11px] text-smoke first:border-l-0 data-[state=on]:bg-soot-2 data-[state=on]:font-semibold data-[state=on]:text-bone">{l}</ToggleGroupItem>
+                ))}
+              </ToggleGroup>
+            </span>
+            <Button variant="ghost" size="sm" className="text-ash" onClick={() => setPlain(true)}>Plain callbacks</Button>
+          </div>
+        </div>
+      ) : folded ? (
         <div ref={varsRef} className="flex min-w-0 flex-wrap items-center gap-1">
           {vs!.map((v) => (
             <Button key={v.proto} data-copy variant="ghost" size="sm" title={v.value} aria-label={`Copy ${v.proto.toUpperCase()} payload`} onClick={() => copy(v.value, `${v.proto.toUpperCase()} payload`)}>
@@ -141,6 +198,7 @@ export function Composer() {
               </div>
             ))}
             {preview && <p className="col-span-full text-[11px] text-ash">Not planted yet: these already work, but Plant records the tag and target so the hits read as a story.</p>}
+            {presetRows && plain && <Button variant="ghost" size="sm" className="col-span-full justify-self-start text-ash" onClick={() => setPlain(false)}>SSRF payloads</Button>}
             {reading && pinned && <Button variant="ghost" size="sm" className="col-span-full justify-self-start text-ash" onClick={() => pin(false)}>Fold payloads while reading hits</Button>}
           </>
         )}

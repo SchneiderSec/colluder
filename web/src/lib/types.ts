@@ -14,6 +14,10 @@ export interface Interaction {
   tagSource: "subdomain" | "path" | null;
   summary: string;
   hop?: number | null; // which hop of a redirect loop Colluder's edge answered (phase 2)
+  decoy?: "first" | "user-agent" | "source" | "method" | null; // got the decoy reply
+  answerCode?: number | null; // exit redirect: the status sent…
+  answerTo?: string | null; // …and the host it pointed at
+  hopCode?: number | null; // a loop hop's own code, when it differs from the rule's
 }
 
 export interface Enrich {
@@ -46,7 +50,9 @@ export interface Answer {
   tag?: string | null;
   hop?: number;
   status?: number; // a loop hop's own redirect code, when it differs from the rule's
-  decoy?: "first" | "user-agent" | "source"; // got the default reply as a decoy
+  decoy?: "first" | "user-agent" | "source" | "method"; // got the default reply as a decoy
+  code?: number; // the exit redirect's status…
+  to?: string; // …and the host it pointed at
   error?: string;
   droppedBytes?: number;
   delaySkipped?: boolean;
@@ -83,6 +89,7 @@ export interface EdgeStatus {
   relayed?: number;
   errors?: number;
   detail?: string;
+  codeStale?: boolean; // the edge runs older code than is on disk: it needs a restart
 }
 
 export interface Counts {

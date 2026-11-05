@@ -20,7 +20,7 @@ const fld = "flex h-[30px] min-w-0 items-center rounded-[3px] border border-rule
 const seg = "h-[26px] rounded-none border-l border-rule px-[11px] text-[12.5px] text-smoke first:border-l-0 data-[state=on]:bg-soot-2 data-[state=on]:font-semibold data-[state=on]:text-bone";
 
 // the payload exactly as copied, with the tag marked and the variant code in Ash
-function Marked({ text, tag, code }: { text: string; tag: string; code?: string }) {
+export function Marked({ text, tag, code }: { text: string; tag: string; code?: string }) {
   const words = [tag, code].filter(Boolean).map((w) => w!.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   const re = new RegExp(`(?<![a-z0-9-])(${words.join("|")})(?![a-z0-9-])`, "g");
   const out: ReactNode[] = [];

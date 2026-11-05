@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Bell, BellOff, ChevronRight, Download, FileText, Search } from "lucide-react";
 import { useApp, keyOf, selectHit, patchProbe, saveRule, fetchTrigger, fetchReport, chatterOf, setTab, unreadFor, loadOlder, searchHits, exportUrl, PROBE_TABS, type AppState, type ProbeTab } from "@/store";
 import { dnsSteps, mostSpecific } from "@/lib/dns";
+import { stageOf } from "@/lib/stage";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { UNTAGGED, type Interaction, type Probe } from "@/lib/types";
 import { dayOrTime, hmsms, isoMs, plural } from "@/lib/format";
@@ -142,7 +143,7 @@ function HitRow({ i, open, sel, arrived, child, chatter, inProbe, step, self, on
       <Td sel={sel}>{hmsms(i.timestamp)}</Td>
       <Td sel={sel}><TypeChip proto={i.protocol}>{i.protocol === "dns" ? `DNS ${i.qType || "other"}` : undefined}</TypeChip></Td>
       <Td sel={sel} className="font-mono text-[12.5px]">{i.remoteAddress}</Td>
-      <Td sel={sel} last>{web || i.protocol === "smtp" ? <><span className="font-mono text-[12.5px]">{i.summary}</span>{i.hop != null && <span className="ml-2 text-[11px] whitespace-nowrap text-ash" title="Redirect loop hop Colluder answered">hop {i.hop}</span>}{self && <span className="ml-2 text-[11px] text-ash" title="Sent from the OOB box itself (a self-test), not a target">· this box</span>}</> : i.protocol === "dns" ? <><DnsName i={i} />{chatter && <span className="text-[11px] text-ash" title="A lookup of the bare payload id near this probe's hits: a resolver walking the name, or a client resolving the HTTPS host. Kept, never counted as new."> · resolver chatter{inProbe ? "" : ` around ${chatter}`}</span>}{step && <span className="text-[11px] text-ash" title={`The resolver asked for this on its way to ${step} (QNAME minimisation). Not exfil data.`}> · resolver step toward <span className="font-mono">{labelsOf(step)}</span></span>}</> : <span className="text-[11px] text-smoke">{i.summary}</span>}</Td>
+      <Td sel={sel} last>{web || i.protocol === "smtp" ? <><span className="font-mono text-[12.5px]">{i.summary}</span>{stageOf(i) && <span className="ml-2 text-[11px] whitespace-nowrap text-ash" title="What Colluder's edge answered. A redirect sent is not proof it was followed; a later hop is.">· {stageOf(i)}</span>}{self && <span className="ml-2 text-[11px] text-ash" title="Sent from the OOB box itself (a self-test), not a target">· this box</span>}</> : i.protocol === "dns" ? <><DnsName i={i} />{chatter && <span className="text-[11px] text-ash" title="A lookup of the bare payload id near this probe's hits: a resolver walking the name, or a client resolving the HTTPS host. Kept, never counted as new."> · resolver chatter{inProbe ? "" : ` around ${chatter}`}</span>}{step && <span className="text-[11px] text-ash" title={`The resolver asked for this on its way to ${step} (QNAME minimisation). Not exfil data.`}> · resolver step toward <span className="font-mono">{labelsOf(step)}</span></span>}</> : <span className="text-[11px] text-smoke">{i.summary}</span>}</Td>
     </tr>
   );
 }

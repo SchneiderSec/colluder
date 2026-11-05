@@ -15,6 +15,7 @@ import { parseInteraction, summarize, TAG_RE } from "./lib/tag.mjs";
 import { reverseDns, asnLookup } from "./lib/enrich.mjs";
 import { Discord } from "./lib/discord.mjs";
 import { probeReport } from "./lib/report.mjs";
+import { edgeCodeHash } from "./lib/codehash.mjs";
 import { validateHttpRule, respond, serialize, describeRule } from "./lib/rules.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -163,7 +164,10 @@ async function readEdgeStatus() {
     const s = JSON.parse(await readFile(CFG.edgeStatus, "utf8"));
     const age = Date.now() - Date.parse(s.heartbeatAt);
     const state = s.stopped ? "stopped" : age > 20_000 ? "stale" : "running";
-    edgeStatus = { state, listen: s.listen, cert: s.cert, heartbeatAt: s.heartbeatAt, startedAt: s.startedAt, own: s.own, relayed: s.relayed, errors: s.errors };
+    // older code: the edge loaded different files than are on disk now (or predates this check)
+    let codeStale = false;
+    try { codeStale = state === "running" && s.code !== edgeCodeHash(); } catch { /* files mid-write: decide next time */ }
+    edgeStatus = { state, listen: s.listen, cert: s.cert, heartbeatAt: s.heartbeatAt, startedAt: s.startedAt, own: s.own, relayed: s.relayed, errors: s.errors, codeStale };
   } catch (e) {
     edgeStatus = { state: e.code === "ENOENT" ? "absent" : "unreadable", detail: e.code === "ENOENT" ? undefined : e.message };
   }
@@ -177,6 +181,9 @@ function decorate(p, rules = activeRules()) {
   return { ...p, httpRule: r && r.rule.mode !== "default" ? { version: r.version, mode: r.rule.mode, createdAt: r.createdAt, ...describeRule(r.rule, CFG.domain) } : null };
 }
 const probeOut = (tag) => decorate(store.probe(tag));
+
+// what a probe was planted for: the plain ones, then presets that plant with a rule (PLAN-PRESETS.md)
+const TECHNIQUES = ["callback", "redirect", "file", "ssrf-metadata"];
 
 function previewRequest(tag, scheme, hop) {
   const host = engine.payload?.host || `${"x".repeat(33)}.${CFG.domain}`;
@@ -323,7 +330,16 @@ const server = http.createServer(async (req, res) => {
       const b = await body(req);
       const tag = String(b.tag || "").trim().toLowerCase();
       if (!TAG_RE.test(tag)) return json(res, 400, { error: "Tag must be 1–32 letters, digits or hyphens, not starting or ending with a hyphen." });
-      store.plant(tag, String(b.target || "").slice(0, 300), "callback", nowIso());
+      const technique = TECHNIQUES.includes(b.technique) ? b.technique : "callback";
+      // a preset plants with its rule, saved as the next version in the same request
+      const v = b.rule ? validateHttpRule(b.rule) : null;
+      if (v?.error) return json(res, 400, { error: `Couldn't set up the answer: ${v.error}` });
+      store.plant(tag, String(b.target || "").slice(0, 300), technique, nowIso());
+      if (v) {
+        const saved = store.saveRule(tag, v.rule, nowIso());
+        await publishRules();
+        log(`rule saved at plant: ${tag} v${saved.version} (${technique})`);
+      }
       const probe = probeOut(tag);
       broadcast("probe", probe);
       return json(res, 200, probe);

@@ -81,11 +81,26 @@ test("rules: a decoy sends the default reply to the first requests, a User-Agent
   assert.equal(real.status, 302);
   assert.equal(real.answer.decoy, undefined);
   assert.equal(describeDecoy(rule.decoy), 'the first request, User-Agents containing "Slackbot", 203.0.113.9');
-  assert.equal(describeRule(rule).line, "decoy first, 302 → 169.254.169.254");
+  assert.equal(describeRule(rule).line, "decoy, 302 → 169.254.169.254");
   assert.equal(validateHttpRule({ mode: "custom", decoy: { first: "", ua: "", sources: "" } }).rule.decoy, undefined, "an empty decoy is none");
   assert.equal(validateHttpRule({ mode: "custom", decoy: { sources: "evil.example" } }).error, 'Decoy source "evil.example" is not an IP address.');
   assert.equal(validateHttpRule({ mode: "custom", decoy: { first: 21 } }).error, "Decoy count must be 0 to 20 requests.");
   assert.equal(validateHttpRule({ mode: "default", decoy: { first: 1 } }).rule.decoy, undefined);
+});
+
+test("rules: a HEAD decoy, and the exit redirect records where it pointed", () => {
+  const { rule } = validateHttpRule({ mode: "redirect", status: 302, location: "http://169.254.169.254/latest/meta-data/iam/info", loop: 1, decoy: { methods: "head" } });
+  assert.deepEqual(rule.decoy, { methods: ["HEAD"] });
+  const req = (method, target) => ({ scheme: "http", method, target, host: `x.${ID}.${DOMAIN}`, uniqueId: ID, domain: DOMAIN, seen: 0 });
+  const head = respond(rule, 1, req("HEAD", "/"));
+  assert.equal(head.status, 200);
+  assert.equal(head.answer.decoy, "method");
+  const hop1 = respond(rule, 1, req("GET", "/"));
+  assert.equal(hop1.answer.to, undefined, "a loop hop points back at the probe");
+  const exit = respond(rule, 1, req("GET", "/?hop=2"));
+  assert.deepEqual(exit.answer, { by: "colluder", mode: "redirect", version: 1, hop: 2, code: 302, to: "169.254.169.254" });
+  assert.equal(describeDecoy(rule.decoy), "HEAD requests");
+  assert.equal(validateHttpRule({ mode: "custom", decoy: { methods: "GET; rm" } }).error, "Decoy methods must be up to 4 HTTP methods, like HEAD.");
 });
 
 test("rules: custom and file answers; HEAD gets no body; scheme switch falls back to default", () => {

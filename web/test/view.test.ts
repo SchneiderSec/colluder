@@ -155,3 +155,14 @@ test("metadata: ids unique, every redirectable URL is a valid redirect Location"
   assert.equal(pathOf(METADATA.find((r) => r.id === "azure")!.url), "/metadata/instance?api-version=2021-02-01");
   assert.ok(!redirectable(METADATA.find((r) => r.id === "gcp")!));
 });
+
+import { stageOf } from "../src/lib/stage.ts";
+
+test("stage: labels say what the edge sent, and a later hop is what proves following", () => {
+  assert.equal(stageOf({ summary: "HEAD / HTTP/1.1", decoy: "method" }), "decoy reply to a HEAD request");
+  assert.equal(stageOf({ hop: 1, hopCode: 305 }), "hop 1: answered 305");
+  assert.equal(stageOf({ hop: 2 }), "followed 1 redirect · hop 2: answered a redirect");
+  assert.equal(stageOf({ hop: 3, answerCode: 302, answerTo: "169.254.169.254" }), "followed 2 redirects · answered 302 → 169.254.169.254");
+  assert.equal(stageOf({ answerCode: 302, answerTo: "169.254.169.254" }), "answered 302 → 169.254.169.254");
+  assert.equal(stageOf({ summary: "GET / HTTP/1.1" }), null);
+});

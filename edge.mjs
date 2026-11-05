@@ -14,6 +14,9 @@ import { homedir } from "node:os";
 import { Reader, readHead, readBody, HttpError, LIMITS } from "./lib/http1.mjs";
 import { respond, serialize, reason } from "./lib/rules.mjs";
 import { parseInteraction } from "./lib/tag.mjs";
+import { edgeCodeHash } from "./lib/codehash.mjs";
+
+const CODE = edgeCodeHash(); // what this process loaded (see lib/codehash.mjs)
 
 const env = process.env;
 const DATA = env.COLLUDER_DATA || join(homedir(), ".local/share/colluder");
@@ -284,7 +287,7 @@ function start() {
       pid: process.pid, stopped, heartbeatAt: new Date().toISOString(), ...stats,
       listen: { http: `${CFG.http.host}:${CFG.http.port}`, https: CFG.https ? `${CFG.https.host}:${CFG.https.port}` : null },
       upstream: { http: `${CFG.upHttp.host}:${CFG.upHttp.port}`, https: `${CFG.upHttps.host}:${CFG.upHttps.port}` },
-      cert: certInfo, rules: Object.keys(state.rules).length, rulesGeneratedAt: state.generatedAt,
+      cert: certInfo, rules: Object.keys(state.rules).length, rulesGeneratedAt: state.generatedAt, code: CODE,
     }), { mode: 0o600 });
     renameSync(tmp, CFG.statusFile);
     } catch (e) { log("status file not written:", e.message); }

@@ -14,6 +14,8 @@ export type MetaRow = {
 };
 
 export const METADATA: MetaRow[] = [
+  { id: "aws-role", provider: "AWS", name: "IMDSv1: IAM role (no secret)", url: "http://169.254.169.254/latest/meta-data/iam/info",
+    note: "The instance profile ARN: proves the role is reachable without fetching keys. Only answers where IMDSv1 is still allowed." },
   { id: "aws-v1", provider: "AWS", name: "IMDSv1: IAM role credentials", url: "http://169.254.169.254/latest/meta-data/iam/security-credentials/",
     note: "Lists the role name; append it to get keys. Only answers where the instance still allows IMDSv1." },
   { id: "aws-userdata", provider: "AWS", name: "IMDSv1: user data", url: "http://169.254.169.254/latest/user-data",

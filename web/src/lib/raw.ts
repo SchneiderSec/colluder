@@ -42,7 +42,7 @@ export function answeredBy(a: InteractionDetail["answer"]) {
   if (!a) return "sent by interactsh-server";
   if (a.mode === "error") return `refused by Colluder (${a.error ?? "bad request"})`;
   if (a.mode === "default") return "sent by Colluder · default reply";
-  if (a.decoy) return `sent by Colluder · rule v${a.version}, decoy default reply (${a.decoy === "first" ? "one of the first requests" : a.decoy === "user-agent" ? "matched the User-Agent" : "matched the source"})`;
+  if (a.decoy) return `sent by Colluder · rule v${a.version}, decoy default reply (${a.decoy === "first" ? "one of the first requests" : a.decoy === "user-agent" ? "matched the User-Agent" : a.decoy === "method" ? "matched the method" : "matched the source"})`;
   const what = a.mode === "redirect" ? `redirect${a.hop ? `, hop ${a.hop}` : ""}` : a.mode === "file" ? "hosted file" : "custom response";
   return `sent by Colluder · rule v${a.version}, ${what}${a.delaySkipped ? " (delay skipped: too many waiting)" : ""}`;
 }

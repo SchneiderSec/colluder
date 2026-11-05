@@ -178,15 +178,16 @@ export async function loadDetail(id: number) {
 }
 
 // ---------- actions ----------
-export async function plant(tag: string, target: string, technique: string) {
+export async function plant(tag: string, target: string, technique: string, rule?: HttpRule, served?: string) {
   const existed = state.probes.has(tag);
-  const p = await api<Probe>("/api/probes", { method: "POST", body: { tag, target, technique } });
+  const p = await api<Probe>("/api/probes", { method: "POST", body: { tag, target, technique, ...(rule ? { rule } : {}) } });
   set({ probes: new Map(state.probes).set(p.tag, p) });
   // Redirect / Hosted file: plant, then open the HTTP response tab ready to set it up
   const seed = technique === "redirect" || technique === "file" ? technique : null;
   set({ ruleSeed: seed && !p.httpRule ? { tag: p.tag, mode: seed } : null });
   if (seed) setTab("http", false);
   select(p.tag);
+  if (rule) { toast(`Planted ${tag}: it now serves ${served ?? "its rule"}. Copy a payload above.`); return; }
   toast(existed ? `${tag} already planted: target updated` : seed ? `Planted ${tag}: set up its ${seed === "file" ? "hosted file" : "redirect"}, then copy a payload` : `Planted ${tag}: copy a payload above`);
 }
 export async function patchProbe(tag: string, body: { target?: string; note?: string; trigger?: string; retired?: boolean; muted?: boolean }) {
