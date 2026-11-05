@@ -279,7 +279,9 @@ function relay(sock, r, head, scheme) {
 // ---------- listeners ----------
 // ---------- TLS handshakes that never complete ----------
 // A client that refuses the certificate (https://<tag>.<id>…: the wildcard covers one label) closes
-// during the handshake, so no request ever arrives. If its server name is ours, that is still a hit.
+// without sending a request: during the handshake (Node, Java), or right after it, since curl and
+// others check the name only once the handshake is done. If its server name is ours, that is still a
+// hit; the connection counts as a request only once bytes arrive after the handshake.
 const pendingTls = new Map();
 const connKey = (s) => `${s.remoteAddress}|${s.remotePort}`;
 function tlsFailed(p) {
@@ -291,7 +293,7 @@ function tlsFailed(p) {
     protocol: "https", "unique-id": own.uniqueId, "full-id": own.fullId,
     "raw-request": "", "raw-request-b64": p.hello.toString("base64"), "raw-response": "",
     "remote-address": p.ip, timestamp: p.at,
-    "colluder-answer": { by: "colluder", mode: "tls", version: null, tag, tls: { sni: p.sni, alpn: p.alpn, error: p.error || null } },
+    "colluder-answer": { by: "colluder", mode: "tls", version: null, tag, tls: { sni: p.sni, alpn: p.alpn, error: p.error || (p.handshook ? "handshake completed, then closed without a request" : null) } },
   });
 }
 
@@ -306,7 +308,7 @@ function start() {
   mkdirSync(DATA, { recursive: true, mode: 0o700 });
   logFd = openSync(CFG.log, "a", 0o600);
   loadRules();
-  watchFile(CFG.rules, { interval: 1000 }, loadRules);
+  watchFile(CFG.rules, { interval: 250 }, loadRules); // a planted preset serves within a quarter second
   watchFile(CFG.payloadFile, { interval: 5000 }, () => { if (!existsSync(CFG.rules)) loadRules(); });
 
   const h = net.createServer((s) => handle(s, "http"));
@@ -319,7 +321,11 @@ function start() {
     certInfo = { notAfter: c.notAfter };
     // TLS is terminated only after reading the server name: the apex (interactsh's polling API, which
     // the wildcard certificate doesn't cover) goes through untouched; everything else is ours to read.
-    const s = tls.createServer({ ...c.ctx, ALPNProtocols: ["http/1.1"] }, (sock) => { pendingTls.delete(connKey(sock)); handle(sock, "https"); });
+    const s = tls.createServer({ ...c.ctx, ALPNProtocols: ["http/1.1"] }, (sock) => {
+      const key = connKey(sock), p = pendingTls.get(key);
+      if (p) { p.handshook = true; sock.once("data", () => pendingTls.delete(key)); }
+      handle(sock, "https");
+    });
     s.on("tlsClientError", (err, ts) => {
       stats.tlsErrors++;
       try { const p = pendingTls.get(connKey(ts)); if (p) p.error = String(err?.code || err?.message || "").slice(0, 120); } catch { /* socket gone */ }

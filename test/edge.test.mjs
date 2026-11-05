@@ -367,6 +367,21 @@ test("edge: a TLS handshake for a probe that never completes is a hit", async ()
   assert.equal(Buffer.from(line["raw-request-b64"], "base64")[0], 0x16, "the ClientHello bytes");
 });
 
+test("edge: a client that completes the handshake and closes without a request (curl's name check) is a TLS hit too", async () => {
+  await new Promise((ok) => {
+    const s = tls.connect({ host: "127.0.0.1", port: ports.https, servername: `late.${ID}.${DOMAIN}`, rejectUnauthorized: false });
+    s.on("secureConnect", () => s.end()); s.on("error", () => ok()); s.on("close", ok);
+  });
+  await sleep(300);
+  const line = edgeLines().at(-1);
+  assert.equal(line["full-id"], `late.${ID}`);
+  assert.equal(line["colluder-answer"].tls.error, "handshake completed, then closed without a request");
+  // and one that sends a request is a normal hit, not a TLS one
+  await request(ports.https, `GET /x HTTP/1.1\r\nHost: ok.${ID}.${DOMAIN}\r\n\r\n`, true);
+  await sleep(300);
+  assert.equal(edgeLines().filter((l) => l["full-id"].startsWith("ok.") || l["colluder-answer"]?.tls?.sni?.startsWith("ok.")).map((l) => l["colluder-answer"].mode).join(), "default");
+});
+
 test("edge: status file reports listeners and counts", () => {
   const st = JSON.parse(readFileSync(join(dir, "edge.status.json"), "utf8"));
   assert.equal(st.listen.http, `127.0.0.1:${ports.http}`);
