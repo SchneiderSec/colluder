@@ -1,0 +1,20 @@
+# Colluder dashboard: tails the engine's JSON lines, serves the UI on the tailnet only.
+# Optional secrets (DISCORD_WEBHOOK_URL) live in ~/.config/colluder/colluder.env (mode 600).
+[Unit]
+Description=Colluder dashboard (http://100.64.0.10:8090)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+UMask=0077
+WorkingDirectory=%h/work/tools/oob-dashboard
+EnvironmentFile=-%h/.config/colluder/colluder.env
+ExecStart=%h/.nvm/versions/node/v26.1.0/bin/node server.mjs
+# the tailnet address may not exist yet at boot; keep retrying until it binds
+Restart=always
+RestartSec=5
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=default.target

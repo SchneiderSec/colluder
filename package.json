@@ -1,0 +1,14 @@
+{
+  "name": "colluder",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Colluder: self-hosted OOB interaction dashboard. Your insider on the wire.",
+  "type": "module",
+  "engines": { "node": ">=26" },
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test test/core.test.mjs",
+    "build": "npm --prefix web run build",
+    "typecheck": "npm --prefix web run typecheck"
+  }
+}

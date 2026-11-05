@@ -1,0 +1,30 @@
+# Colluder engine: interactsh-client polling oob.example and writing JSON lines.
+# Server and token come from ~/.config/colluder/engine.yaml (mode 600) so the token is not on argv.
+# Interactions arrive as JSON lines on stdout; systemd appends them to the log (the client's own -o
+# truncates on every start). Logs and the banner go to stderr, i.e. the journal.
+# SIGINT, not SIGTERM: the client saves its session file (and so keeps the correlation id and every
+# planted payload valid across restarts) only from its interrupt handler.
+[Unit]
+Description=Colluder engine (interactsh-client for oob.example)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+UMask=0077
+ExecStartPre=/usr/bin/mkdir -p %h/.local/share/colluder
+ExecStart=%h/go/bin/interactsh-client -config %h/.config/colluder/engine.yaml \
+  -sf %h/.local/share/colluder/session.yaml \
+  -json \
+  -ps -psf %h/.local/share/colluder/payload.txt \
+  -v -duc -pi 2
+StandardOutput=append:%h/.local/share/colluder/interactions.jsonl
+StandardError=journal
+KillSignal=SIGINT
+TimeoutStopSec=10
+Restart=always
+RestartSec=5
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=default.target

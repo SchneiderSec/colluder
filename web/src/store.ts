@@ -1,0 +1,217 @@
+import { useSyncExternalStore } from "react";
+import type { Counts, Enrich, Interaction, InteractionDetail, Probe, StateResponse, Status } from "@/lib/types";
+import { UNTAGGED } from "@/lib/types";
+import { toast } from "@/lib/toast";
+import { isoMs, plural } from "@/lib/format";
+
+export type StreamState = "connecting" | "connected" | "reconnecting";
+
+export interface AppState {
+  loaded: boolean;
+  loadError: string | null;
+  status: Status | null;
+  probes: Map<string, Probe>;
+  untagged: Counts | null;
+  list: Interaction[]; // newest first
+  details: Map<number, InteractionDetail>;
+  enrich: Map<string, Enrich>;
+  seen: Record<string, number>; // per-browser read marker: highest id seen per probe
+  openSeen: Record<string, number>; // marker as it was when the probe was opened (keeps rows marked "new")
+  sel: string | null;
+  hit: number | null;
+  stream: { state: StreamState; since: number; lastEventAt: number };
+  arrived: number | null; // id that just arrived (row flash)
+  lit: string | null; // probe that just got a hit (list flash)
+  pulse: number; // increments on every new hit (mark animation)
+}
+
+function load<T>(k: string, d: T): T {
+  try { const v = localStorage.getItem(k); return v == null ? d : (JSON.parse(v) as T); } catch { return d; }
+}
+export function save(k: string, v: unknown) {
+  try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* private mode */ }
+}
+
+let state: AppState = {
+  loaded: false, loadError: null, status: null, probes: new Map(), untagged: null, list: [], details: new Map(), enrich: new Map(),
+  seen: load<Record<string, number> | null>("colluder.seen", null) ?? {}, openSeen: {}, sel: null, hit: null,
+  stream: { state: "connecting", since: Date.now(), lastEventAt: 0 }, arrived: null, lit: null, pulse: 0,
+};
+const firstVisit = load("colluder.seen", null) == null;
+const subs = new Set<() => void>();
+function set(patch: Partial<AppState>) {
+  state = { ...state, ...patch };
+  subs.forEach((s) => s());
+}
+export const getState = () => state;
+export function useApp<T>(sel: (s: AppState) => T): T {
+  return useSyncExternalStore((cb) => { subs.add(cb); return () => subs.delete(cb); }, () => sel(state));
+}
+
+// ---------- API ----------
+export async function api<T>(path: string, opts: { method?: string; body?: unknown } = {}): Promise<T> {
+  const r = await fetch(path, {
+    method: opts.method,
+    headers: opts.body !== undefined ? { "content-type": "application/json" } : undefined,
+    body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error((data as { error?: string }).error || `HTTP ${r.status}`);
+  return data as T;
+}
+
+export async function loadState() {
+  try {
+    const st = await api<StateResponse>("/api/state");
+    const probes = new Map(st.probes.map((p) => [p.tag, p]));
+    let seen = state.seen;
+    if (firstVisit && !state.loaded) { // first visit: everything already here counts as seen
+      seen = {};
+      for (const p of probes.values()) seen[p.tag] = p.lastId || 0;
+      seen[UNTAGGED] = st.untagged?.lastId || 0;
+      save("colluder.seen", seen);
+    }
+    set({ loaded: true, loadError: null, status: st.status, probes, untagged: st.untagged, list: st.interactions, seen });
+  } catch (e) {
+    set({ loadError: (e as Error).message });
+    setTimeout(loadState, 5000);
+  }
+}
+
+// ---------- unread ----------
+export const keyOf = (i: Interaction) => i.tag || UNTAGGED;
+// Resolver chatter: recursive resolvers doing QNAME minimisation (and clients resolving the
+// HTTPS host, whose tag sits in the path) look up the bare payload id right next to a tagged hit.
+// Those lookups are real but carry no signal, so they are labelled and never count as new.
+export const CHATTER_MS = 10_000;
+const chatterCache = new WeakMap<Interaction[], Map<number, string>>();
+export function chatterOf(list: Interaction[]): Map<number, string> {
+  let m = chatterCache.get(list);
+  if (m) return m;
+  m = new Map();
+  const tagged = list.filter((i) => i.tag).map((i) => ({ t: isoMs(i.timestamp), tag: i.tag! })).sort((a, b) => a.t - b.t);
+  if (tagged.length) {
+    for (const i of list) {
+      if (i.tag || i.protocol !== "dns" || i.fullId.toLowerCase() !== i.uniqueId.toLowerCase()) continue;
+      const t = isoMs(i.timestamp);
+      let lo = 0, hi = tagged.length;
+      while (lo < hi) { const mid = (lo + hi) >> 1; if (tagged[mid].t < t) lo = mid + 1; else hi = mid; }
+      let best: { t: number; tag: string } | null = null;
+      for (const c of [tagged[lo - 1], tagged[lo]]) if (c && (!best || Math.abs(c.t - t) < Math.abs(best.t - t))) best = c;
+      if (best && Math.abs(best.t - t) <= CHATTER_MS) m.set(i.id, best.tag);
+    }
+  }
+  chatterCache.set(list, m);
+  return m;
+}
+
+export function unreadFor(s: AppState, key: string) {
+  const seen = s.seen[key] || 0;
+  const chatter = key === UNTAGGED ? chatterOf(s.list) : null;
+  let n = 0;
+  for (const i of s.list) { if (i.id <= seen) break; if (keyOf(i) === key && !chatter?.has(i.id)) n++; }
+  return n;
+}
+export function totalUnread(s: AppState) {
+  let t = unreadFor(s, UNTAGGED);
+  for (const p of s.probes.values()) t += unreadFor(s, p.tag);
+  return t;
+}
+export function markSeen(key: string, keepOpen = true) {
+  const newest = state.list.find((i) => keyOf(i) === key)?.id || 0;
+  const openSeen = keepOpen && !(key in state.openSeen) ? { ...state.openSeen, [key]: state.seen[key] || 0 } : state.openSeen;
+  const seen = { ...state.seen, [key]: Math.max(state.seen[key] || 0, newest) };
+  save("colluder.seen", seen);
+  set({ seen, openSeen });
+}
+
+// ---------- selection ----------
+export function select(key: string | null, push = true) {
+  if (key && key !== UNTAGGED && !state.probes.has(key)) return;
+  if (state.sel !== key) {
+    const openSeen = { ...state.openSeen };
+    if (key) delete openSeen[key];
+    set({ sel: key, hit: null, openSeen });
+  }
+  if (key && !document.hidden) markSeen(key);
+  if (push && key) {
+    history.replaceState(null, "", "#probes/" + (key === UNTAGGED ? "unregistered" : key));
+    dispatchEvent(new Event("hashchange")); // replaceState is silent; keep the router's view of the URL in step
+  }
+}
+export const selectHit = (id: number | null) => set({ hit: id });
+
+export async function loadDetail(id: number) {
+  if (state.details.has(id)) return;
+  const d = await api<InteractionDetail>(`/api/interactions/${id}`);
+  const details = new Map(state.details).set(id, d);
+  const enrich = d.enrich ? new Map(state.enrich).set(d.remoteAddress, d.enrich) : state.enrich;
+  set({ details, enrich });
+}
+
+// ---------- actions ----------
+export async function plant(tag: string, target: string, technique: string) {
+  const existed = state.probes.has(tag);
+  const p = await api<Probe>("/api/probes", { method: "POST", body: { tag, target, technique } });
+  set({ probes: new Map(state.probes).set(p.tag, p) });
+  select(p.tag);
+  toast(existed ? `${tag} already planted: target updated` : `Planted ${tag}: copy a payload above`);
+}
+export async function patchProbe(tag: string, body: { target?: string; note?: string; retired?: boolean }) {
+  const p = await api<Probe>(`/api/probes/${tag}`, { method: "PATCH", body });
+  set({ probes: new Map(state.probes).set(p.tag, p) });
+}
+export async function lookupAsn(ip: string) {
+  const e = await api<Enrich>(`/api/enrich/${encodeURIComponent(ip)}/asn`, { method: "POST", body: {} });
+  set({ enrich: new Map(state.enrich).set(ip, e) });
+}
+export const setDiscord = (on: boolean) => api("/api/settings", { method: "POST", body: { discord: on } });
+export const clearAll = () => api("/api/clear", { method: "POST", body: {} });
+export const restoreClear = () => api("/api/restore", { method: "POST", body: {} });
+
+// ---------- SSE ----------
+let es: EventSource | null = null;
+export function connect() {
+  es?.close();
+  set({ stream: { ...state.stream, state: state.stream.lastEventAt ? "reconnecting" : "connecting", since: Date.now() } });
+  es = new EventSource("/api/stream");
+  es.onopen = () => {
+    const wasDown = state.stream.state !== "connected" && state.stream.lastEventAt;
+    set({ stream: { state: "connected", since: Date.now(), lastEventAt: Date.now() } });
+    if (wasDown) loadState(); // catch up on anything missed while disconnected
+  };
+  es.onerror = () => {
+    if (state.stream.state === "connected") set({ stream: { ...state.stream, state: "reconnecting", since: Date.now() } });
+  };
+  const on = <T,>(ev: string, fn: (d: T) => void) =>
+    es!.addEventListener(ev, (e) => {
+      state.stream.lastEventAt = Date.now();
+      try { fn(JSON.parse((e as MessageEvent).data) as T); } catch (err) { console.error(ev, err); }
+    });
+  on<Status>("status", (s) => set({ status: s }));
+  on<Interaction>("interaction", onInteraction);
+  on<Probe | null>("probe", (p) => { if (p) set({ probes: new Map(state.probes).set(p.tag, p) }); });
+  on<Counts>("untagged", (u) => set({ untagged: u }));
+  on<Enrich>("enrich", (e) => set({ enrich: new Map(state.enrich).set(e.ip, e) }));
+  on<{ reason: string; count: number }>("reload", (d) => {
+    toast(d.reason === "cleared" ? `Took out the trash: ${plural(d.count, "interaction")} hidden` : `Restored ${plural(d.count, "interaction")}`);
+    set({ details: new Map(), hit: null });
+    loadState();
+  });
+}
+
+function onInteraction(row: Interaction) {
+  if (state.list.some((i) => i.id === row.id)) return;
+  const list = [row, ...state.list].slice(0, 5000);
+  set({ list, arrived: row.id, lit: keyOf(row), pulse: state.pulse + 1 });
+  if (keyOf(row) === state.sel && !document.hidden && location.hash.startsWith("#probes")) markSeen(keyOf(row), false);
+}
+
+// a silent stream is a dead stream: the server sends status every 5 s
+setInterval(() => {
+  if (state.stream.state === "connected" && Date.now() - state.stream.lastEventAt > 20000) connect();
+}, 1000);
+
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && state.sel) markSeen(state.sel);
+});

@@ -1,0 +1,136 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "./fonts.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* Colluder tokens. Raccoon world: warm soot ground, bone ink, protocol inks,
+   amber eyeshine reserved for new/unread and the mark's eyes. */
+:root {
+  --soot: #16120e;
+  --soot-1: #1e1914;
+  --soot-2: #2a221b;
+  --well: #110e0b;
+  --rule: #3a3129;
+  --rule-2: #2a231d;
+  --bone: #ece3d1;
+  --smoke: #a99f90;
+  --ash: #8f8576;
+  --amber: #f2b33d;
+  --fur: #9a9084;
+  --bad: #e8735a;
+  --ink-dns: #c793c4;
+  --ink-http: #e2643f;
+  --ink-https: #8aa2ea;
+  --ink-smtp: #62b08f;
+  --ink-other: #b5ab9c;
+
+  /* shadcn/ui semantic variables mapped onto the Colluder palette */
+  --radius: 0.25rem;
+  --background: var(--soot);
+  --foreground: var(--bone);
+  --card: var(--soot-1);
+  --card-foreground: var(--bone);
+  --popover: var(--soot-1);
+  --popover-foreground: var(--bone);
+  --primary: var(--bone);
+  --primary-foreground: var(--soot);
+  --secondary: var(--soot-2);
+  --secondary-foreground: var(--bone);
+  --muted: var(--soot-2);
+  --muted-foreground: var(--smoke);
+  --accent: #30271f;
+  --accent-foreground: var(--bone);
+  --destructive: #c4523a;
+  --border: var(--rule);
+  --input: var(--rule);
+  --ring: var(--bone);
+}
+
+@theme inline {
+  --font-sans: Archivo, system-ui, sans-serif;
+  --font-mono: "Fragment Mono", ui-monospace, monospace;
+  --font-brand: "Schibsted Grotesk", Archivo, sans-serif;
+
+  --color-soot: var(--soot);
+  --color-soot-1: var(--soot-1);
+  --color-soot-2: var(--soot-2);
+  --color-well: var(--well);
+  --color-rule: var(--rule);
+  --color-rule-2: var(--rule-2);
+  --color-bone: var(--bone);
+  --color-smoke: var(--smoke);
+  --color-ash: var(--ash);
+  --color-amber: var(--amber);
+  --color-fur: var(--fur);
+  --color-bad: var(--bad);
+  --color-dns: var(--ink-dns);
+  --color-http: var(--ink-http);
+  --color-https: var(--ink-https);
+  --color-smtp: var(--ink-smtp);
+  --color-other: var(--ink-other);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 1px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 2px);
+  --radius-xl: calc(var(--radius) + 6px);
+
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-blink: blink 2.4s infinite;
+  --animate-pop: pop 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-lit: lit 1.4s cubic-bezier(0.16, 1, 0.3, 1);
+  @keyframes blink { 0%, 86%, 100% { transform: scaleY(1); } 92% { transform: scaleY(0.08); } }
+  @keyframes pop { from { transform: scale(0.55); } to { transform: scale(1); } }
+  @keyframes lit { from { background-color: #3a2c17; } }
+}
+
+@layer base {
+  * { @apply border-border; scrollbar-color: var(--rule) transparent; scrollbar-width: thin; }
+  html, body, #root { height: 100%; }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-size: 12.5px;
+    line-height: 1.4;
+    font-variation-settings: "wdth" 96;
+    font-variant-numeric: tabular-nums;
+    overflow: hidden;
+  }
+  ::selection { background: #5b4a33; color: var(--bone); }
+  input, textarea { caret-color: var(--amber); }
+  :focus-visible { outline: 1.5px solid var(--bone); outline-offset: 2px; border-radius: 3px; }
+  ::-webkit-scrollbar { width: 9px; height: 9px; }
+  ::-webkit-scrollbar-thumb { background: var(--rule); border-radius: 5px; border: 2px solid var(--soot); }
+}
+
+/* mark animations (eye states live on SVG groups) */
+.eye { transform-box: fill-box; transform-origin: center; }
+.mk-blink .eye { animation: var(--animate-blink); }
+.mk-wake .eye { animation: blink 0.32s 2; }
+.mk-pop .eye { animation: var(--animate-pop); }
+.mk-wash svg { animation: wash 0.45s ease-in-out 4; }
+.mk-wash .paws { opacity: 1; }
+.paws { opacity: 0; transition: opacity 0.2s; }
+.mk-wash .paws circle { animation: rub 0.45s ease-in-out 4 alternate; }
+@keyframes wash { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-6deg); } 75% { transform: rotate(6deg); } }
+@keyframes rub { from { transform: translateX(-2px); } to { transform: translateX(2px); } }
+.peek { position: absolute; bottom: -90px; right: 48px; width: 120px; height: 90px; transition: transform 0.7s var(--ease-out-expo); pointer-events: none; z-index: 5; }
+.peek.up { transform: translateY(-62px); }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
