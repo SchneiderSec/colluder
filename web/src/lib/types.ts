@@ -34,6 +34,48 @@ export interface InteractionDetail extends Interaction {
   reqSha256: string;
   clearedAt: string | null;
   enrich: Enrich | null;
+  answer: Answer | null; // set when Colluder's edge answered this hit
+}
+
+// Who answered a hit (phase 2). mode "error" = the edge refused a malformed request.
+export interface Answer {
+  by: "colluder";
+  mode: "default" | "redirect" | "custom" | "file" | "error";
+  version: number | null;
+  tag?: string | null;
+  hop?: number;
+  error?: string;
+  droppedBytes?: number;
+  delaySkipped?: boolean;
+}
+
+export type RuleMode = "default" | "redirect" | "custom" | "file";
+export interface HttpRule {
+  mode: RuleMode;
+  delayMs: number;
+  schemes: { http: boolean; https: boolean };
+  status?: number;
+  location?: string;
+  loop?: number;
+  headers?: [string, string][];
+  body?: string;
+  bodyEncoding?: "text" | "base64";
+  contentType?: string;
+  template?: string;
+}
+export interface RuleVersion { version: number; createdAt: string; rule: HttpRule; hits?: number }
+export interface RuleState { active: RuleVersion | null; history: RuleVersion[]; defaultHits: number; edge: EdgeStatus }
+
+export interface EdgeStatus {
+  state: "running" | "stale" | "stopped" | "absent" | "unreadable";
+  listen?: { http: string; https: string | null };
+  cert?: { notAfter: string } | null;
+  heartbeatAt?: string;
+  startedAt?: string;
+  own?: number;
+  relayed?: number;
+  errors?: number;
+  detail?: string;
 }
 
 export interface Counts {
@@ -55,6 +97,7 @@ export interface Probe extends Counts {
   plantedAt: string;
   registered: number;
   retiredAt: string | null;
+  httpRule?: { version: number; mode: RuleMode; createdAt: string; short: string; line: string } | null;
 }
 
 export type EngineState = "capturing" | "starting" | "degraded" | "down" | "missing" | "unknown";
@@ -68,6 +111,7 @@ export interface Status {
   log: { path: string; exists: boolean; size: number; error: string | null };
   discord: { available: boolean; enabled: boolean };
   lastClear: { at: string; count: number } | null;
+  edge?: EdgeStatus;
 }
 
 export interface StateResponse {

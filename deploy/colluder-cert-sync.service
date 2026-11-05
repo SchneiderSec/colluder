@@ -1,0 +1,7 @@
+# Copies the renewed wildcard certificate to ~/caido-cert for colluder-edge (see cert-sync.sh).
+[Unit]
+Description=Colluder: copy the oob.example wildcard certificate for the edge
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/colluder-cert-sync

@@ -464,7 +464,18 @@ Restrained, mostly outlined, with exactly one bright button per working region.
 - Each tab carries its state after the label: the hit count on Hits, and on HTTP response and DNS answers what the probe answers with ("default" in Ash today).
 - Hits only count as read while the Hits tab is in view. A hit that lands while another tab is open keeps the probe unread and puts the amber new dot on the Hits tab.
 - Arrow keys, Home and End move between tabs. The tab is in the URL (`#probes/<tag>/http`) and stays put when you switch probes. j/k only act on the Hits tab. Old `#files`, `#responses` and `#rebinding` links open the matching tab.
-- Until Colluder has its own responder, HTTP response and DNS answers say what is planned, what the engine answers today, and why it waits.
+- DNS answers says what is planned, what the engine answers today, and why it waits.
+- The HTTP response label shows the active rule in mono Bone ("302"), "default" in Ash, or "302, edited" in italic Smoke while the editor holds unsaved changes.
+
+### HTTP response editor
+- Two columns: a 96px-label form on the left; on the right a 400px aside with **Next answer** (a raw pane on Well showing the exact bytes the edge will send, from the server's own code, with an HTTP/HTTPS toggle and hop arrows for loops) and **Rule history** (versions with time, what they did and "answered n hits"; clicking one loads it into the editor). Under 1180px the aside drops below.
+- Fields use the composer's field style (Well ground, 3px Rule border, mono values, Smoke border on focus), not stock inputs. Mode, status and encoding are segmented toggles like the hit detail's view toggle.
+- A sticky footer: "Unsaved changes" with a hollow Smoke dot, **Save as vN** (primary, disabled while the draft is invalid or unchanged), Discard, and the rule that earlier hits keep the answer they got.
+- An invalid draft never errors loudly: the preview says "Can't answer like this yet: …" in Ember and Save stays disabled.
+- Before the cutover a Caution strip at the top says the edge isn't in front of interactsh yet.
+- Probe rows with a rule add a fourth line: a Redo icon in Ash and "Answers HTTP with 302 → 169.254.169.254, loop ×9" in Smoke.
+- The response pane names who answered: "sent by Colluder · rule v2, redirect, hop 3", "sent by Colluder · default reply", or "sent by interactsh-server" for older hits; the custody line says Edge instead of Engine for hits the edge recorded.
+- The status bar adds **Edge answering** (live line) once the edge exists, and **Edge down** in Ember if its heartbeat stops.
 
 ### Status bar and banners
 - **Status bar:** Soot 1, 28px, the wordmark then `Engine` / `Stream` / `Last hit`, each as a line form, a Smoke label and a bold word ("capturing", "connected", "3m 57s ago"). A failing state turns the line and the word Ember. Hovering Engine explains the line grammar.

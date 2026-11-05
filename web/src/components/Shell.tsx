@@ -65,6 +65,7 @@ export function StatusBar() {
   const off = ss !== "connected" && Date.now() - s.stream.since > 30000;
   const last = s.status?.lastHitAt;
   const host = s.status?.payload?.host;
+  const edgeSt = s.status?.edge;
   // the newest hit that carries signal (resolver chatter skipped)
   const chatter = chatterOf(s.list);
   const lastHit = s.list.find((i) => !chatter.has(i.id));
@@ -85,6 +86,11 @@ export function StatusBar() {
         sub={`${e?.version ?? ""}${e?.state === "capturing" && e.since ? ` · up ${dur(Date.now() - Date.parse(e.since))}` : ""}`}
         title={`${e?.detail ?? ""}\nSolid line: live. Dashed: starting or reconnecting. Struck: down.`} />
       <Item kind={ss === "connected" ? "live" : off ? "down" : "dash"} label="Stream" word={ss === "connected" ? "connected" : off ? "offline, retrying" : ss} bad={off} />
+      {edgeSt && edgeSt.state !== "absent" && (
+        <Item kind={edgeSt.state === "running" ? "live" : "down"} label="Edge" bad={edgeSt.state !== "running"}
+          word={edgeSt.state === "running" ? "answering" : edgeSt.state === "stale" ? "silent" : "down"}
+          title={edgeSt.state === "running" ? `Colluder's edge answers your probes on ${[edgeSt.listen?.http, edgeSt.listen?.https].filter(Boolean).join(" and ")}` : "The edge isn't answering: HTTP rules are not being served"} />
+      )}
       {lastHit ? (
         <button type="button" title={`Open hit #${lastHit.id}`} onClick={() => {
           const k = keyOf(lastHit);

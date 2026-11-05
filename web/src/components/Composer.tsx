@@ -74,8 +74,8 @@ export function Composer() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="callback">Callback</SelectItem>
-            <SelectItem value="redirect" disabled>Redirect chain (planned)</SelectItem>
-            <SelectItem value="file" disabled>Hosted file (planned)</SelectItem>
+            <SelectItem value="redirect">Redirect</SelectItem>
+            <SelectItem value="file">Hosted file</SelectItem>
             <SelectItem value="rebind" disabled>DNS rebinding (planned)</SelectItem>
           </SelectContent>
         </Select>

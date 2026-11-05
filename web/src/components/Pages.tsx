@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { TOOLS } from "./Shell";
+import type { Status } from "@/lib/types";
 
 export const PLANNED: Record<string, [string, string]> = {
   kit: ["Generate payloads tied to a probe: URL and IP obfuscation for filter bypass, a cloud metadata catalog (AWS, GCP, Azure, Alibaba, Oracle, Kubernetes), Gopher payloads, XXE, blind-XSS and JNDI templates.", "Generation only; no server changes needed. A good first phase-2 tool."],
@@ -28,6 +29,16 @@ export function Planned({ view }: { view: string }) {
       <p className="mt-5 text-[12.5px] text-ash">The research and build order live in tools/oob-dashboard/ROADMAP.md.</p>
     </Page>
   );
+}
+
+function edgeRows(e: Status["edge"]): [string, ReactNode][] {
+  if (!e || e.state === "absent") return [["State", <span className="text-smoke">Not running. HTTP rules are saved but interactsh still answers the internet. See tools/oob-dashboard/PHASE2.md for the cutover.</span>]];
+  const word = { running: "answering", stale: "silent (no heartbeat for 20 s)", stopped: "stopped", unreadable: `status unreadable: ${e.detail ?? ""}`, absent: "" }[e.state];
+  const rows: [string, ReactNode][] = [["State", <span className={e.state === "running" ? "" : "text-bad"}>{word}</span>]];
+  if (e.listen) rows.push(["Listening", <code className="font-mono">{[e.listen.http, e.listen.https].filter(Boolean).join(" · ")}</code>]);
+  if (e.cert?.notAfter) rows.push(["Certificate valid until", e.cert.notAfter]);
+  if (e.startedAt) rows.push(["Since start", `${e.own ?? 0} answered for your probes · ${e.relayed ?? 0} passed to interactsh · ${e.errors ?? 0} errors`]);
+  return rows;
 }
 
 export function Settings() {
@@ -53,6 +64,11 @@ export function Settings() {
       <H>Engine</H>
       <dl className="grid grid-cols-[200px_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-[12.5px] max-[820px]:grid-cols-1">
         {rows.map(([k, v]) => <div key={k} className="contents"><dt className="text-smoke">{k}</dt><dd>{v}</dd></div>)}
+      </dl>
+
+      <H>Edge</H>
+      <dl className="grid grid-cols-[200px_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-[12.5px] max-[820px]:grid-cols-1">
+        {edgeRows(st?.edge).map(([k, v]) => <div key={k} className="contents"><dt className="text-smoke">{k}</dt><dd>{v}</dd></div>)}
       </dl>
 
       <H>Alerts</H>

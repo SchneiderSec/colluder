@@ -1,5 +1,5 @@
 import { useId, useLayoutEffect, useRef, useState } from "react";
-import { Bell, ChevronDown, ChevronRight } from "lucide-react";
+import { Bell, ChevronDown, ChevronRight, Redo2 } from "lucide-react";
 import { useApp, select, unreadFor, keyOf, setDiscord, type AppState } from "@/store";
 import { PROTOS, UNTAGGED, type Counts, type Probe } from "@/lib/types";
 import { dayOrTime, dur, isoMs, plural } from "@/lib/format";
@@ -80,6 +80,11 @@ function Row({ s, p, k }: { s: AppState; p: Probe | (Counts & Partial<Probe>); k
         </span>
       ) : <span className="col-start-2 text-[11px] text-ash">No callbacks yet · planted {dayOrTime(p.plantedAt)}</span>}
       {talking ? <Timeline s={s} k={k} start={isU ? null : p.plantedAt ?? null} /> : <span className="col-start-3 w-[120px]" />}
+      {!isU && p.httpRule && (
+        <span className="col-span-2 col-start-2 flex min-w-0 items-center gap-[5px] text-[11px] text-smoke" title={`HTTP rule v${p.httpRule.version}`}>
+          <Redo2 className="size-3 flex-none text-ash" strokeWidth={1.5} /><span className="truncate">Answers HTTP with {p.httpRule.line}</span>
+        </span>
+      )}
     </button>
   );
 }

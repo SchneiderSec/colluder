@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowDown, Copy, FileText, Search } from "lucide-react";
 import { useApp, loadDetail, lookupAsn, save, chatterOf } from "@/store";
-import type { Enrich } from "@/lib/types";
+import type { Enrich, InteractionDetail } from "@/lib/types";
 import { byteCount, lineCount } from "@/lib/format";
 import { decode, evidence } from "@/lib/raw";
 import { copy, toast } from "@/lib/toast";
@@ -59,6 +59,15 @@ function RawPane({ title, sub, text, exact, http }: { title: string; sub: string
       )}
     </div>
   );
+}
+
+// who sent the response this hit got (phase 2: Colluder's edge answers its own probes)
+function answeredBy(a: InteractionDetail["answer"]) {
+  if (!a) return "sent by interactsh-server";
+  if (a.mode === "error") return `refused by Colluder (${a.error ?? "bad request"})`;
+  if (a.mode === "default") return "sent by Colluder · default reply";
+  const what = a.mode === "redirect" ? `redirect${a.hop ? `, hop ${a.hop}` : ""}` : a.mode === "file" ? "hosted file" : "custom response";
+  return `sent by Colluder · rule v${a.version}, ${what}${a.delaySkipped ? " (delay skipped: too many waiting)" : ""}`;
 }
 
 export function HitDetail({ id }: { id: number }) {
@@ -146,13 +155,13 @@ export function HitDetail({ id }: { id: number }) {
           sub={decoded ? "decoded view · copy stays exact" : `exact, as received · ${lineCount(d.rawRequest)} lines · ${byteCount(d.rawRequest)} bytes`}
           text={decoded ? decode(d.rawRequest, d.protocol) : d.rawRequest} exact={d.rawRequest} />
         <RawPane title={d.protocol === "dns" ? "Answer" : "Response"} http={web}
-          sub={d.protocol === "dns" ? "sent by interactsh-server" : `sent by interactsh-server · ${lineCount(d.rawResponse)} lines`}
+          sub={d.protocol === "dns" ? "sent by interactsh-server" : `${answeredBy(d.answer)} · ${lineCount(d.rawResponse)} lines`}
           text={decoded ? decode(d.rawResponse, d.protocol) : d.rawResponse} exact={d.rawResponse} />
       </div>
 
       <div aria-label="Custody record" className="flex flex-none flex-wrap items-center gap-x-4 gap-y-1 rounded-[3px] border border-rule bg-soot px-3 py-1.5 text-[11px] whitespace-nowrap max-[820px]:flex-col max-[820px]:items-start">
         <b className="font-[650]">Custody</b>
-        <span title={`Captured by engine ${d.timestamp}`}><span className="text-smoke">Engine </span><span className="font-mono">{d.timestamp}</span></span>
+        <span title={`Captured by ${d.answer ? "Colluder's edge" : "the engine"} ${d.timestamp}`}><span className="text-smoke">{d.answer ? "Edge " : "Engine "}</span><span className="font-mono">{d.timestamp}</span></span>
         <span title={`Received by dashboard ${d.receivedAt}`}>
           <span className="text-smoke">Dashboard </span><span className="font-mono">{d.receivedAt}</span>
           {recvMs >= 0 && <span className="text-ash">{recvMs < 60000 ? ` +${recvMs} ms` : " (backfilled after a restart)"}</span>}

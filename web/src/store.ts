@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import type { Counts, Enrich, Interaction, InteractionDetail, Probe, StateResponse, Status } from "@/lib/types";
+import type { Counts, Enrich, HttpRule, Interaction, InteractionDetail, Probe, RuleState, StateResponse, Status } from "@/lib/types";
 import { UNTAGGED } from "@/lib/types";
 import { toast } from "@/lib/toast";
 import { isoMs, plural } from "@/lib/format";
@@ -22,6 +22,8 @@ export interface AppState {
   sel: string | null;
   hit: number | null;
   tab: ProbeTab; // which probe tab is open; kept across probe switches
+  ruleDirty: string | null; // probe whose HTTP rule has unsaved edits (tab label says so)
+  ruleSeed: { tag: string; mode: "redirect" | "file" } | null; // planted with a technique: open its editor in that mode
   stream: { state: StreamState; since: number; lastEventAt: number };
   arrived: number | null; // id that just arrived (row flash)
   lit: string | null; // probe that just got a hit (list flash)
@@ -37,7 +39,7 @@ export function save(k: string, v: unknown) {
 
 let state: AppState = {
   loaded: false, loadError: null, status: null, probes: new Map(), untagged: null, list: [], details: new Map(), enrich: new Map(),
-  seen: load<Record<string, number> | null>("colluder.seen", null) ?? {}, openSeen: {}, sel: null, hit: null, tab: "hits",
+  seen: load<Record<string, number> | null>("colluder.seen", null) ?? {}, openSeen: {}, sel: null, hit: null, tab: "hits", ruleDirty: null, ruleSeed: null,
   stream: { state: "connecting", since: Date.now(), lastEventAt: 0 }, arrived: null, lit: null, pulse: 0,
 };
 const firstVisit = load("colluder.seen", null) == null;
@@ -175,8 +177,12 @@ export async function plant(tag: string, target: string, technique: string) {
   const existed = state.probes.has(tag);
   const p = await api<Probe>("/api/probes", { method: "POST", body: { tag, target, technique } });
   set({ probes: new Map(state.probes).set(p.tag, p) });
+  // Redirect / Hosted file: plant, then open the HTTP response tab ready to set it up
+  const seed = technique === "redirect" || technique === "file" ? technique : null;
+  set({ ruleSeed: seed && !p.httpRule ? { tag: p.tag, mode: seed } : null });
+  if (seed) setTab("http", false);
   select(p.tag);
-  toast(existed ? `${tag} already planted: target updated` : `Planted ${tag}: copy a payload above`);
+  toast(existed ? `${tag} already planted: target updated` : seed ? `Planted ${tag}: set up its ${seed === "file" ? "hosted file" : "redirect"}, then copy a payload` : `Planted ${tag}: copy a payload above`);
 }
 export async function patchProbe(tag: string, body: { target?: string; note?: string; retired?: boolean }) {
   const p = await api<Probe>(`/api/probes/${tag}`, { method: "PATCH", body });
@@ -186,6 +192,22 @@ export async function lookupAsn(ip: string) {
   const e = await api<Enrich>(`/api/enrich/${encodeURIComponent(ip)}/asn`, { method: "POST", body: {} });
   set({ enrich: new Map(state.enrich).set(ip, e) });
 }
+// ---------- HTTP answer rules (phase 2) ----------
+export const fetchRule = (tag: string) => api<RuleState>(`/api/probes/${tag}/http-rule`);
+export const previewRule = (tag: string, rule: HttpRule, scheme: "http" | "https", hop: number) =>
+  api<{ raw?: string; delayMs?: number; error?: string }>(`/api/probes/${tag}/http-rule/preview`, { method: "POST", body: { rule, scheme, hop } });
+export async function saveRule(tag: string, rule: HttpRule) {
+  const r = await api<RuleState>(`/api/probes/${tag}/http-rule`, { method: "POST", body: { rule } });
+  set({ ruleDirty: null });
+  return r;
+}
+export const takeRuleSeed = (tag: string) => {
+  const s = state.ruleSeed;
+  if (s?.tag !== tag) return null;
+  set({ ruleSeed: null });
+  return s.mode;
+};
+export const setRuleDirty = (tag: string | null) => { if (state.ruleDirty !== tag) set({ ruleDirty: tag }); };
 export const setDiscord = (on: boolean) => api("/api/settings", { method: "POST", body: { discord: on } });
 export const clearAll = () => api("/api/clear", { method: "POST", body: {} });
 export const restoreClear = () => api("/api/restore", { method: "POST", body: {} });

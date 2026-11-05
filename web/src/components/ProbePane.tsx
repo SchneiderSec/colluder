@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Chip, NewDot, NilDot, TypeChip } from "./bits";
 import { HitDetail } from "./HitDetail";
+import { HttpRuleTab } from "./HttpRule";
 import { cn } from "@/lib/utils";
 
 function EditDialog({ p, open, onOpenChange }: { p: Probe; open: boolean; onOpenChange: (v: boolean) => void }) {
@@ -117,15 +118,9 @@ function Td({ children, sel, first, last, className }: { children: React.ReactNo
   );
 }
 
-// What a probe answers is set on the probe itself. Until Colluder has its own responder these
-// tabs say what is planned and what the engine answers today.
-const TAB_PLANNED: Record<Exclude<ProbeTab, "hits">, { title: string; what: string; today: string; why: string }> = {
-  http: {
-    title: "How this probe answers HTTP",
-    what: "Pick one answer for HTTP and HTTPS hits on this probe: interactsh's default reply, a redirect (optionally looping back through the probe first, so a blind SSRF that follows redirects shows up as a run of hits), a custom status, headers, body and delay, or a hosted file such as a DTD for blind XXE or a page that probes internal hosts from a headless browser. Each hit will record which rule version answered it.",
-    today: "Today every HTTP and HTTPS hit gets interactsh-server's default reply. The Response pane of each hit shows exactly what was sent.",
-    why: "This needs Colluder's own responder in front of interactsh: interactsh's dynamic responses are server-wide and unauthenticated (they would make the domain an open redirector), and its file hosting forces downloads.",
-  },
+// What a probe answers is set on the probe itself. DNS answers wait for a DNS responder (PHASE2.md:
+// :53 stays with interactsh), so that tab says what is planned and what the engine answers today.
+const TAB_PLANNED: Record<"dns", { title: string; what: string; today: string; why: string }> = {
   dns: {
     title: "How this probe answers DNS",
     what: "Pick the answer for lookups of this probe's names: the default, fixed records, or a rebind sequence that answers one address and then another with short TTLs, counted per resolver and starting over after an idle gap.",
@@ -159,6 +154,8 @@ function ProbeTabs({ s, p }: { s: AppState; p: Probe }) {
               on && "text-bone after:absolute after:inset-x-0 after:-bottom-px after:h-0.5 after:rounded-[1px] after:bg-bone")}>
             {TAB_LABEL[t]}
             {t === "hits" ? <span className="font-normal text-smoke">{p.hits}</span>
+              : t === "http" && s.ruleDirty === p.tag ? <span className="text-[11px] font-normal text-smoke italic">{p.httpRule?.short ?? "default"}, edited</span>
+              : t === "http" && p.httpRule ? <span className="font-mono text-[11px] font-normal text-bone" title={p.httpRule.line}>{p.httpRule.short}</span>
               : <span className="text-[11px] font-normal text-ash" title="interactsh-server's standard answer">default</span>}
             {t === "hits" && unread > 0 && <NewDot title={`${plural(unread, "new hit")} since you switched tabs`} />}
           </button>
@@ -168,7 +165,7 @@ function ProbeTabs({ s, p }: { s: AppState; p: Probe }) {
   );
 }
 
-function PlannedTab({ tab }: { tab: Exclude<ProbeTab, "hits"> }) {
+function PlannedTab({ tab }: { tab: "dns" }) {
   const t = TAB_PLANNED[tab];
   return (
     <div id="probe-panel" role="tabpanel" aria-labelledby={`probe-tab-${tab}`} className="min-h-0 overflow-auto px-6 py-[18px] max-[820px]:px-3.5">
@@ -230,7 +227,7 @@ export function ProbePane() {
   if (p && s.tab !== "hits") {
     return (
       <section className={cn(wrap, "grid-rows-[52px_35px_minmax(0,1fr)]")} aria-label={`Probe ${s.sel}`}>
-        <Head s={s} />{tabs}<PlannedTab tab={s.tab} />
+        <Head s={s} />{tabs}{s.tab === "http" ? <HttpRuleTab p={p} /> : <PlannedTab tab="dns" />}
       </section>
     );
   }

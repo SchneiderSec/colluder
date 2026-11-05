@@ -1,0 +1,23 @@
+# interactsh-server for oob.example, run by systemd instead of by hand in a terminal.
+# The token lives in /etc/interactsh/server.yaml (root, 600), never on the command line.
+# Port flags live in /etc/interactsh/ports.env: the cutover moves HTTP/HTTPS to internal ports behind
+# colluder-edge; the rollback empties them (back to :80/:443). Installed by deploy/cutover-phase2.sh.
+[Unit]
+Description=interactsh-server (oob.example)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# certmagic keeps the Let's Encrypt certificates under $HOME
+Environment=HOME=/root
+EnvironmentFile=/etc/interactsh/ports.env
+ExecStart=/home/user/go/bin/interactsh-server -config /etc/interactsh/server.yaml -d oob.example $INTERACTSH_PORT_FLAGS
+KillSignal=SIGINT
+TimeoutStopSec=10
+Restart=always
+RestartSec=3
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

@@ -1,4 +1,5 @@
 "use client"
+import { getNonce } from "get-nonce"
 
 import * as React from "react"
 import { cn } from "@/lib/utils"
@@ -72,6 +73,7 @@ function SelectContent({
       >
         <SelectScrollUpButton />
         <SelectPrimitive.Viewport
+          nonce={getNonce()} // Radix adds a <style> here; CSP only allows it with the page nonce
           className={cn(
             "p-1",
             position === "popper" &&

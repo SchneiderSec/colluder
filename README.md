@@ -7,14 +7,19 @@ Your insider on the wire. A self-hosted dashboard for out-of-band interactions a
 ## How it fits together
 
 ```
-interactsh-server (203.0.113.10, :53/:80/:443, -auth)      untouched
+internet ── :80/:443 ── colluder-edge (phase 2)  answers Colluder's probes itself → edge.jsonl
+                              └─ everything else → interactsh-server on 8081/8444 (real IP in X-Colluder-Origin-IP)
+         ── :53 :25 :389 ── interactsh-server (203.0.113.10, token in /etc/interactsh/server.yaml)
         ▲ polls every 2 s (token from ~/.config/colluder/engine.yaml, session in session.yaml)
 colluder-engine.service   interactsh-client v1.4.1, stdout appended → ~/.local/share/colluder/interactions.jsonl
-        │ tail (fs.watch + poll, resumes by offset, survives truncation)
-colluder.service          node server.mjs → SQLite (colluder.db), SSE, JSON API, UI from web/dist
+        │ tail both files (fs.watch + poll, resumes by offset, survives truncation)
+colluder.service          node server.mjs → SQLite (colluder.db), SSE, JSON API, rules.json, UI from web/dist
         ▼
 browser on the tailnet
 ```
+
+Until the phase 2 cutover runs, interactsh still owns :80/:443 and the edge isn't running: the
+dashboard says so, and HTTP rules are saved but not served. See `PHASE2.md`.
 
 - **Engine**: the stock `interactsh-client` CLI. Colluder never speaks the interactsh protocol.
   `-sf session.yaml` keeps the correlation id across restarts, so planted payloads stay valid.
@@ -44,10 +49,26 @@ resolves the bare host because its tag sits in the path. An untagged DNS lookup 
 within 10 s of a tagged hit is labelled "resolver chatter around <tag>": it stays listed under
 Unregistered but never counts as new, so it can't light up the tab title.
 
+**HTTP responses (phase 2).** Each probe's HTTP response tab sets what it answers: interactsh's
+default reply, a redirect (with optional loops back through the probe), a custom response, or a hosted
+file (templates for XXE DTDs, headless-browser probe pages, SVG, JWKS). Rules are versioned; every hit
+records which version answered it. The edge answers every correlation id this dashboard has used, so
+HTTP payloads from before an id change work again once the edge is live.
+
 **Restarts.** The engine keeps its correlation id (the first 20 characters of the payload host) in
 `session.yaml`, so planted payloads survive restarts. Only the 13-character suffix changes per run,
 and the server routes on the correlation id alone. systemd stops the engine with SIGINT because the
 client saves its session only from its interrupt handler.
+
+## Phase 2 cutover (operator, once)
+
+```sh
+sudo tools/oob-dashboard/deploy/cutover-phase2.sh     # edge on :80/:443, interactsh to 8081/8444, token rotated
+sudo tools/oob-dashboard/deploy/rollback-phase2.sh    # undo: interactsh back on :80/:443 (keeps the new token)
+```
+
+The script stops if a nuclei scan is running (`--force` overrides), never prints the token, and ends
+with live checks (edge answers, interactsh still reachable and authenticated, engine polling).
 
 ## Install / update (operator)
 
@@ -58,7 +79,8 @@ systemctl --user enable --now colluder-engine.service colluder.service
 ```
 
 After changing UI code: `npm run build` here, then reload the browser (no restart needed).
-After changing server code: `systemctl --user restart colluder`.
+After changing server code: `systemctl --user restart colluder`. After changing `edge.mjs` or
+`lib/`: `sudo systemctl restart colluder-edge` too.
 
 Discord alerts (first hit per probe, then a 60 s roll-up): put `DISCORD_WEBHOOK_URL=...` in
 `~/.config/colluder/colluder.env`, restart `colluder`, then switch alerts on in the UI.
@@ -73,6 +95,9 @@ Discord alerts (first hit per probe, then a 60 s roll-up): put `DISCORD_WEBHOOK_
 | `COLLUDER_ALLOWED_HOSTS` | `box.tailnet.ts.net,user` (plus host:port) |
 | `COLLUDER_DOMAIN` | `oob.example` |
 | `DISCORD_WEBHOOK_URL` | unset (alerts off) |
+| `COLLUDER_EDGE_HTTP` / `COLLUDER_EDGE_HTTPS` (edge) | `203.0.113.10:80` / `:443` (`off` disables HTTPS) |
+| `COLLUDER_UPSTREAM_HTTP` / `COLLUDER_UPSTREAM_HTTPS` (edge) | `127.0.0.1:8081` / `127.0.0.1:8444` (cutover writes the real ones to `~/.config/colluder/edge.env`) |
+| `COLLUDER_EDGE_CERT` / `COLLUDER_EDGE_KEY` (edge) | `~/caido-cert/fullchain.pem` / `privkey.pem` (kept fresh by `colluder-cert-sync.timer`) |
 
 ## Security notes
 
@@ -85,13 +110,19 @@ Discord alerts (first hit per probe, then a 60 s roll-up): put `DISCORD_WEBHOOK_
   neutralised (no mentions, no markdown, no links).
 - The interactsh token lives only in `~/.config/colluder/engine.yaml` (mode 600). Never on argv,
   never in this repo.
+- The edge is the only internet-facing Colluder process: no API, no database, only
+  `CAP_NET_BIND_SERVICE`, `ProtectSystem=strict`, writes only the data dir. Its HTTP/1.1 reader caps
+  heads at 32 KB, recorded bodies at 1 MB, and every wait has a deadline. Rules can only be written
+  from the tailnet dashboard; only probes you configured redirect anywhere.
+- TLS for the apex (interactsh's polling API) is passed through without decryption; Colluder's own
+  probes are terminated with the wildcard certificate and recorded byte-for-byte.
 - Source enrichment: reverse DNS runs automatically; ASN lookup (Team Cymru, a third party)
   only when you click "Look up".
 
 ## Development
 
 ```sh
-npm test                      # collector unit tests (node:test)
+npm test                      # collector + edge tests (node:test; the edge runs on loopback against fake upstreams)
 npm run typecheck && npm run build
 ```
 
