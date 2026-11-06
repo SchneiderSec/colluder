@@ -7,7 +7,7 @@
   "engines": { "node": ">=26" },
   "scripts": {
     "start": "node server.mjs",
-    "test": "node --test test/core.test.mjs test/edge.test.mjs web/test/view.test.ts",
+    "test": "node --test test/core.test.mjs test/edge.test.mjs test/mcp.test.mjs web/test/view.test.ts",
     "build": "npm --prefix web run build",
     "typecheck": "npm --prefix web run typecheck"
   }

@@ -295,6 +295,7 @@ const server = http.createServer(async (req, res) => {
       const rules = activeRules();
       return json(res, 200, { status: statusPayload(), probes: probes.map((p) => decorate(p, rules)), untagged, interactions: store.recent(2000) });
     }
+    if (req.method === "GET" && p === "/api/status") return json(res, 200, statusPayload());
     if (req.method === "GET" && p === "/api/payload") {
       const pl = engine.payload;
       return pl ? json(res, 200, pl) : json(res, 503, { error: engine.status.detail, engine: engine.status });
@@ -319,6 +320,7 @@ const server = http.createServer(async (req, res) => {
       const types = (url.searchParams.get("type") || "").split(",").filter((t) => ["dns", "http", "https", "smtp", "ldap", "ftp"].includes(t));
       const rows = store.hits(tag, {
         before: Number(url.searchParams.get("before")) || undefined,
+        after: url.searchParams.has("after") ? Math.max(Number(url.searchParams.get("after")) || 0, 0) : undefined,
         limit: Number(url.searchParams.get("limit")) || 200,
         q: (url.searchParams.get("q") || "").slice(0, 200),
         types,
@@ -334,6 +336,16 @@ const server = http.createServer(async (req, res) => {
       });
       for (const { rawBytes, ...r } of store.exportRows(tag)) res.write(JSON.stringify({ ...r, answer: r.answer ? JSON.parse(r.answer) : null, ...(rawBytes ? { rawRequestB64: Buffer.from(rawBytes).toString("base64") } : {}) }) + "\n");
       return res.end();
+    }
+    // the probes without their hits (/api/state carries up to 2000 hits), and one probe: for the MCP
+    if (req.method === "GET" && p === "/api/probes") {
+      const { probes, untagged } = store.probes();
+      const rules = activeRules();
+      return json(res, 200, { probes: probes.map((p) => decorate(p, rules)), untagged });
+    }
+    if (req.method === "GET" && (m = /^\/api\/probes\/([a-z0-9-]{1,32})$/.exec(p))) {
+      const probe = probeOut(m[1]);
+      return probe ? json(res, 200, probe) : json(res, 404, { error: "no such probe" });
     }
     if (req.method === "POST" && p === "/api/probes") {
       const b = await body(req);

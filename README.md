@@ -87,6 +87,16 @@ an HTTP hit from a new source, late hits on retired probes; never resolver chatt
 in a once-a-minute count, never dropped. See PLAN-REVIEW3.md A1): put `DISCORD_WEBHOOK_URL=...` in
 `~/.config/colluder/colluder.env`, restart `colluder`, then switch alerts on in the UI.
 
+## Claude (MCP)
+`mcp.mjs` lets a Claude Code session read probes and hits, wait for callbacks, and fetch reports
+(PLAN-MCP.md). It runs over stdio, so Claude Code starts it per session. It listens on nothing and
+talks to the collector's API like the dashboard does. Register it once (the operator):
+
+    claude mcp add --scope user colluder -- node ~/work/tools/oob-dashboard/mcp.mjs
+
+`COLLUDER_URL` points it at the collector (default `http://100.64.0.10:8090`). Everything a hit
+carries comes back under an `untrusted` key: Claude is told it is evidence, never instructions.
+
 ## Configuration (environment, all optional)
 
 | Variable | Default |
