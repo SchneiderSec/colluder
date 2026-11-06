@@ -41,17 +41,32 @@ export function TechniqueMark({ technique, className }: { technique?: string | n
   );
 }
 
-// Liveness drawn as line form: a live line carries a pulse of signal along the wire (motion means
-// live, and nothing else moves); dashed = starting/reconnecting; struck = down; off = still and dim,
-// off by choice (retired, alerts off). Every live line runs in step, so a screen of them reads as one
-// signal. With reduced motion the pulse stops and the line is solid.
-const PULSE_MS = 1800;
-export function LineForm({ kind, className }: { kind: "live" | "dash" | "down" | "off"; className?: string }) {
-  const [delay] = useState(() => `-${Date.now() % PULSE_MS}ms`);
+// Liveness drawn as line form. Live lines move, and each live thing moves its own way, so they read
+// as different signals rather than one repeated tick:
+//   beat     the engine: a heartbeat trace with a beat running through it, then a rest
+//   packets  the stream: two small packets travelling along the wire
+//   echo     the edge: a pulse that goes out and comes back (request, answer)
+//   listen   an armed probe: a slower pulse coming in from the right; each probe has its own phase
+//   sparse   alerts: one pulse, then a long rest
+//   pulse    anything else live
+// dashed = starting/reconnecting; struck = down; off = still and dim, off by choice. With reduced
+// motion the movement stops and the wire is solid (the engine keeps its heartbeat shape).
+export type Signal = "pulse" | "beat" | "packets" | "echo" | "listen" | "sparse";
+const SIGNAL_MS: Record<Signal, number> = { pulse: 1800, beat: 2200, packets: 1300, echo: 1100, listen: 2800, sparse: 4200 };
+const WIRE = "M1 4h20";
+const HEARTBEAT = "M1 4h6.5l1.5-2.6 2 5.2 2-5.2 1.5 2.6h6.5";
+const hash = (t: string) => { let h = 0; for (const c of t) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h; };
+export function LineForm({ kind, signal = "pulse", seed, className }: { kind: "live" | "dash" | "down" | "off"; signal?: Signal; seed?: string; className?: string }) {
+  const ms = SIGNAL_MS[signal];
+  // a seed (a probe's tag) gives it its own phase; without one, every line of that signal runs in step
+  const [delay] = useState(() => `-${(seed ? hash(seed) : Date.now()) % (signal === "echo" ? ms * 2 : ms)}ms`);
+  const d = kind === "live" && signal === "beat" ? HEARTBEAT : WIRE;
   return (
     <svg viewBox="0 0 22 8" className={cn("h-2 w-[22px] flex-none overflow-visible", kind === "off" && "opacity-45", className)} aria-hidden="true">
-      <path d="M1 4h20" stroke="currentColor" strokeWidth="1.6" strokeDasharray={kind === "dash" ? "3 3" : undefined} className={kind === "live" ? "live-base" : undefined} />
-      {kind === "live" && <path d="M1 4h20" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" className="live-pulse" style={{ animationDelay: delay }} />}
+      <path d={d} pathLength={20} fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" strokeDasharray={kind === "dash" ? "3 3" : undefined}
+        className={kind === "live" ? cn("live-base", signal === "listen" && "live-base-quiet") : undefined} />
+      {kind === "live" && <path d={d} pathLength={20} fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"
+        className={`live-pulse sig-${signal}`} style={{ animationDelay: delay }} />}
       {kind === "down" && <path d="M8 7.5l6-7" stroke="currentColor" strokeWidth="1.6" />}
     </svg>
   );

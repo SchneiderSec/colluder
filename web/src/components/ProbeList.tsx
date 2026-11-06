@@ -83,7 +83,7 @@ function Row({ s, p, k, stop }: { s: AppState; p: Probe | (Counts & Partial<Prob
         : isU ? <span className="text-right text-[12.5px] whitespace-nowrap text-bone" title={p.lastHitAt ?? ""}>{dayOrTime(p.lastHitAt)}</span>
         : st === "armed" || st === "heard" ? (
           <span className="flex items-center justify-end gap-1.5 whitespace-nowrap" title="Armed: planted and listening">
-            <LineForm kind="live" className="w-4 text-bone" />
+            <LineForm kind="live" signal="listen" seed={p.tag} className="w-4 text-bone" />
             {talking ? <span className="text-[12.5px] text-bone" title={p.lastHitAt ?? ""}>{dayOrTime(p.lastHitAt)}</span> : <span className="text-[11px] text-smoke">Armed · silent {dur(Date.now() - isoMs(p.plantedAt))}</span>}
           </span>
         ) : (
@@ -237,7 +237,7 @@ export function ProbeList() {
         {d?.available && (
           <>
             <Switch checked={d.enabled} aria-label="Discord alerts" onCheckedChange={(v) => setDiscord(v).catch((e) => toast((e as Error).message, true))} />
-            <LineForm kind={d.enabled ? "live" : "off"} className={d.enabled ? "w-4 text-bone" : "w-4 text-ash"} />
+            <LineForm kind={d.enabled ? "live" : "off"} signal="sparse" className={d.enabled ? "w-4 text-bone" : "w-4 text-ash"} />
             <b className="font-semibold text-bone">{d.enabled ? "On" : "Off"}</b><span className="text-ash">first hit per probe</span>
           </>
         )}

@@ -70,7 +70,7 @@ function Head({ s }: { s: AppState }) {
       <span className="font-mono text-[17px] whitespace-nowrap">{p.tag}</span>
       {st === "unplanted" ? <Chip grey>not planted</Chip>
         : p.retiredAt ? <span className="flex items-center gap-1.5 text-[12.5px] whitespace-nowrap text-ash" title="Out of the active list. New hits on this tag are still recorded."><LineForm kind="off" className="w-4" />{st === "late" ? "Retired · late hit" : "Retired"}</span>
-        : <span className="flex items-center gap-1.5 text-[12.5px] font-[550] whitespace-nowrap text-bone" title="Planted and listening: a callback shows up here within seconds"><LineForm kind="live" className="w-4" />Armed</span>}
+        : <span className="flex items-center gap-1.5 text-[12.5px] font-[550] whitespace-nowrap text-bone" title="Planted and listening: a callback shows up here within seconds"><LineForm kind="live" signal="listen" seed={p.tag} className="w-4" />Armed</span>}
       {st !== "unplanted" && <TechniqueMark technique={p.technique} className="text-[12.5px]" />}
       <div className="flex min-w-0 gap-3.5 overflow-hidden text-[12.5px] whitespace-nowrap text-smoke">
         <span className="truncate" title={p.note || undefined}>{p.target || "No target noted"}</span>

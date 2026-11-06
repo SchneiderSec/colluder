@@ -6,7 +6,7 @@ import { UNTAGGED } from "@/lib/types";
 import { ago, dur, hms, isoMs, newestFirst } from "@/lib/format";
 import { copy } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
-import { LineForm, useTick } from "./bits";
+import { LineForm, useTick, type Signal } from "./bits";
 import { Mark } from "./Mark";
 import { cn } from "@/lib/utils";
 
@@ -72,9 +72,9 @@ export function StatusBar() {
   const now = new Date();
   const night = now.getHours() < 5;
   // on a phone each state keeps a short label, so "capturing connected answering" says what is which
-  const Item = ({ kind, label, short, word, sub, bad, title }: { kind?: "live" | "dash" | "down"; label: string; short?: string; word: string; sub?: string; bad?: boolean; title?: string }) => (
+  const Item = ({ kind, signal, label, short, word, sub, bad, title }: { kind?: "live" | "dash" | "down"; signal?: Signal; label: string; short?: string; word: string; sub?: string; bad?: boolean; title?: string }) => (
     <div className="flex items-center gap-[7px]" title={title}>
-      {kind && <LineForm kind={kind} className={bad ? "text-bad" : "text-bone"} />}
+      {kind && <LineForm kind={kind} signal={signal} className={bad ? "text-bad" : "text-bone"} />}
       <span className={cn("text-smoke", short && "max-[820px]:hidden")}>{label}</span>
       {short && <span className="hidden text-smoke max-[820px]:inline">{short}</span>}
       <b className={cn("font-[650]", bad && "text-bad")}>{word}</b>
@@ -84,12 +84,12 @@ export function StatusBar() {
   return (
     <footer role="status" aria-live="off" className="col-start-2 flex h-7 items-center gap-[22px] max-[820px]:gap-3.5 overflow-hidden border-t border-rule bg-soot-1 pr-4 pl-6 text-[12.5px] whitespace-nowrap max-[820px]:sticky max-[820px]:bottom-0 max-[820px]:col-start-1 max-[820px]:pl-3.5">
       <span className="font-brand text-[13.5px] leading-none font-bold tracking-[-.01em] max-[820px]:hidden">colluder</span>
-      <Item kind={engine[0]} label="Engine" short="Eng" word={engine[1]} bad={engine[2]}
+      <Item kind={engine[0]} signal="beat" label="Engine" short="Eng" word={engine[1]} bad={engine[2]}
         sub={`${e?.version ?? ""}${e?.state === "capturing" && e.since ? ` · up ${dur(Date.now() - Date.parse(e.since))}` : ""}`}
-        title={`${e?.detail ?? ""}\nA moving line: live. Dashed: starting or reconnecting. Struck: down. Still and dim: off.`} />
-      <Item kind={ss === "connected" ? "live" : off ? "down" : "dash"} label="Stream" short="Str" word={ss === "connected" ? "connected" : off ? "offline, retrying" : ss} bad={off} />
+        title={`${e?.detail ?? ""}\nA moving line: live (the engine beats, the stream carries packets, the edge echoes). Dashed: starting or reconnecting. Struck: down. Still and dim: off.`} />
+      <Item kind={ss === "connected" ? "live" : off ? "down" : "dash"} signal="packets" label="Stream" short="Str" word={ss === "connected" ? "connected" : off ? "offline, retrying" : ss} bad={off} />
       {edgeSt && edgeSt.state !== "absent" && (
-        <Item kind={edgeSt.state === "running" ? "live" : "down"} label="Edge" short="Edge" bad={edgeSt.state !== "running"}
+        <Item kind={edgeSt.state === "running" ? "live" : "down"} signal="echo" label="Edge" short="Edge" bad={edgeSt.state !== "running"}
           word={edgeSt.state === "running" ? "answering" : edgeSt.state === "stale" ? "silent" : "down"}
           title={edgeSt.state === "running" ? `Colluder's edge answers your probes on ${[edgeSt.listen?.http, edgeSt.listen?.https].filter(Boolean).join(" and ")}` : "The edge isn't answering: HTTP rules are not being served"} />
       )}

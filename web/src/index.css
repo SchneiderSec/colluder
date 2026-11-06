@@ -191,12 +191,24 @@
   }
 }
 
-/* Live line (bits.tsx LineForm): a dim wire with a pulse of signal travelling along it, left to
-   right. Only live things move. Reduced motion: the pulse goes and the wire is solid. */
+/* Live lines (bits.tsx LineForm): a dim wire, and a signal moving on it. Each live thing has its
+   own signal; only live things move. Reduced motion: no movement, the wire is solid. */
 .live-base { opacity: 0.38; }
-.live-pulse { stroke-dasharray: 7 40; animation: live-pulse 1.8s cubic-bezier(0.45, 0, 0.55, 1) infinite; }
-@keyframes live-pulse { from { stroke-dashoffset: 8; } to { stroke-dashoffset: -22; } }
+.live-base-quiet { opacity: 0.28; }
+.live-pulse { stroke-dasharray: 7 40; animation-iteration-count: infinite; }
+.sig-pulse { animation: sig-run 1.8s cubic-bezier(0.45, 0, 0.55, 1) infinite; }
+.sig-beat { stroke-dasharray: 6 40; animation: sig-beat 2.2s cubic-bezier(0.3, 0, 0.2, 1) infinite; }
+.sig-packets { stroke-dasharray: 2.5 3.5 2.5 40; animation: sig-packets 1.3s linear infinite; }
+.sig-echo { stroke-dasharray: 5 40; animation: sig-echo 1.1s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate; }
+.sig-listen { stroke-dasharray: 5 40; animation: sig-listen 2.8s cubic-bezier(0.25, 0, 0.35, 1) infinite; }
+.sig-sparse { animation: sig-sparse 4.2s cubic-bezier(0.45, 0, 0.55, 1) infinite; }
+@keyframes sig-run { from { stroke-dashoffset: 8; } to { stroke-dashoffset: -22; } }
+@keyframes sig-beat { 0% { stroke-dashoffset: 7; } 55% { stroke-dashoffset: -22; } 100% { stroke-dashoffset: -22; } }
+@keyframes sig-packets { from { stroke-dashoffset: 9; } to { stroke-dashoffset: -22; } }
+@keyframes sig-echo { from { stroke-dashoffset: 4; } to { stroke-dashoffset: -16; } }
+@keyframes sig-listen { 0% { stroke-dashoffset: -22; } 70% { stroke-dashoffset: 6; } 100% { stroke-dashoffset: 6; } }
+@keyframes sig-sparse { 0% { stroke-dashoffset: 8; } 30% { stroke-dashoffset: -22; } 100% { stroke-dashoffset: -22; } }
 @media (prefers-reduced-motion: reduce) {
-  .live-base { opacity: 1; }
+  .live-base, .live-base-quiet { opacity: 1; }
   .live-pulse { display: none; }
 }
