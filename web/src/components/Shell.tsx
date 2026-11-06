@@ -86,7 +86,7 @@ export function StatusBar() {
       <span className="font-brand text-[13.5px] leading-none font-bold tracking-[-.01em] max-[820px]:hidden">colluder</span>
       <Item kind={engine[0]} label="Engine" short="Eng" word={engine[1]} bad={engine[2]}
         sub={`${e?.version ?? ""}${e?.state === "capturing" && e.since ? ` · up ${dur(Date.now() - Date.parse(e.since))}` : ""}`}
-        title={`${e?.detail ?? ""}\nSolid line: live. Dashed: starting or reconnecting. Struck: down.`} />
+        title={`${e?.detail ?? ""}\nA moving line: live. Dashed: starting or reconnecting. Struck: down. Still and dim: off.`} />
       <Item kind={ss === "connected" ? "live" : off ? "down" : "dash"} label="Stream" short="Str" word={ss === "connected" ? "connected" : off ? "offline, retrying" : ss} bad={off} />
       {edgeSt && edgeSt.state !== "absent" && (
         <Item kind={edgeSt.state === "running" ? "live" : "down"} label="Edge" short="Edge" bad={edgeSt.state !== "running"}
@@ -101,7 +101,7 @@ export function StatusBar() {
           selectHit(lastHit.id);
         }} className="flex min-w-0 cursor-pointer items-center gap-[7px] rounded-[3px] hover:text-bone">
           <span className="text-smoke max-[820px]:hidden">Last hit</span>
-          <b className="min-w-[5ch] truncate font-mono font-[650]">{lastHit.tag ?? "no tag"}</b>
+          <b className={cn("min-w-[5ch] truncate font-[650]", lastHit.tag && "font-mono")}>{lastHit.tag ?? "No tag"}</b>
           <span className="text-smoke max-[820px]:hidden">{lastHit.protocol.toUpperCase()}</span>
           <b className="font-[650] whitespace-nowrap">{ago(Date.now() - isoMs(lastHit.timestamp))}</b>
           <span className="text-ash max-[1280px]:hidden">{hms(lastHit.timestamp)}</span>

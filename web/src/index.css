@@ -190,3 +190,13 @@
     width: max(100%, 44px); height: max(100%, 44px); transform: translate(-50%, -50%);
   }
 }
+
+/* Live line (bits.tsx LineForm): a dim wire with a pulse of signal travelling along it, left to
+   right. Only live things move. Reduced motion: the pulse goes and the wire is solid. */
+.live-base { opacity: 0.38; }
+.live-pulse { stroke-dasharray: 7 40; animation: live-pulse 1.8s cubic-bezier(0.45, 0, 0.55, 1) infinite; }
+@keyframes live-pulse { from { stroke-dashoffset: 8; } to { stroke-dashoffset: -22; } }
+@media (prefers-reduced-motion: reduce) {
+  .live-base { opacity: 1; }
+  .live-pulse { display: none; }
+}

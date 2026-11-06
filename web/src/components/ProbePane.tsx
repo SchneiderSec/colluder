@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Chip, NewDot, NilDot, TechniqueMark, TypeChip } from "./bits";
+import { Chip, LineForm, NewDot, NilDot, TechniqueMark, TypeChip } from "./bits";
 import { HitDetail } from "./HitDetail";
 import { HttpRuleTab } from "./HttpRule";
 import { cn } from "@/lib/utils";
@@ -68,7 +68,9 @@ function Head({ s }: { s: AppState }) {
   return (
     <div className={cn(cls, "border-b-0")}>
       <span className="font-mono text-[17px] whitespace-nowrap">{p.tag}</span>
-      {st === "unplanted" ? <Chip grey>not planted</Chip> : p.retiredAt && <Chip grey>{st === "late" ? "retired · late hit" : "retired"}</Chip>}
+      {st === "unplanted" ? <Chip grey>not planted</Chip>
+        : p.retiredAt ? <span className="flex items-center gap-1.5 text-[12.5px] whitespace-nowrap text-ash" title="Out of the active list. New hits on this tag are still recorded."><LineForm kind="off" className="w-4" />{st === "late" ? "Retired · late hit" : "Retired"}</span>
+        : <span className="flex items-center gap-1.5 text-[12.5px] font-[550] whitespace-nowrap text-bone" title="Planted and listening: a callback shows up here within seconds"><LineForm kind="live" className="w-4" />Armed</span>}
       {st !== "unplanted" && <TechniqueMark technique={p.technique} className="text-[12.5px]" />}
       <div className="flex min-w-0 gap-3.5 overflow-hidden text-[12.5px] whitespace-nowrap text-smoke">
         <span className="truncate" title={p.note || undefined}>{p.target || "No target noted"}</span>

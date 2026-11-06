@@ -608,3 +608,8 @@ A Bone pill (Alarm Ink when something failed) that rises 44px above the bottom e
 - **A retired probe's payload band** folds to one line: "Retired 05:18. Restore it to use these payloads again, or plant a new tag above." with "Show its payloads".
 - **Touch:** under 820px or on coarse pointers every button keeps its look but gets a centred 44px hit area; the probe tab strip is 44px tall.
 - **Tokens:** hover, child-row, tag-mark, Alarm and Caution colours are CSS tokens (`--hover`, `--child`, `--mark`, `--alarm-*`, `--caution-*`); components no longer hard-code them.
+
+## Live lines (2026-11-06)
+- **The Line Grammar Rule, amended.** A live line moves: a dim wire (38%) with a short pulse of signal travelling left to right every 1.8s (ease-in-out). Motion means live and nothing else on screen moves continuously. Dashed (starting or reconnecting) and struck (down) stay still. A fourth form, **off**, is a still line at 45% for things that are off by choice: retired probes, Discord alerts turned off.
+- Every live line shares one phase, so a screen of them reads as one signal. With reduced motion the pulse is removed and the wire is solid, beside the same word.
+- Where it appears: the status bar (Engine capturing, Stream connected, Edge answering), every armed probe row (silent ones and ones with hits, before the last-hit time), the probe header ("Armed", or "Retired" with the off line), and Discord alerts in the list footer and Settings.

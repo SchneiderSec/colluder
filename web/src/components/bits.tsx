@@ -41,11 +41,17 @@ export function TechniqueMark({ technique, className }: { technique?: string | n
   );
 }
 
-// Liveness drawn as line form: solid = live, dashed = starting/reconnecting, struck = down
-export function LineForm({ kind, className }: { kind: "live" | "dash" | "down"; className?: string }) {
+// Liveness drawn as line form: a live line carries a pulse of signal along the wire (motion means
+// live, and nothing else moves); dashed = starting/reconnecting; struck = down; off = still and dim,
+// off by choice (retired, alerts off). Every live line runs in step, so a screen of them reads as one
+// signal. With reduced motion the pulse stops and the line is solid.
+const PULSE_MS = 1800;
+export function LineForm({ kind, className }: { kind: "live" | "dash" | "down" | "off"; className?: string }) {
+  const [delay] = useState(() => `-${Date.now() % PULSE_MS}ms`);
   return (
-    <svg viewBox="0 0 22 8" className={cn("h-2 w-[22px] flex-none", className)} aria-hidden="true">
-      <path d="M1 4h20" stroke="currentColor" strokeWidth="1.6" strokeDasharray={kind === "dash" ? "3 3" : undefined} />
+    <svg viewBox="0 0 22 8" className={cn("h-2 w-[22px] flex-none overflow-visible", kind === "off" && "opacity-45", className)} aria-hidden="true">
+      <path d="M1 4h20" stroke="currentColor" strokeWidth="1.6" strokeDasharray={kind === "dash" ? "3 3" : undefined} className={kind === "live" ? "live-base" : undefined} />
+      {kind === "live" && <path d="M1 4h20" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" className="live-pulse" style={{ animationDelay: delay }} />}
       {kind === "down" && <path d="M8 7.5l6-7" stroke="currentColor" strokeWidth="1.6" />}
     </svg>
   );

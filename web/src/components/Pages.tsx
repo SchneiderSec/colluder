@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { Bell, Copy, RotateCcw, Trash2 } from "lucide-react";
 import { useApp, clearAll, restoreClear, setDiscord } from "@/store";
+import { LineForm } from "./bits";
 import { plural } from "@/lib/format";
 import { copy, toast } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
@@ -58,6 +59,7 @@ export function Settings() {
         {!st?.discord.available ? <span className="text-ash">Not configured: set DISCORD_WEBHOOK_URL in ~/.config/colluder/colluder.env and restart colluder.service.</span> : (
           <>
             <Switch checked={st.discord.enabled} aria-label="Discord alerts" onCheckedChange={(v) => setDiscord(v).catch((x) => toast((x as Error).message, true))} />
+            <LineForm kind={st.discord.enabled ? "live" : "off"} className={st.discord.enabled ? "w-4 text-bone" : "w-4 text-ash"} />
             <b className="font-semibold text-bone">{st.discord.enabled ? "On" : "Off"}</b><span className="text-ash">per probe: the first hit, the first web hit, new sources and late hits; the rest in a roll-up each minute. Mute a probe with the bell in its header.</span>
           </>
         )}

@@ -78,10 +78,20 @@ function Row({ s, p, k, stop }: { s: AppState; p: Probe | (Counts & Partial<Prob
         {!isU && !!p.muted && <BellOff aria-label="Discord alerts muted" className="size-3 flex-none text-ash" strokeWidth={1.5} />}
       </span>
       {/* right: the state in one word, or when it last heard something */}
+      {/* right: is it listening (a moving line) or not (a still, dim one), then when it last heard */}
       {st === "unplanted" ? <span className="justify-self-end"><Chip grey>not planted</Chip></span>
-        : talking ? <span className={cn("text-right text-[12.5px] whitespace-nowrap", quiet ? "text-ash" : "text-bone")} title={p.lastHitAt ?? ""}>{st === "retired" && <span className="text-[11px]">Retired · last hit </span>}{dayOrTime(p.lastHitAt)}</span>
-        : st === "retired" ? <span className="text-right text-[11px] whitespace-nowrap text-ash">Retired {dayOrTime(p.retiredAt)}</span>
-        : <span className="flex items-center justify-end gap-1.5 text-[11px] whitespace-nowrap text-smoke" title="Planted and listening"><LineForm kind="live" className="w-4 text-bone" />Armed · silent {dur(Date.now() - isoMs(p.plantedAt))}</span>}
+        : isU ? <span className="text-right text-[12.5px] whitespace-nowrap text-bone" title={p.lastHitAt ?? ""}>{dayOrTime(p.lastHitAt)}</span>
+        : st === "armed" || st === "heard" ? (
+          <span className="flex items-center justify-end gap-1.5 whitespace-nowrap" title="Armed: planted and listening">
+            <LineForm kind="live" className="w-4 text-bone" />
+            {talking ? <span className="text-[12.5px] text-bone" title={p.lastHitAt ?? ""}>{dayOrTime(p.lastHitAt)}</span> : <span className="text-[11px] text-smoke">Armed · silent {dur(Date.now() - isoMs(p.plantedAt))}</span>}
+          </span>
+        ) : (
+          <span className="flex items-center justify-end gap-1.5 text-[11px] whitespace-nowrap text-ash" title={`Retired ${dayOrTime(p.retiredAt)}: out of the active list. New hits are still recorded.`}>
+            <LineForm kind="off" className="w-4" />
+            {talking ? <>{st === "late" ? "Late hit " : "Retired · last hit "}<span className={cn("text-[12.5px]", st === "late" ? "text-bone" : "text-ash")}>{dayOrTime(p.lastHitAt)}</span></> : <>Retired {dayOrTime(p.retiredAt)}</>}
+          </span>
+        )}
       <span className="col-span-2 col-start-2 flex min-w-0 items-center gap-2 text-[12.5px] text-smoke">
         {!isU && st !== "unplanted" && p.technique !== "callback" && <TechniqueMark technique={p.technique} />}
         {!isU && p.plantedBy === "claude" && <Chip grey>Claude</Chip>}
@@ -227,6 +237,7 @@ export function ProbeList() {
         {d?.available && (
           <>
             <Switch checked={d.enabled} aria-label="Discord alerts" onCheckedChange={(v) => setDiscord(v).catch((e) => toast((e as Error).message, true))} />
+            <LineForm kind={d.enabled ? "live" : "off"} className={d.enabled ? "w-4 text-bone" : "w-4 text-ash"} />
             <b className="font-semibold text-bone">{d.enabled ? "On" : "Off"}</b><span className="text-ash">first hit per probe</span>
           </>
         )}
