@@ -37,6 +37,10 @@ export function Settings() {
     ["Client", e.version ?? "unknown"],
     ["Captures", "DNS, HTTP, HTTPS and SMTP; every hit shows up under Probes"],
     ["Payload", <code className="font-mono break-all">{st?.payload?.host ?? "none yet"}</code>],
+    ...(st?.payload ? [["Short id", st.payload.short
+      ? <span><code className="font-mono">{st.payload.shortId}</code> <span className="text-smoke">· in use; the edge records its DNS</span></span>
+      : <span><code className="font-mono">{st.payload.shortId}</code> <span className="text-smoke">· waiting for the edge's DNS front (deploy/dns-front.sh); payloads use the long id until then</span></span>] as [string, ReactNode]] : []),
+    ...(st?.payload?.short ? [["Long payload", <span><code className="font-mono break-all">{st.payload.longHost}</code> <span className="text-smoke">· for SMTP, and old payloads</span></span>] as [string, ReactNode]] : []),
     ["Correlation id", <code className="font-mono">{st?.payload?.correlationId ?? "none"}</code>],
     ["Engine log", <code className="font-mono break-all">{st?.log.path}</code>],
     ["Restarts", String(e.restarts)],

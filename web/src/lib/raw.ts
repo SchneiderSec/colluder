@@ -54,9 +54,9 @@ export function evidence(d: InteractionDetail, e: Partial<Enrich>, probe: Probe 
     "",
     d.answer ? "--- Raw request (exact bytes, recorded by Colluder's edge) ---"
       : d.protocol === "http" || d.protocol === "https" ? "--- Raw request (as logged by interactsh-client; header order and name case normalised by interactsh) ---"
-      : "--- Raw request (as logged by interactsh-client) ---",
+      : `--- Raw request (${d.answer ? "as received by the edge" : "as logged by interactsh-client"}) ---`,
     d.rawRequest,
-    `--- Raw response (${d.protocol === "dns" ? "sent by interactsh-server" : answeredBy(d.answer)}) ---`,
+    `--- Raw response (${d.protocol === "dns" ? (d.answer ? "sent by interactsh-server, relayed by the edge" : "sent by interactsh-server") : answeredBy(d.answer)}) ---`,
     d.rawResponse,
   ].filter((x) => x !== null).join("\n");
 }
@@ -65,13 +65,13 @@ export function variants(host: string | undefined, domain: string | undefined, t
   if (!host || !domain) return null;
   const idPart = host.endsWith("." + domain) ? host.slice(0, -(domain.length + 1)) : host;
   const all = [
-    { proto: "dns", value: tag ? `${tag}.${host}` : host, parts: tag ? [["em", tag], ["", "." + host]] : [["", host]], note: "Hostname fields; targets that only resolve." },
-    { proto: "http", value: tag ? `http://${tag}.${host}/` : `http://${host}/`, parts: tag ? [["", "http://"], ["em", tag], ["", `.${host}/`]] : [["", `http://${host}/`]], note: tag ? "URL fields; tag in the subdomain." : "URL fields." },
-    { proto: "https", value: tag ? `https://${tag}-${host}/` : `https://${host}/`, parts: tag ? [["", "https://"], ["em", tag], ["", `-${host}/`]] : [["", `https://${host}/`]], note: tag ? "URL fields; tag joined to the id with a dash (one label, so the certificate covers it)." : "URL fields." },
+    { proto: "dns", value: tag ? `${tag}-${host}` : host, parts: tag ? [["em", tag], ["", "-" + host]] : [["", host]], note: "Hostname fields; targets that only resolve." },
+    { proto: "http", value: tag ? `http://${tag}-${host}/` : `http://${host}/`, parts: tag ? [["", "http://"], ["em", tag], ["", `-${host}/`]] : [["", `http://${host}/`]], note: "URL fields." },
+    { proto: "https", value: tag ? `https://${tag}-${host}/` : `https://${host}/`, parts: tag ? [["", "https://"], ["em", tag], ["", `-${host}/`]] : [["", `https://${host}/`]], note: "URL fields; the certificate covers it." },
   ] as const satisfies readonly { proto: string; value: string; parts: readonly (readonly [string, string])[]; note: string }[];
-  // Phones: show the host as "c0ffee12…" so the payload stays on one line with the tag whole.
-  // Display only: the title and every copy carry the full value.
+  // Phones: a long (33-char) id shows as "c0ffee12…" so the payload stays on one line with the tag
+  // whole; a short id is shown as is. Display only: the title and every copy carry the full value.
   const short = `${idPart.slice(0, 8)}…`;
-  const shorten = (t: string) => t.replace(`${idPart}.${domain}`, short).replace(idPart, short);
+  const shorten = (t: string) => (idPart.length <= 12 ? t : t.replace(`${idPart}.${domain}`, short).replace(idPart, short));
   return all.map((v) => ({ ...v, short: v.parts.map(([k, t]) => [k, k === "em" ? t : shorten(t)] as const) }));
 }

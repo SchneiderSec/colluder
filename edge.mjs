@@ -16,6 +16,7 @@ import { Reader, readHead, readBody, lenientHead, HttpError, LIMITS } from "./li
 import { respond, serialize, reason } from "./lib/rules.mjs";
 import { parseInteraction } from "./lib/tag.mjs";
 import { edgeCodeHash } from "./lib/codehash.mjs";
+import { dnsFront } from "./lib/dns.mjs";
 
 const CODE = edgeCodeHash(); // what this process loaded (see lib/codehash.mjs)
 
@@ -28,6 +29,9 @@ const CFG = {
   https: env.COLLUDER_EDGE_HTTPS === "off" ? null : addr(env.COLLUDER_EDGE_HTTPS || "203.0.113.10:443"),
   upHttp: addr(env.COLLUDER_UPSTREAM_HTTP || "127.0.0.1:8081"),
   upHttps: addr(env.COLLUDER_UPSTREAM_HTTPS || "127.0.0.1:8444"),
+  // DNS front (PLAN-SHORTID.md): off until deploy/dns-front.sh moves interactsh's DNS off :53
+  dns: env.COLLUDER_EDGE_DNS && env.COLLUDER_EDGE_DNS !== "off" ? addr(env.COLLUDER_EDGE_DNS) : null,
+  upDns: addr(env.COLLUDER_UPSTREAM_DNS || "127.0.0.1:8053"),
   cert: env.COLLUDER_EDGE_CERT || join(homedir(), "caido-cert/fullchain.pem"),
   key: env.COLLUDER_EDGE_KEY || join(homedir(), "caido-cert/privkey.pem"),
   rules: env.COLLUDER_RULES || join(DATA, "rules.json"),
@@ -45,9 +49,9 @@ const stats = { own: 0, relayed: 0, errors: 0, tlsErrors: 0, startedAt: new Date
 let delayed = 0;
 
 // ---------- rules ----------
-let state = { cids: [], rules: {}, generatedAt: null };
+let state = { cids: [], shortIds: [], rules: {}, generatedAt: null };
 function loadRules() {
-  let next = { cids: [], rules: {}, generatedAt: null };
+  let next = { cids: [], shortIds: [], rules: {}, generatedAt: null };
   try { next = { ...next, ...JSON.parse(readFileSync(CFG.rules, "utf8")) }; } catch (e) {
     if (e.code !== "ENOENT") log("rules.json unreadable, keeping previous rules:", e.message);
     else next.cids = cidFromPayload();
@@ -55,6 +59,7 @@ function loadRules() {
   }
   if (!next.cids?.length) next.cids = cidFromPayload();
   next.cids = next.cids.filter((c) => /^[a-z0-9]{20}$/.test(c));
+  next.shortIds = (Array.isArray(next.shortIds) ? next.shortIds : []).filter((c) => /^[a-z][a-z0-9]{5}$/.test(c));
   state = next;
   log(`rules loaded: ${Object.keys(state.rules).length} rule(s), ${state.cids.length} correlation id(s)`);
 }
@@ -62,17 +67,20 @@ function cidFromPayload() {
   try { const id = readFileSync(CFG.payloadFile, "utf8").trim().split(".")[0].toLowerCase(); return id.length >= 20 ? [id.slice(0, 20)] : []; } catch { return []; }
 }
 
-// The 33-char interactsh id in the Host, if it belongs to Colluder.
-export function ownership(hostHeader, cids) {
+// Colluder's id in a host name, if it has one: a 33-char interactsh id starting with one of our
+// correlation ids (anywhere in the name, as interactsh reads it), or our short id in the label right
+// under the domain. Either stands alone (<id>) or has the tag joined by a dash (<tag>-<id>): one
+// label, so the *.domain certificate covers it over HTTPS.
+export function ownership(hostHeader, cids, shorts = [], domain = CFG.domain) {
   const host = String(hostHeader || "").toLowerCase().replace(/:\d+$/, "").replace(/\.$/, "");
   const labels = host.split(".");
+  const top = domain && host.endsWith("." + domain) ? labels.length - domain.split(".").length - 1 : -1;
   for (let i = 0; i < labels.length; i++) {
-    // the id alone (<id>), or with the tag joined to it by a dash (<tag>-<id>): one label, so the
-    // *.domain certificate covers it over HTTPS. interactsh-server finds the id inside the label too.
-    const m = /^(?:[a-z0-9][a-z0-9-]{0,62}-)?([a-z0-9]{33})$/.exec(labels[i]);
-    if (m && cids.some((c) => m[1].startsWith(c))) {
-      return { uniqueId: m[1], fullId: labels.slice(0, i + 1).join(".") };
-    }
+    const l = labels[i], dash = l.lastIndexOf("-");
+    if (dash === 0 || (dash > 0 && !/^[a-z0-9][a-z0-9-]*$/.test(l.slice(0, dash)))) continue;
+    const id = dash < 0 ? l : l.slice(dash + 1);
+    const long = id.length === 33 && /^[a-z0-9]+$/.test(id) && cids.some((c) => id.startsWith(c));
+    if (long || (i === top && shorts.includes(id))) return { uniqueId: id, fullId: labels.slice(0, i + 1).join(".") };
   }
   return null;
 }
@@ -80,11 +88,11 @@ export function ownership(hostHeader, cids) {
 // The host a request is for: the Host header, or the authority of an absolute-form target
 // (GET http://x/ HTTP/1.1, which proxies and some HTTP/1.0 clients send with a foreign or no Host).
 export function routeOf(hostHeader, target, cids) {
-  const byHost = ownership(hostHeader, cids);
+  const byHost = ownership(hostHeader, cids, state.shortIds);
   if (byHost) return { own: byHost, host: hostHeader };
   const a = /^[a-z][a-z0-9+.-]*:\/\/([^/?#\s]*)/i.exec(String(target || ""));
   const auth = a ? a[1].replace(/^.*@/, "") : "";
-  const byTarget = auth ? ownership(auth, cids) : null;
+  const byTarget = auth ? ownership(auth, cids, state.shortIds) : null;
   return byTarget ? { own: byTarget, host: auth } : null;
 }
 
@@ -287,7 +295,7 @@ function relay(sock, r, head, scheme) {
 const pendingTls = new Map();
 const connKey = (s) => `${s.remoteAddress}|${s.remotePort}`;
 function tlsFailed(p) {
-  const own = ownership(p.sni, state.cids);
+  const own = ownership(p.sni, state.cids, state.shortIds);
   if (!own) return;
   const tag = parseInteraction({ protocol: "https", "unique-id": own.uniqueId, "full-id": own.fullId }, CFG.domain).tag;
   stats.own++;
@@ -344,7 +352,7 @@ function start() {
         sock.off("data", onData);
         sock.pause();
         if (!h.tls || h.sni === CFG.domain) return passthrough(sock, buf, CFG.upHttps);
-        if (h.sni && ownership(h.sni, state.cids) && pendingTls.size < 1000) {
+        if (h.sni && ownership(h.sni, state.cids, state.shortIds) && pendingTls.size < 1000) {
           const key = connKey(sock), p = { sni: h.sni, alpn: h.alpn, hello: buf.subarray(0, 16 * 1024), ip: ipOf(sock), at: new Date().toISOString() };
           pendingTls.set(key, p);
           sock.once("close", () => { if (pendingTls.get(key) === p) { pendingTls.delete(key); tlsFailed(p); } });
@@ -364,13 +372,20 @@ function start() {
   }
   for (const s of servers) s.on("error", (e) => { log("listener error:", e.message); process.exit(1); });
 
+  let dns = null;
+  if (CFG.dns) {
+    dns = dnsFront({ listen: CFG.dns, upstream: CFG.upDns, owns: (name) => ownership(name, state.cids, state.shortIds), record, log, stats });
+    dns.listen().then(() => log(`edge dns on ${CFG.dns.host}:${CFG.dns.port} (udp, tcp), relaying to ${CFG.upDns.host}:${CFG.upDns.port}`))
+      .catch((e) => { log("dns listener error:", e.message); process.exit(1); });
+  }
+
   const writeStatus = (stopped = false) => {
     const tmp = CFG.statusFile + ".tmp";
     try {
     writeFileSync(tmp, JSON.stringify({
       pid: process.pid, stopped, heartbeatAt: new Date().toISOString(), ...stats,
-      listen: { http: `${CFG.http.host}:${CFG.http.port}`, https: CFG.https ? `${CFG.https.host}:${CFG.https.port}` : null },
-      upstream: { http: `${CFG.upHttp.host}:${CFG.upHttp.port}`, https: `${CFG.upHttps.host}:${CFG.upHttps.port}` },
+      listen: { http: `${CFG.http.host}:${CFG.http.port}`, https: CFG.https ? `${CFG.https.host}:${CFG.https.port}` : null, dns: CFG.dns ? `${CFG.dns.host}:${CFG.dns.port}` : null },
+      upstream: { http: `${CFG.upHttp.host}:${CFG.upHttp.port}`, https: `${CFG.upHttps.host}:${CFG.upHttps.port}`, dns: CFG.dns ? `${CFG.upDns.host}:${CFG.upDns.port}` : null },
       cert: certInfo, rules: Object.keys(state.rules).length, rulesGeneratedAt: state.generatedAt, code: CODE,
     }), { mode: 0o600 });
     renameSync(tmp, CFG.statusFile);
@@ -378,7 +393,7 @@ function start() {
   };
   writeStatus();
   const t = setInterval(writeStatus, 5000);
-  const stop = () => { clearInterval(t); writeStatus(true); for (const s of servers) s.close(); setTimeout(() => process.exit(0), 1500).unref(); };
+  const stop = () => { clearInterval(t); writeStatus(true); for (const s of servers) s.close(); dns?.close(); setTimeout(() => process.exit(0), 1500).unref(); };
   process.on("SIGTERM", stop);
   process.on("SIGINT", stop);
 }

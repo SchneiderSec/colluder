@@ -240,10 +240,10 @@ export function HitDetail({ id }: { id: number }) {
 
       <div className="grid min-h-[220px] flex-1 grid-cols-2 gap-3 @max-[900px]:flex-none @max-[900px]:grid-cols-1 @max-[900px]:[&>*]:max-h-[360px]">
         <RawPane title={d.protocol === "dns" ? "Query" : "Request"} http={web} p={reqP} tag={d.tag} domain={s.status?.payload?.domain} capture={capture}
-          sub={web ? webSub(d.rawRequest, reqP, reqWho) : decoded ? "decoded view · copy stays exact" : `as logged by interactsh-client · ${size(d.rawRequest)}`}
+          sub={web ? webSub(d.rawRequest, reqP, reqWho) : decoded ? "decoded view · copy stays exact" : `${capture === "edge" ? "as received by the edge" : "as logged by interactsh-client"} · ${size(d.rawRequest)}`}
           text={!web && decoded ? decode(d.rawRequest, d.protocol) : d.rawRequest} exact={d.rawRequest} />
         <RawPane title={d.protocol === "dns" ? "Answer" : "Response"} http={web} p={resP} tag={d.tag} domain={s.status?.payload?.domain} capture={capture} clientHttp2={http2}
-          sub={d.protocol === "dns" ? "sent by interactsh-server" : `${answeredBy(d.answer)} · ${parsed && !resP ? "couldn't parse · exact lines · " : ""}${byteCount(d.rawResponse)} bytes`}
+          sub={d.protocol === "dns" ? (capture === "edge" ? "sent by interactsh-server, relayed by the edge" : "sent by interactsh-server") : `${answeredBy(d.answer)} · ${parsed && !resP ? "couldn't parse · exact lines · " : ""}${byteCount(d.rawResponse)} bytes`}
           text={!web && decoded ? decode(d.rawResponse, d.protocol) : d.rawResponse} exact={d.rawResponse} />
       </div>
 

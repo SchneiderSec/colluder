@@ -5,7 +5,7 @@ import { useApp, setRuleDraft } from "@/store";
 import { METADATA, hostOf, pathOf, redirectable, type MetaRow } from "@/lib/metadata";
 import { parseIPv4 } from "@/lib/kit";
 import { UNTAGGED } from "@/lib/types";
-import { SECTIONS, addressForms, bypasses, callbacks, encode, formUrl, type Enc, type Payload } from "@/lib/kit";
+import { SECTIONS, addressForms, bypasses, callbacks, encode, formUrl, tagged, type Enc, type Payload } from "@/lib/kit";
 import { copy } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -110,7 +110,7 @@ export function PayloadKit({ section }: { section: string | null }) {
     );
   }
 
-  const rows: Payload[] = sec === "callbacks" ? callbacks(tag, host) : sec === "bypass" ? (expected.trim() ? bypasses(tag, host, expected) : []) : [];
+  const rows: Payload[] = sec === "callbacks" ? callbacks(tag, host, s.status?.payload?.longHost ?? host) : sec === "bypass" ? (expected.trim() ? bypasses(tag, host, expected) : []) : [];
   const forms = sec === "address" ? addressForms(ip) : null;
 
   return (
@@ -121,7 +121,7 @@ export function PayloadKit({ section }: { section: string | null }) {
           <SelectTrigger aria-label="Probe" className="h-[30px] w-auto min-w-[150px] gap-2 rounded-[3px] border-rule bg-transparent px-2.5 font-mono text-title"><span className="font-sans text-body text-smoke">Probe</span><SelectValue /></SelectTrigger>
           <SelectContent>{active.map((p) => <SelectItem key={p.tag} value={p.tag} className="font-mono">{p.tag}</SelectItem>)}</SelectContent>
         </Select>
-        <code className="min-w-0 truncate font-mono text-body text-smoke"><Marked text={`${tag}.${host}`} tag={tag} /></code>
+        <code className="min-w-0 truncate font-mono text-body text-smoke"><Marked text={tagged(tag, host)} tag={tag} /></code>
         <span className="ml-auto flex items-center gap-2.5 text-body text-smoke">
           Copy
           <ToggleGroup type="single" value={enc} onValueChange={(v) => v && setEnc(v as Enc)} aria-label="Encoding" className="overflow-hidden rounded-[3px] border border-rule">

@@ -117,7 +117,7 @@ test("list_probes: unplanted tags only under all; get_probe: payloads in the ask
   assert.match(all.probes.find((p) => p.tag === "evil-tag").unplanted, /chose this tag/);
   const g = parse(await c.tool("get_probe", { tag: "mcpt", encoding: "url" }));
   assert.equal(g.payloads.preset[0].code, "ks1");
-  assert.equal(g.payloads.preset[0].value, encodeURIComponent(`http://ks1.mcpt.${HOST}/`));
+  assert.equal(g.payloads.preset[0].value, encodeURIComponent(`http://ks1.mcpt-${HOST}/`));
   assert.ok(g.payloads.plain_callbacks.length > 0);
   assert.match(g.rule_history[0].clients[0].reach, /reached the last hop \(3 of 3\)/);
   assert.doesNotMatch(JSON.stringify(g), /Ignore previous/);
@@ -212,7 +212,7 @@ test("plant_probe: builds the preset rule and passes the collector's refusals on
   assert.equal(ssrf.probe.planted_by, "claude");
   assert.ok(ssrf.payloads.preset.length > 0);
   await c.tool("plant_probe", { tag: "new-xxe", target: "app.example /import", technique: "xxe" });
-  assert.deepEqual(api.sent.at(-1).body.rule.params, { host: `new-xxe.${HOST}`, file: "/etc/hostname" });
+  assert.deepEqual(api.sent.at(-1).body.rule.params, { host: `new-xxe-${HOST}`, file: "/etc/hostname" });
   const cb = parse(await c.tool("plant_probe", { tag: "new-cb", target: "app.example" }));
   assert.equal(api.sent.at(-1).body.rule, undefined);
   assert.match(cb.next, /wait_for_hits/);

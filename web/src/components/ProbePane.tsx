@@ -18,6 +18,7 @@ import { Chip, LineForm, NewDot, NilDot, TechniqueMark, TypeChip } from "./bits"
 import { HitDetail } from "./HitDetail";
 import { HttpRuleTab } from "./HttpRule";
 import { cn } from "@/lib/utils";
+import { shownId } from "@/lib/kit";
 
 function EditDialog({ p, open, onOpenChange }: { p: Probe; open: boolean; onOpenChange: (v: boolean) => void }) {
   const [target, setTarget] = useState(p.target);
@@ -136,14 +137,17 @@ function Head({ s }: { s: AppState }) {
 
 // DNS evidence is the name that was asked for: show the labels before the id, tag highlighted.
 export function DnsName({ i }: { i: Interaction }) {
-  const prefix = i.fullId.endsWith(i.uniqueId) ? i.fullId.slice(0, -i.uniqueId.length).replace(/\.$/, "") : "";
+  // the labels before the id, and how the last joins it: "." (fetch.<id>) or "-" (fetch-<id>)
+  const before = i.fullId.endsWith(i.uniqueId) ? i.fullId.slice(0, -i.uniqueId.length) : "";
+  const sep = before.endsWith("-") ? "-" : ".";
+  const prefix = before.replace(/[.-]$/, "");
   const labels = prefix ? prefix.split(".") : [];
-  const short = `${i.uniqueId.slice(0, 8)}…`;
+  const short = shownId(i.uniqueId);
   if (!labels.length) return <span className="font-mono text-body text-smoke">{short} <span className="font-sans text-label text-ash">(bare id)</span></span>;
   return (
     <span className="font-mono text-body">
       {labels.map((l, n) => <span key={n}>{n > 0 && "."}{l === i.tag ? <em className="bg-mark px-px text-bone not-italic">{l}</em> : <span className="text-bone">{l}</span>}</span>)}
-      <span className="text-smoke">.{short}</span>
+      <span className="text-smoke">{sep}{short}</span>
     </span>
   );
 }

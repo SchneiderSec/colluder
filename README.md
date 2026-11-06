@@ -39,6 +39,11 @@ A probe is a tag you plant somewhere. The composer gives three payloads per tag:
 | HTTP | `http://tag.<id>.oob.example/` | URL fields |
 | HTTPS | `https://tag-<id>.oob.example/` | tag **joined to the id with a dash**: the wildcard certificate covers one label only, so `tag.<id>` fails TLS. The older path form `https://<id>.oob.example/tag/` is still read. |
 
+Every protocol uses one host form, `tag-<id>.oob.example`. With the edge's DNS front
+(`sudo deploy/dns-front.sh`, see PLAN-SHORTID.md) `<id>` is Colluder's 6-char short id, e.g.
+`https://signup7-k7wq2x.oob.example/`; before it, the engine's 33-char id. Email
+payloads always use the long id (SMTP goes straight to interactsh).
+
 Hits are matched to probes by the label just before the id, or (HTTP/S) by the first path
 segment. Labels further left are kept as exfil data. Hits for tags you never planted create an
 "unregistered" probe; hits with no tag go to Unregistered.

@@ -50,13 +50,16 @@ const NOTE: Record<string, string> = {
 
 // the payload host reads as tag + short id, like the hits table; the tag is marked
 function Host({ value, tag, domain }: { value: string; tag: string | null; domain?: string }) {
-  const m = domain ? new RegExp(`^(?:(.*)\\.)?([a-z0-9]{33})\\.(${domain.replace(/\./g, "\\.")})(:\\d+)?$`, "i").exec(value) : null;
+  // [code.][tag. or tag-]<id>.<domain>[:port]; the id is the engine's 33 chars or Colluder's short 6
+  const m = domain ? new RegExp(`^(?:(.*)\\.)?(?:([a-z0-9][a-z0-9-]*)-)?([a-z][a-z0-9]{5}|[a-z0-9]{33})\\.(${domain.replace(/\./g, "\\.")})(:\\d+)?$`, "i").exec(value) : null;
   if (!m) return <>{value}</>;
   const labels = m[1] ? m[1].split(".") : [];
+  const id = m[3].length > 12 ? `${m[3].slice(0, 8)}…` : m[3];
   return (
     <span title={value}>
       {labels.map((l, n) => <span key={n}>{l === tag ? <Tag>{l}</Tag> : l}.</span>)}
-      <span className="text-smoke">{m[2].slice(0, 8)}…</span><span className="text-smoke">.{m[3]}{m[4] ?? ""}</span>
+      {m[2] && <span>{m[2] === tag ? <Tag>{m[2]}</Tag> : m[2]}-</span>}
+      <span className="text-smoke">{id}</span><span className="text-smoke">.{m[4]}{m[5] ?? ""}</span>
     </span>
   );
 }

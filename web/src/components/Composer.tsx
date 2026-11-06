@@ -5,7 +5,7 @@ import { TAG_RE, UNTAGGED } from "@/lib/types";
 import { variants } from "@/lib/raw";
 import { hostOf } from "@/lib/metadata";
 import { CLOUDS, XXE_FILES, ssrfRule, xxeRule } from "@/lib/presets";
-import { ssrfPayloads, xxePayloads, jsonEscape, xmlEscape, type Payload } from "@/lib/kit";
+import { ssrfPayloads, xxePayloads, jsonEscape, xmlEscape, tagged, shownId, type Payload } from "@/lib/kit";
 import { copy } from "@/lib/toast";
 import { dayOrTime } from "@/lib/format";
 import { Button } from "@/components/ui/button";
@@ -88,7 +88,7 @@ export function Composer() {
       if (technique === "ssrf-metadata") await plant(tag, target.trim(), technique, ssrfRule(c.url, headDecoy), `302 → ${hostOf(c.url)} (${c.provider}: ${c.name}) after 2 hops`);
       else if (technique === "xxe") {
         if (!host) throw new Error("No payload host yet: wait for the engine.");
-        await plant(tag, target.trim(), technique, xxeRule(`${tag}.${host}`, file), `an XXE DTD reading ${file}`);
+        await plant(tag, target.trim(), technique, xxeRule(tagged(tag, host), file), `an XXE DTD reading ${file}`);
       }
       else await plant(tag, target.trim(), technique);
       const next = technique === "redirect" ? '[aria-label="Location"]' : technique === "file" ? '[aria-label="Template"]' : null;
@@ -114,7 +114,7 @@ export function Composer() {
           <input ref={tagRef} value={tag} maxLength={32} spellCheck={false} placeholder="e.g. avatar" aria-invalid={!!err} aria-describedby="tag-err"
             onChange={(e) => { const v = e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""); setTag(v); setErr(v && !TAG_RE.test(v) ? BAD_TAG : ""); }}
             className="min-w-0 flex-1 bg-transparent font-mono text-body text-bone outline-none placeholder:text-ash" />
-          {host && <span className="font-mono text-body text-ash">.{host.slice(0, 8)}…</span>}
+          {host && <span className="font-mono text-body text-ash">-{shownId(host.split(".")[0])}</span>}
         </label>
         <label className={fld}>
           <span className="text-body font-[550] text-smoke">Target</span>

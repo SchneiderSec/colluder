@@ -48,6 +48,14 @@ const store = new Store(CFG.db);
 // v2: HTTP(S) summaries carry the User-Agent
 store.resummarize("2", (r) => (r.protocol === "http" || r.protocol === "https")
   ? summarize(r.protocol, { "raw-request": r.rawRequest }, CFG.domain) : null);
+// Colluder's own short id (PLAN-SHORTID.md): signup7-<short>.domain instead of the engine's 33-char
+// id. interactsh never sees it registered; the edge answers it over HTTP(S) and records its DNS.
+// Made once and kept: payloads already sent with it go on working.
+if (!/^[a-z][a-z0-9]{5}$/.test(store.meta("short_id") || "")) {
+  const abc = "abcdefghijklmnopqrstuvwxyz", alnum = abc + "0123456789", b = randomBytes(6);
+  store.meta("short_id", abc[b[0] % 26] + [...b.subarray(1)].map((x) => alnum[x % 36]).join(""));
+}
+const SHORT_ID = store.meta("short_id");
 const engine = new Engine({ unit: CFG.unit, payloadFile: CFG.payloadFile, clientBin: CFG.clientBin, domain: CFG.domain });
 const discord = new Discord({ url: env.DISCORD_WEBHOOK_URL, dashboardUrl: PUBLIC_URL, log });
 const clients = new Set();
@@ -66,6 +74,9 @@ function broadcast(event, data) {
 function ingest(line, source = "engine") {
   let obj;
   try { obj = JSON.parse(line); } catch { log("skip: not JSON"); return; }
+  // With the edge's DNS front, interactsh hears Colluder's DNS queries from the edge (loopback) after
+  // the edge has recorded them with the real resolver: the engine's copy is a duplicate.
+  if (source === "engine" && obj.protocol === "dns" && /^(127\.|::1$|::ffff:127\.)/.test(String(obj["remote-address"] || ""))) return;
   const it = parseInteraction(obj, CFG.domain, { trusted: source === "edge" });
   const receivedAt = nowIso();
   const res = store.insert(line, it, receivedAt);
@@ -108,6 +119,19 @@ function enrichRdns(ip) {
 
 const discordEnabled = () => discord.available && store.meta("discord") !== "off";
 
+// ---------- payload ----------
+// The host payloads are built on: the short one once the edge records DNS for it, the engine's
+// until then (a short-id lookup would resolve but go unrecorded). longHost is always the engine's:
+// SMTP and the other protocols interactsh serves directly only know that one.
+function payloadOut() {
+  const p = engine.payload;
+  if (!p) return null;
+  const shortHost = `${SHORT_ID}.${CFG.domain}`;
+  const short = edgeStatus.state === "running" && !!edgeStatus.listen?.dns;
+  return { ...p, host: short ? shortHost : p.host, longHost: p.host, shortId: SHORT_ID, shortHost, short };
+}
+const tagged = (tag, host) => `${tag}-${host}`;
+
 // ---------- status ----------
 let lastPayloadCid = store.meta("correlation_id");
 async function statusTick() {
@@ -130,7 +154,7 @@ async function statusTick() {
 function statusPayload() {
   return {
     engine: engine.status,
-    payload: engine.payload,
+    payload: payloadOut(),
     correlationChangedAt: store.meta("correlation_changed_at"),
     lastHitAt: store.lastHitAt(),
     serverTime: nowIso(),
@@ -154,7 +178,7 @@ function knownCids() {
 async function publishRules() {
   const rules = {};
   for (const [tag, r] of Object.entries(store.activeRules())) if (r.rule.mode !== "default") rules[tag] = { version: r.version, rule: r.rule };
-  const body = JSON.stringify({ generatedAt: nowIso(), domain: CFG.domain, cids: knownCids(), rules }, null, 1);
+  const body = JSON.stringify({ generatedAt: nowIso(), domain: CFG.domain, cids: knownCids(), shortIds: [SHORT_ID], rules }, null, 1);
   const tmp = CFG.rulesFile + ".tmp";
   await writeFile(tmp, body, { mode: 0o600 });
   await rename(tmp, CFG.rulesFile); // atomic: the edge never reads half a file
@@ -188,14 +212,14 @@ const probeOut = (tag) => decorate(store.probe(tag));
 const TECHNIQUES = ["callback", "redirect", "file", "ssrf-metadata", "xxe"];
 
 function previewRequest(tag, scheme, hop) {
-  const host = engine.payload?.host || `${"x".repeat(33)}.${CFG.domain}`;
+  const host = payloadOut()?.host || `${"x".repeat(33)}.${CFG.domain}`;
   const id = host.split(".")[0];
   const q = hop > 1 ? `?hop=${hop}` : "";
   // the preview shows the rule's own answer: a request past any decoy (the editor names the decoy)
   const past = { ua: "", ip: "", seen: Number.MAX_SAFE_INTEGER };
   return scheme === "https"
-    ? { scheme, method: "GET", target: `/${tag}/${q}`, host, uniqueId: id, domain: CFG.domain, ...past }
-    : { scheme, method: "GET", target: `/${q}`, host: `${tag}.${host}`, uniqueId: id, domain: CFG.domain, ...past };
+    ? { scheme, method: "GET", target: `/${q}`, host: tagged(tag, host), uniqueId: id, domain: CFG.domain, ...past }
+    : { scheme, method: "GET", target: `/${q}`, host: tagged(tag, host), uniqueId: id, domain: CFG.domain, ...past };
 }
 
 // ---------- HTTP ----------
@@ -297,7 +321,7 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === "GET" && p === "/api/status") return json(res, 200, statusPayload());
     if (req.method === "GET" && p === "/api/payload") {
-      const pl = engine.payload;
+      const pl = payloadOut();
       return pl ? json(res, 200, pl) : json(res, 503, { error: engine.status.detail, engine: engine.status });
     }
     let m;
@@ -418,7 +442,7 @@ const server = http.createServer(async (req, res) => {
       const md = probeReport({
         probe, hits: [...store.exportRows(m[1])].map((r) => ({ ...r, answer: r.answer ? JSON.parse(r.answer) : null })),
         trigger: store.trigger(m[1]), enrich: (ip) => store.enrich(ip), domain: CFG.domain,
-        payloadId: engine.payload?.host?.split(".")[0] ?? "<payload-id>", selfIps: SELF_IPS, mineIps: store.mine(), now: nowIso(),
+        payloadHost: payloadOut()?.host ?? `<payload-id>.${CFG.domain}`, selfIps: SELF_IPS, mineIps: store.mine(), now: nowIso(),
       });
       // captured values are in it: never sniffed as HTML, never a live document
       res.writeHead(200, { "content-type": "text/markdown; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff", "content-security-policy": "sandbox" });

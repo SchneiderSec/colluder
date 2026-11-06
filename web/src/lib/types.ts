@@ -131,7 +131,8 @@ export type EngineState = "capturing" | "starting" | "degraded" | "down" | "miss
 
 export interface Status {
   engine: { state: EngineState; detail: string; fix?: string; since?: string | null; unit: string; restarts: number; version: string | null };
-  payload: { host: string; correlationId: string; domain: string; writtenAt: string } | null;
+  // host: what payloads are built on (the short host once the edge records its DNS); longHost: the engine's
+  payload: { host: string; longHost?: string; shortId?: string; shortHost?: string; short?: boolean; correlationId: string; domain: string; writtenAt: string } | null;
   correlationChangedAt: string | null;
   lastHitAt: string | null;
   serverTime: string;

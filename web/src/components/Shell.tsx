@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { LineForm, useTick, type Signal } from "./bits";
 import { Mark } from "./Mark";
 import { cn } from "@/lib/utils";
+import { shownId } from "@/lib/kit";
 
 // The rail holds tools that work across probes. What a single probe answers (HTTP response,
 // hosted files, DNS and rebinding) lives in tabs on the probe itself.
@@ -111,7 +112,7 @@ export function StatusBar() {
           title={last && clearAt && isoMs(clearAt) >= isoMs(last) ? "Hits were cleared after this one arrived, so no probe shows it. Settings → Restore last clear brings them back." : undefined} />}
       <div className="ml-auto flex flex-none items-center gap-[18px] max-[820px]:hidden">
         {night && <span className="text-label text-ash">Night shift</span>}
-        {host && <span className="font-mono text-label text-smoke max-[1380px]:hidden in-[.type-comfortable]:max-[1640px]:hidden">{host.slice(0, 8)}….{s.status!.payload!.domain}</span>}
+        {host && <span className="font-mono text-label text-smoke max-[1380px]:hidden in-[.type-comfortable]:max-[1640px]:hidden">{shownId(host.split(".")[0])}.{s.status!.payload!.domain}</span>}
         <span className="font-semibold tracking-[.02em]">{now.toISOString().slice(11, 19)}<span className="ml-[3px] text-label font-medium text-smoke">UTC</span></span>
       </div>
     </footer>
