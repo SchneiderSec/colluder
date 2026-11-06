@@ -2,7 +2,16 @@
 // band and the status bar all read it from here, so they can't contradict each other.
 import { dayOrTime, isoMs } from "./format.ts";
 
-type P = { registered?: number | boolean; retiredAt?: string | null; lastHitAt?: string | null; plantedAt?: string | null; hits: number };
+type P = { registered?: number | boolean; retiredAt?: string | null; lastHitAt?: string | null; plantedAt?: string | null; hits: number; clearedAt?: string | null };
+
+// the clear that explains an empty probe: its own, or a clear of everything after it was planted
+export function lastClearFor(p: P, globalAt?: string | null): string | null {
+  const g = globalAt && isoMs(globalAt) > (isoMs(p.plantedAt) || 0) ? globalAt : null;
+  const own = p.clearedAt ?? null;
+  if (!g) return own;
+  if (!own) return g;
+  return isoMs(own) > isoMs(g) ? own : g;
+}
 
 export type ProbeState =
   | "armed" //     planted, listening, nothing (since the last clear)
@@ -24,7 +33,8 @@ export const STATE_WORD: Record<ProbeState, string> = {
 
 // Why a probe shows no hits: never planted it, nothing yet, or a clear took them out of view.
 export function quietLine(p: P, lastClearAt?: string | null): string {
-  const since = lastClearAt && isoMs(lastClearAt) > (isoMs(p.plantedAt) || 0) ? `No hits since the clear at ${dayOrTime(lastClearAt)}` : "No hits yet";
+  const at = lastClearFor(p, lastClearAt);
+  const since = at ? `No hits since the clear at ${dayOrTime(at)}` : "No hits yet";
   if (!p.registered) return `${since} · first seen ${dayOrTime(p.plantedAt)}`;
   if (p.retiredAt) return `${since} · retired ${dayOrTime(p.retiredAt)}`;
   return `${since} · planted ${dayOrTime(p.plantedAt)}`;

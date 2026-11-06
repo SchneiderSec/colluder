@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Bell, BellOff, ChevronRight, Download, FileText, Search, Trash2, X } from "lucide-react";
-import { useApp, keyOf, markSeen, selectHit, patchProbe, saveRule, fetchTrigger, fetchReport, chatterOf, setTab, unreadFor, loadOlder, searchHits, exportUrl, deleteProbe, PROBE_TABS, type AppState, type ProbeTab } from "@/store";
-import { probeState } from "@/lib/probeState";
+import { Bell, BellOff, ChevronRight, Download, Eraser, FileText, RotateCcw, Search, Trash2, X } from "lucide-react";
+import { useApp, keyOf, markSeen, selectHit, patchProbe, saveRule, fetchTrigger, fetchReport, chatterOf, setTab, unreadFor, loadOlder, searchHits, exportUrl, deleteProbe, clearProbe, restoreProbe, PROBE_TABS, type AppState, type ProbeTab } from "@/store";
+import { lastClearFor, probeState } from "@/lib/probeState";
 import { dnsSteps, mostSpecific } from "@/lib/dns";
 import { stageOf } from "@/lib/stage";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -53,6 +53,7 @@ function Head({ s }: { s: AppState }) {
   const [edit, setEdit] = useState(false);
   const [retire, setRetire] = useState(false);
   const [del, setDel] = useState(false);
+  const [clr, setClr] = useState(false);
   const [resetRule, setResetRule] = useState(true);
   const cls = "flex min-w-0 items-center gap-3.5 border-b border-rule pr-5 pl-6 max-[820px]:flex-wrap max-[820px]:gap-2 max-[820px]:px-3.5 max-[820px]:py-2.5";
   if (s.sel === UNTAGGED) {
@@ -60,6 +61,8 @@ function Head({ s }: { s: AppState }) {
       <div className={cls}>
         <span className="text-headline font-semibold">No tag</span>
         <span className="text-body text-smoke">Hits that carry no tag · <b className="font-semibold text-bone">{s.untagged?.hits ?? 0}</b> hits</span>
+        {!!s.untagged?.hits && <div className="ml-auto flex gap-1.5"><Button variant="quiet" onClick={() => setClr(true)}><Eraser />Clear hits…</Button></div>}
+        <ClearDialog tag={null} count={s.untagged?.hits ?? 0} open={clr} onOpenChange={setClr} />
       </div>
     );
   }
@@ -89,6 +92,7 @@ function Head({ s }: { s: AppState }) {
         )}
         <Button variant="quiet" title={`Markdown for a bug report: summary, ${p.triggerBytes ? "the triggering request, " : ""}timeline, sources, decoded exfil and the first web request`}
           onClick={() => fetchReport(p.tag).then((md) => copy(md, `${p.tag} report`), (e) => toast((e as Error).message, true))}><FileText />Copy report</Button>
+        {!!p.hits && <Button variant="quiet" title="Hide this probe's hits so it starts clean. Restore brings them back." onClick={() => setClr(true)}><Eraser />Clear hits…</Button>}
         <Button variant="quiet" onClick={() => setEdit(true)}>Edit</Button>
         {st !== "unplanted" && <Button variant="quiet" onClick={() => (p.retiredAt ? patchProbe(p.tag, { retired: false }).then(() => toast(`Restored ${p.tag}`), (e) => toast((e as Error).message, true)) : setRetire(true))}>{p.retiredAt ? "Restore" : "Retire…"}</Button>}
         {canDelete && <Button variant="destructive" onClick={() => setDel(true)}><Trash2 />Delete…</Button>}
@@ -109,6 +113,7 @@ function Head({ s }: { s: AppState }) {
         </AlertDialogContent>
       </AlertDialog>
       <EditDialog p={p} open={edit} onOpenChange={setEdit} />
+      <ClearDialog tag={p.tag} count={p.hits} retired={!!p.retiredAt} open={clr} onOpenChange={setClr} />
       <AlertDialog open={retire} onOpenChange={setRetire}>
         <AlertDialogContent className="max-w-[440px] border-rule bg-soot-1">
           <Button variant="ghost" size="icon-sm" aria-label="Close" className="absolute top-3 right-3 text-smoke" onClick={() => setRetire(false)}><X /></Button>
@@ -349,12 +354,13 @@ export function ProbePane() {
   if (!all.length) {
     const capturing = s.status?.engine?.state === "capturing";
     const st = p ? probeState(p) : "armed";
-    const lc = s.status?.lastClear?.at;
-    const cleared = lc && p && isoMs(lc) > (isoMs(p.plantedAt) || 0) ? lc : null;
+    const cleared = p ? lastClearFor(p, s.status?.lastClear?.at) : null;
+    const own = p ?? s.untagged;
     return (
       <section className={cn(wrap, tabbed)} aria-label={`Probe ${s.sel}`}>
         <Head s={s} />{tabs}
         <div id={p ? "probe-panel" : undefined} role={p ? "tabpanel" : undefined} aria-labelledby={p ? "probe-tab-hits" : undefined} className="max-w-[72ch] px-6 py-[18px] text-body leading-[1.1875rem] text-smoke">
+          {!!own?.clearedCount && <p className="mb-2.5 flex flex-wrap items-center gap-x-2 text-bone">Cleared {plural(own.clearedCount, "hit")} at {dayOrTime(own.clearedAt)} UTC.<Button variant="quiet" size="sm" onClick={() => restoreProbe(p?.tag ?? null).catch((e) => toast((e as Error).message, true))}><RotateCcw />Restore them</Button></p>}
           {/* one sentence for the probe's actual state: retired and never-planted probes aren't "waiting" */}
           {st === "retired" ? (
             <p><b className="font-semibold text-bone">Retired {dayOrTime(p!.retiredAt)} UTC · {cleared ? `no hits since the clear at ${dayOrTime(cleared)}` : "no hits stored"}.</b> New hits on this tag are still recorded and bring it back to the list. Restore it to use its payloads again, or delete it if you're done with it.</p>
@@ -489,11 +495,43 @@ export function ProbePane() {
         <div className="flex items-center gap-2.5 px-6 py-1.5 text-label text-ash">
           <hr className="flex-1 border-0 border-t border-rule-2" />
           {p ? `Planted ${dayOrTime(p.plantedAt)} UTC · first hit ${hmsms(firstHit.timestamp)}` : `First hit ${dayOrTime(firstHit.timestamp)} UTC · ${plural(hits.length, "hit")}`}
+          {(() => { const o = p ?? s.untagged; return o?.clearedCount ? <RestoreLink tag={p?.tag ?? null} count={o.clearedCount} at={o.clearedAt!} /> : null; })()}
           <hr className="flex-1 border-0 border-t border-rule-2" />
         </div>
       </div>
       </div>
       {hitId != null && <HitDetail id={hitId} />}
     </section>
+  );
+}
+
+// Clear one probe's hits (tag null: the hits with no tag). Soft, like a clear of everything.
+function ClearDialog({ tag, count, retired, open, onOpenChange }: { tag: string | null; count: number; retired?: boolean; open: boolean; onOpenChange: (v: boolean) => void }) {
+  const name = tag ?? "No tag";
+  return (
+    <AlertDialog open={open} onOpenChange={onOpenChange}>
+      <AlertDialogContent className="max-w-[460px] border-rule bg-soot-1">
+        <AlertDialogHeader>
+          <AlertDialogTitle>Clear {tag ? `${tag}'s` : "the"} {plural(count, "hit")}{tag ? "" : " with no tag"}?</AlertDialogTitle>
+          <AlertDialogDescription>
+            They're hidden so {tag ? "the probe" : "the view"} starts clean, not deleted: Restore brings them back. {tag ? `${name} stays ${retired ? "retired" : "armed"}, and new hits show up as usual.` : "New hits with no tag show up as usual."}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel asChild><Button variant="quiet">Keep them</Button></AlertDialogCancel>
+          <AlertDialogAction asChild><Button onClick={() => clearProbe(tag).catch((e) => toast((e as Error).message, true))}><Eraser />Clear {plural(count, "hit")}</Button></AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
+function RestoreLink({ tag, count, at }: { tag: string | null; count: number; at: string }) {
+  return (
+    <span>
+      · {plural(count, "hit")} cleared {dayOrTime(at)}{" "}
+      <button type="button" className="cursor-pointer text-smoke underline decoration-ash underline-offset-2 hover:text-bone hover:decoration-bone"
+        onClick={() => restoreProbe(tag).catch((e) => toast((e as Error).message, true))}>Restore</button>
+    </span>
   );
 }

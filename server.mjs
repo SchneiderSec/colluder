@@ -493,6 +493,14 @@ const server = http.createServer(async (req, res) => {
       broadcast("reload", { reason: "cleared", count: n });
       return json(res, 200, { cleared: n });
     }
+    // one probe's hits, or the hits with no tag: hidden, restorable, and new hits still arrive
+    if (req.method === "POST" && (m = /^\/api\/(?:probes\/([a-z0-9-]+)|(untagged))\/(clear|restore)$/.exec(p))) {
+      const tag = m[1] ?? null;
+      if (tag && !store.probe(tag)) return json(res, 404, { error: "no such probe" });
+      const n = m[3] === "clear" ? store.clearProbe(tag, nowIso()) : store.restoreProbe(tag);
+      broadcast("reload", { reason: m[3] === "clear" ? "cleared" : "restored", count: n, tag });
+      return json(res, 200, m[3] === "clear" ? { cleared: n } : { restored: n });
+    }
     if (req.method === "POST" && p === "/api/restore") {
       const n = store.restoreLastClear();
       broadcast("reload", { reason: "restored", count: n });

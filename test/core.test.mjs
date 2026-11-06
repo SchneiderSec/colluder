@@ -352,3 +352,36 @@ test("store: deleting a probe takes its hits (cleared ones too) and its rules, a
   assert.equal(s.restoreLastClear(), 1, "only kept's hit comes back");
   assert.equal(s.hits("kept").length, 1);
 });
+
+test("clear one probe: hides only its hits, restores on its own, and a delete drops its clears", () => {
+  const s = new Store(":memory:");
+  let n = 0;
+  const add = (full) => {
+    const raw = { protocol: "dns", "unique-id": ID, "full-id": full, "q-type": "A", "remote-address": "198.51.100.7", timestamp: `2026-11-06T10:00:0${n}Z`, "raw-request": `q${n++}`, "raw-response": "" };
+    s.insert(JSON.stringify(raw), parseInteraction(raw, D), "2026-11-06T10:01:00Z");
+  };
+  s.plant("fm2", "", "callback", "2026-11-06T09:00:00Z");
+  add(`fm2-${ID}`); add(`fm2-${ID}`); add(`other-${ID}`); add(ID);
+  const count = (tag) => (tag ? s.probe(tag)?.hits : s.probes().untagged.hits);
+  assert.deepEqual([count("fm2"), count("other"), count(null)], [2, 1, 1]);
+
+  assert.equal(s.clearProbe("fm2", "2026-11-06T11:00:00Z"), 2);
+  assert.deepEqual([count("fm2"), count("other"), count(null)], [0, 1, 1]);
+  assert.deepEqual([s.probe("fm2").clearedAt, s.probe("fm2").clearedCount], ["2026-11-06T11:00:00Z", 2]);
+  assert.equal(s.lastClear(), null, "a probe's clear isn't a clear of everything");
+
+  add(`fm2-${ID}`); // a new hit after the clear shows as usual
+  assert.equal(count("fm2"), 1);
+  assert.equal(s.clearAll("2026-11-06T12:00:00Z"), 3);
+  assert.equal(s.restoreProbe("fm2"), 2, "the probe's own clear comes back, not the later one");
+  assert.equal(count("fm2"), 2);
+  assert.equal(s.probe("fm2").clearedCount, 0);
+  assert.equal(s.restoreLastClear(), 3);
+  assert.deepEqual([count("fm2"), count("other"), count(null)], [3, 1, 1]);
+
+  assert.equal(s.clearProbe(null, "2026-11-06T13:00:00Z"), 1, "the hits with no tag");
+  assert.equal(s.probes().untagged.clearedCount, 1);
+  s.clearProbe("other", "2026-11-06T13:00:01Z");
+  s.deleteProbe("other");
+  assert.equal(s.restoreProbe("other"), 0, "nothing left to bring back");
+});

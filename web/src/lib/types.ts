@@ -111,6 +111,9 @@ export interface Counts {
   https: number;
   smtp: number;
   other: number;
+  // this probe's own last clear (the No tag view's, on untagged): restorable while it's here
+  clearedAt?: string | null;
+  clearedCount?: number;
 }
 
 export interface Probe extends Counts {

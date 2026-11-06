@@ -275,6 +275,10 @@ addEventListener("beforeunload", (e) => { if (Object.keys(state.ruleDrafts).leng
 export const setDiscord = (on: boolean) => api("/api/settings", { method: "POST", body: { discord: on } });
 export const clearAll = () => api("/api/clear", { method: "POST", body: {} });
 export const restoreClear = () => api("/api/restore", { method: "POST", body: {} });
+// one probe's hits (null: the hits with no tag)
+const scopePath = (tag: string | null) => (tag ? `/api/probes/${encodeURIComponent(tag)}` : "/api/untagged");
+export const clearProbe = (tag: string | null) => api<{ cleared: number }>(`${scopePath(tag)}/clear`, { method: "POST", body: {} });
+export const restoreProbe = (tag: string | null) => api<{ restored: number }>(`${scopePath(tag)}/restore`, { method: "POST", body: {} });
 
 // ---------- SSE ----------
 let es: EventSource | null = null;
@@ -301,8 +305,9 @@ export function connect() {
   on<Counts>("untagged", (u) => set({ untagged: u }));
   on<{ tag: string }>("probe-deleted", (d) => dropProbe(d.tag));
   on<Enrich>("enrich", (e) => set({ enrich: new Map(state.enrich).set(e.ip, e) }));
-  on<{ reason: string; count: number }>("reload", (d) => {
-    toast(d.reason === "cleared" ? `Took out the trash: ${plural(d.count, "interaction")} hidden` : `Restored ${plural(d.count, "interaction")}`);
+  on<{ reason: string; count: number; tag?: string | null }>("reload", (d) => {
+    const whose = d.tag === undefined ? "" : d.tag ? ` from ${d.tag}` : " with no tag";
+    toast(d.reason === "cleared" ? (d.tag === undefined ? `Took out the trash: ${plural(d.count, "interaction")} hidden` : `Cleared ${plural(d.count, "hit")}${whose}. Restore brings them back.`) : `Restored ${plural(d.count, "hit")}${whose}`);
     set({ details: new Map(), hit: null });
     loadState();
   });
