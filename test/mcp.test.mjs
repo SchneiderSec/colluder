@@ -1,7 +1,7 @@
 // The MCP server (PLAN-MCP.md M1): protocol, tool arguments, and the untrusted envelope.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createServer, hitRow, hitDetail, visible, checkArgs, TOOLS } from "../lib/mcp.mjs";
+import { createServer, hitRow, hitDetail, visible, checkArgs, checkRule, TOOLS } from "../lib/mcp.mjs";
 
 const SELF = "100.64.0.10", MINE = "203.0.113.9", TARGET = "198.51.100.7";
 const HOST = "cxyz.oob.example";
@@ -35,6 +35,9 @@ function fakeApi({ hits = [], later = [] } = {}) {
       if (path === "/api/status") return { status: 200, body: { payload: { host: HOST }, engine: { state: "running" }, edge: { state: "running", codeStale: false }, selfIps: [SELF], mineIps: [MINE], lastHitAt: null, discord: { enabled: true }, token: "SECRET-SHOULD-NOT-LEAK" } };
       if (path === "/api/probes") return { status: 200, body: { probes: [probe(), probe({ tag: "evil-tag", registered: 0 }), probe({ tag: "old", retiredAt: "2026-11-01T00:00:00Z" })] } };
       if (path === "/api/probes/mcpt") return { status: 200, body: probe() };
+      if (path === "/api/probes/testing") return { status: 200, body: probe({ tag: "testing", plantedBy: "you" }) };
+      if (path === "/api/probes/testing/http-rule") return { status: 200, body: { active: { version: 1, rule: { mode: "file", contentType: "text/plain", body: "x" } }, history: [] } };
+      if (path === "/api/probes/old") return { status: 200, body: probe({ tag: "old", plantedBy: "claude", retiredAt: "2026-11-01T00:00:00Z" }) };
       if (/^\/api\/probes\/(new-ssrf|new-xxe|new-cb)$/.test(path)) return { status: 200, body: probe({ tag: path.split("/").pop(), plantedBy: "claude" }) };
       if (/^\/api\/probes\/(new-ssrf|new-xxe|new-cb)\/http-rule$/.test(path)) return { status: 200, body: { active: null, history: [], defaultHits: 0 } };
       if (path.startsWith("/api/probes/nope")) return { status: 404, body: { error: "no such probe" } };
@@ -252,4 +255,74 @@ test("reset_rule, record_trigger, retire_probe", async () => {
   const r = parse(await c.tool("retire_probe", { tag: "mcpt" }));
   assert.equal(r.retired, true);
   assert.match(r.still_answers_http_with, /rule v1/);
+});
+
+// ---------- PLAN-MCP.md feedback round (a bug bounty run through the MCP) ----------
+const b64 = (t) => Buffer.from(t).toString("base64");
+const xxeHit = (value) => listHit({ id: 20, fullId: "kx0.mcpt.cxyz", summary: `GET /d?d=${value} HTTP/1.1 · Java/1.8`, answerMode: "default", hop: null, hopCode: null });
+
+test("XXE file data: php://filter base64 of PHP source and JSON is decoded; the encoding sits outside untrusted", () => {
+  const ctx = { selfIps: [SELF], mineIps: [] };
+  const php = "<?php $db = ['user' => 'fake', 'pass' => \"x\"]; // {}\n";
+  const json = '{"db":{"user":"fake","pass":"x"}}';
+  for (const t of [php, json]) {
+    const r = hitRow(xxeHit(b64(t)), ctx);
+    assert.equal(r.untrusted.file_data, visible(t));
+    assert.equal(r.file_data_encoding, "base64, decoded");
+  }
+  // bytes that aren't text: as sent, flagged; a plain read stays as it is
+  const bin = hitRow(xxeHit(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 1, 2, 0xff]).toString("base64")), ctx);
+  assert.match(bin.file_data_encoding, /base64 of 8 bytes that aren't text/);
+  const plain = hitRow(xxeHit("fake-host02%0A"), ctx);
+  assert.equal(plain.untrusted.file_data, "fake-host02\n");
+  assert.equal(plain.file_data_encoding, "none: quoted as sent");
+  // a client can't fake Colluder's words: they never go inside the value
+  const forged = hitRow(xxeHit("hello%20%20[base64,%20decoded]"), ctx);
+  assert.equal(forged.untrusted.file_data, "hello  [base64, decoded]");
+  assert.equal(forged.file_data_encoding, "none: quoted as sent");
+  const empty = hitRow(xxeHit(""), ctx);
+  assert.equal(empty.untrusted.file_data, undefined);
+  assert.match(empty.file_data_encoding, /^empty/);
+});
+
+test("wait_for_hits: names a hit left behind the cursor, and says why a wait wasn't met", async () => {
+  const just = listHit({ id: 10, remoteAddress: SELF, timestamp: new Date(Date.now() - 2000).toISOString() });
+  const c = rpc(fakeApi({ hits: [just] }));
+  const w = parse(await c.tool("wait_for_hits", { tag: "mcpt", until: "web", timeout_s: 1, settle_ms: 0 }));
+  assert.equal(w.met, false);
+  assert.match(w.missed, /1 matching hit \(from #10\) arrived in the 30 s before/);
+  assert.match(w.missed, /after_id 9 includes it/);
+  assert.equal(w.why_unmet, "Nothing arrived in 1 s.");
+
+  const later = [listHit({ id: 12, remoteAddress: SELF }), listHit({ id: 13, protocol: "dns", qType: "A", remoteAddress: "104.22.1.1" })];
+  const c2 = rpc(fakeApi({ later }));
+  const e = parse(await c2.tool("wait_for_hits", { tag: "mcpt", after_id: 11, until: "external", timeout_s: 1, settle_ms: 0 }));
+  assert.equal(e.met, false);
+  assert.equal(e.missed, undefined, "after_id given: nothing is behind the cursor");
+  assert.match(e.why_unmet, /^2 arrived, none from the target: 1 from this box \(your own requests\), 1 DNS/);
+});
+
+test("set_rule: keys a mode doesn't read are refused before anything is sent", async () => {
+  assert.match(checkRule({ mode: "file", body: "x", contenttype: "text/plain" }), /Unknown rule key "contenttype" \(did you mean contentType\?\)/);
+  assert.match(checkRule({ mode: "redirect", status: 302, location: "http://x/", lop: 2 }), /did you mean loop\?/);
+  assert.match(checkRule({ mode: "file", body: "x", decoy: { method: ["HEAD"] } }), /Unknown decoy key "method" \(did you mean methods\?\)/);
+  assert.match(checkRule({ mode: "file", body: "x", bodyEncoding: "b64" }), /bodyEncoding must be/);
+  assert.match(checkRule({ mode: "file", body: "x", status: 200 }), /Unknown rule key "status"/, "file has no status");
+  for (const ok of [{ mode: "default" }, { mode: "redirect", status: 302, location: "http://x/", loop: 2, hopStatuses: [301], decoy: { methods: ["HEAD"] } },
+    { mode: "file", contentType: "text/plain", body: "eA==", bodyEncoding: "base64", headers: [], template: "t", delayMs: 5, schemes: { http: true, https: false } },
+    { mode: "preset", kind: "xxe", params: { host: "a.b.c", file: "/etc/hostname" } }, { mode: "nope" }]) assert.equal(checkRule(ok), null, JSON.stringify(ok));
+  const api = fakeApi();
+  const c = rpc(api);
+  const r = await c.tool("set_rule", { tag: "mcpt", rule: { mode: "file", body: "x", contenttype: "text/plain" }, preview: true });
+  assert.equal(r.isError, true);
+  assert.equal(api.sent.length, 0);
+});
+
+test("reset_rule and retire_probe: nothing changes when there's nothing to change", async () => {
+  const api = fakeApi();
+  const c = rpc(api);
+  assert.deepEqual(parse(await c.tool("reset_rule", { tag: "new-cb" })), { saved: false, unchanged: true, answers_http_with: "the default reply (already)" });
+  const r = parse(await c.tool("retire_probe", { tag: "old" }));
+  assert.equal(r.already_retired_at, "2026-11-01T00:00:00Z");
+  assert.equal(api.sent.length, 0);
 });

@@ -386,7 +386,8 @@ const server = http.createServer(async (req, res) => {
         trigger: b.trigger === undefined ? undefined : String(b.trigger).slice(0, 32_768),
         muted: b.muted === undefined ? undefined : Boolean(b.muted),
       });
-      if (b.retired !== undefined) probe = store.retire(m[1], b.retired ? nowIso() : null);
+      // retiring a retired probe keeps the time it was retired
+      if (b.retired !== undefined && Boolean(b.retired) !== Boolean(probe.retiredAt)) probe = store.retire(m[1], b.retired ? nowIso() : null);
       probe = decorate(probe);
       broadcast("probe", probe);
       return json(res, 200, probe);
@@ -433,6 +434,8 @@ const server = http.createServer(async (req, res) => {
         const r = respond(v.rule, (activeRules()[m[1]]?.version || 0) + 1, pr);
         return json(res, 200, { raw: serialize(r).toString("utf8"), answer: r.answer, delayMs: r.delayMs });
       }
+      // Claude can't make a retired probe answer again (resetting it is fine): it plants a new one
+      if (actor === "claude" && store.probe(m[1]).retiredAt && v.rule.mode !== "default") return json(res, 409, { error: `"${m[1]}" is retired: a rule would make it answer again. Plant a new probe instead.` });
       const saved = store.saveRule(m[1], v.rule, nowIso(), actor);
       await publishRules();
       log(`rule saved: ${m[1]} v${saved.version} (${v.rule.mode})${actor === "claude" ? " by Claude" : ""}`);

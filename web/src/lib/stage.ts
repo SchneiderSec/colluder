@@ -9,7 +9,22 @@ type Hit = { summary?: string; fullId?: string; rawRequest?: string; answerMode?
 // "d=" (a file can hold & and =; an old Java client even sends raw spaces and newlines, which the
 // edge records as a malformed request). php://filter output is base64, so that is decoded too.
 // From the raw request when there is one (the list row only has the summary, cut at the first line).
-export function xxeValue(h: Hit): { text: string; base64: boolean } | null {
+// php://filter/convert.base64-encode pads to a multiple of 4. A value in that exact shape that decodes
+// to UTF-8 text is the file, whatever it looks like: PHP source and JSON fail decodeExfil's guess at
+// "text". One that decodes to bytes that aren't text stays as sent, flagged binary.
+const STRICT_B64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
+function strictBase64(v: string): { text: string } | { bytes: number } | null {
+  if (v.length < 4 || v.length % 4 || !STRICT_B64.test(v)) return null;
+  let bin: string;
+  try { bin = atob(v); } catch { return null; }
+  const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+  let text: string;
+  try { text = new TextDecoder("utf-8", { fatal: true }).decode(bytes); } catch { return { bytes: bytes.length }; }
+  return /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/.test(text) ? { bytes: bytes.length } : { text };
+}
+
+export type XxeValue = { text: string; base64: boolean; binary?: number };
+export function xxeValue(h: Hit): XxeValue | null {
   if (!/^kx0\./.test(h.fullId ?? "")) return null;
   let target: string | null = null;
   if (h.rawRequest) {
@@ -25,14 +40,17 @@ export function xxeValue(h: Hit): { text: string; base64: boolean } | null {
   let v = target.slice(at.index + 3);
   try { v = decodeURIComponent(v); } catch { /* keep as sent */ }
   const b64 = /^[A-Za-z0-9+/]{8,}={0,2}$/.test(v) ? decodeExfil(v, { max: 1 << 20 }) : null;
-  return b64?.kind === "base64url" ? { text: b64.text, base64: true } : { text: v, base64: false };
+  if (b64?.kind === "base64url") return { text: b64.text, base64: true };
+  const strict = strictBase64(v);
+  if (strict && "text" in strict) return { text: strict.text, base64: true };
+  return strict ? { text: v, base64: false, binary: strict.bytes } : { text: v, base64: false };
 }
 const esc = (t: string) => t.replace(/\r/g, "\\r").replace(/\n/g, "\\n").replace(/\t/g, "\\t");
 export function xxeData(h: Hit): string | null {
   const v = xxeValue(h);
   if (!v) return null;
   if (!v.text) return "empty (the DTD ran; the read returned nothing)";
-  return esc(v.text) + (v.base64 ? " (base64, decoded)" : "");
+  return esc(v.text) + (v.base64 ? " (base64, decoded)" : v.binary ? ` (base64 of ${v.binary} bytes that aren't text)` : "");
 }
 
 export function stageOf(h: Hit): string | null {
