@@ -17,13 +17,26 @@ const listHit = (o = {}) => ({ id: 11, protocol: "http", fullId: "ks1.mcpt.cxyz"
 function fakeApi({ hits = [], later = [] } = {}) {
   const calls = [];
   let polls = 0;
+  const sent = [];
   return {
-    calls,
+    calls, sent,
+    // writes, answered as the collector would (403 for the user's probes, 409 for a tag already planted)
+    async send(method, path, body) {
+      sent.push({ method, path, body });
+      if (path === "/api/probes") return body.tag === "taken" ? { status: 409, body: { error: '"taken" is already planted (2026-11-01). Pick another tag.' } } : { status: 200, body: probe({ tag: body.tag, plantedBy: "claude" }) };
+      if (path.startsWith("/api/probes/testing")) return { status: 403, body: { error: '"testing" was planted by you: Claude can read it but not change it.' } };
+      if (path.endsWith("/http-rule/preview")) return { status: 200, body: body.rule.mode === "nope" ? { error: "Mode must be one of default, redirect, custom, file, preset." } : { raw: "HTTP/1.1 302 Found\r\nLocation: http://x/\r\n\r\n", answer: { mode: "redirect", version: 2 }, delayMs: 0 } };
+      if (path.endsWith("/http-rule")) return { status: 200, body: { active: { version: 2, rule: body.rule }, history: [], edge: { state: "running" } } };
+      if (method === "PATCH") return { status: 200, body: probe({ plantedBy: "claude", triggerBytes: body.trigger?.length ?? 0, retiredAt: body.retired ? "2026-11-06T11:00:00Z" : null }) };
+      return { status: 404, body: { error: "not found" } };
+    },
     async get(path) {
       calls.push(path);
       if (path === "/api/status") return { status: 200, body: { payload: { host: HOST }, engine: { state: "running" }, edge: { state: "running", codeStale: false }, selfIps: [SELF], mineIps: [MINE], lastHitAt: null, discord: { enabled: true }, token: "SECRET-SHOULD-NOT-LEAK" } };
       if (path === "/api/probes") return { status: 200, body: { probes: [probe(), probe({ tag: "evil-tag", registered: 0 }), probe({ tag: "old", retiredAt: "2026-11-01T00:00:00Z" })] } };
       if (path === "/api/probes/mcpt") return { status: 200, body: probe() };
+      if (/^\/api\/probes\/(new-ssrf|new-xxe|new-cb)$/.test(path)) return { status: 200, body: probe({ tag: path.split("/").pop(), plantedBy: "claude" }) };
+      if (/^\/api\/probes\/(new-ssrf|new-xxe|new-cb)\/http-rule$/.test(path)) return { status: 200, body: { active: null, history: [], defaultHits: 0 } };
       if (path.startsWith("/api/probes/nope")) return { status: 404, body: { error: "no such probe" } };
       if (path === "/api/probes/mcpt/http-rule") return { status: 200, body: { active: { version: 1, rule: { mode: "redirect", status: 302, location: "http://169.254.169.254/latest/meta-data/iam/info", loop: 2, hopStatuses: [307, 305] } },
         history: [{ version: 1, createdAt: "t", rule: { mode: "redirect", status: 302, location: "http://169.254.169.254/x", loop: 2, hopStatuses: [307, 305] }, hits: 3, decoys: 0, clients: [{ ip: TARGET, ua: INJECT, maxHop: 3, minHop: 1, hits: 3 }] }], defaultHits: 0 } };
@@ -67,8 +80,10 @@ test("initialize: negotiates the version, carries the instructions; tools/list; 
   await c.handle({ jsonrpc: "2.0", method: "notifications/initialized" });
   assert.equal(c.out.length, 2, "a notification gets no reply");
   const list = await c.call("tools/list", {});
-  assert.deepEqual(list.result.tools.map((t) => t.name), ["status", "list_probes", "get_probe", "list_hits", "get_hit", "wait_for_hits", "get_report"]);
-  for (const t of list.result.tools) assert.equal(t.annotations.readOnlyHint, true);
+  const names = list.result.tools.map((t) => t.name);
+  assert.deepEqual(names, ["status", "list_probes", "get_probe", "list_hits", "get_hit", "wait_for_hits", "get_report", "plant_probe", "set_rule", "reset_rule", "record_trigger", "retire_probe"]);
+  for (const t of list.result.tools) assert.equal(t.annotations.readOnlyHint, names.indexOf(t.name) < 7, t.name);
+  assert.deepEqual(list.result.tools.filter((t) => t.annotations.destructiveHint).map((t) => t.name), ["retire_probe"]);
   assert.deepEqual((await c.call("ping", {})).result, {});
   assert.equal((await c.call("resources/list", {})).error.code, -32601);
   assert.equal((await c.call("tools/call", { name: "clear_all" })).error.code, -32602);
@@ -181,4 +196,60 @@ test("get_report: marked as captured data, hidden characters visible", async () 
   const r = await rpc(fakeApi()).tool("get_report", { tag: "mcpt" });
   assert.match(r.content[0].text, /^Captured data follows/);
   assert.match(r.content[0].text, /\\u202e/);
+});
+
+test("plant_probe: builds the preset rule and passes the collector's refusals on", async () => {
+  const api = fakeApi();
+  const c = rpc(api);
+  const ssrf = parse(await c.tool("plant_probe", { tag: "new-ssrf", target: "app.example /fetch?url=", technique: "ssrf-metadata", cloud: "aws-role" }));
+  const sent = api.sent.at(-1);
+  assert.equal(sent.body.rule.location, "http://169.254.169.254/latest/meta-data/iam/info");
+  assert.deepEqual(sent.body.rule.decoy, { methods: ["HEAD"] });
+  assert.equal(ssrf.planted, "new-ssrf");
+  assert.equal(ssrf.probe.planted_by, "claude");
+  assert.ok(ssrf.payloads.preset.length > 0);
+  await c.tool("plant_probe", { tag: "new-xxe", target: "app.example /import", technique: "xxe" });
+  assert.deepEqual(api.sent.at(-1).body.rule.params, { host: `new-xxe.${HOST}`, file: "/etc/hostname" });
+  const cb = parse(await c.tool("plant_probe", { tag: "new-cb", target: "app.example" }));
+  assert.equal(api.sent.at(-1).body.rule, undefined);
+  assert.match(cb.next, /wait_for_hits/);
+  const taken = await c.tool("plant_probe", { tag: "taken", target: "x" });
+  assert.equal(taken.isError, true);
+  assert.match(taken.content[0].text, /already planted/);
+  assert.match((await c.tool("plant_probe", { tag: "x", target: "x", technique: "xxe", cloud: "aws-role" })).content[0].text, /cloud applies to/);
+  assert.match((await c.tool("plant_probe", { tag: "x", target: "" })).content[0].text, /can't be empty/);
+  assert.match((await c.tool("plant_probe", { tag: "x", target: "x", technique: "ssrf-metadata", cloud: "docker" })).content[0].text, /must be one of/);
+});
+
+test("set_rule: preview saves nothing, save returns the version; the user's probes are refused", async () => {
+  const api = fakeApi();
+  const c = rpc(api);
+  const pv = parse(await c.tool("set_rule", { tag: "mcpt", rule: { mode: "redirect", status: 302, location: "http://x/" }, preview: true }));
+  assert.equal(pv.saved, false);
+  assert.match(pv.response, /^HTTP\/1.1 302/);
+  assert.match(api.sent.at(-1).path, /\/preview$/);
+  const badPv = await c.tool("set_rule", { tag: "mcpt", rule: { mode: "nope" }, preview: true });
+  assert.equal(badPv.isError, true);
+  assert.match(badPv.content[0].text, /isn't valid: Mode must be/);
+  const sv = parse(await c.tool("set_rule", { tag: "mcpt", rule: { mode: "redirect", status: 302, location: "http://x/" } }));
+  assert.equal(sv.saved, true);
+  assert.equal(sv.version, 2);
+  assert.match((await c.tool("set_rule", { tag: "mcpt", rule: "302" })).content[0].text, /rule must be an object/);
+  for (const [name, args] of [["set_rule", { tag: "testing", rule: { mode: "default" } }], ["reset_rule", { tag: "testing" }], ["retire_probe", { tag: "testing" }], ["record_trigger", { tag: "testing", request: "GET /" }]]) {
+    const r = await c.tool(name, args);
+    assert.equal(r.isError, true, name);
+    assert.match(r.content[0].text, /planted by you: Claude can read it but not change it/, name);
+  }
+});
+
+test("reset_rule, record_trigger, retire_probe", async () => {
+  const api = fakeApi();
+  const c = rpc(api);
+  assert.equal(parse(await c.tool("reset_rule", { tag: "mcpt" })).answers_http_with, "the default reply");
+  assert.deepEqual(api.sent.at(-1).body, { rule: { mode: "default" } });
+  assert.equal(parse(await c.tool("record_trigger", { tag: "mcpt", request: "GET /fetch?url=x HTTP/1.1" })).bytes, 25);
+  assert.deepEqual(api.sent.at(-1), { method: "PATCH", path: "/api/probes/mcpt", body: { trigger: "GET /fetch?url=x HTTP/1.1" } });
+  const r = parse(await c.tool("retire_probe", { tag: "mcpt" }));
+  assert.equal(r.retired, true);
+  assert.match(r.still_answers_http_with, /rule v1/);
 });

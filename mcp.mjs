@@ -15,11 +15,14 @@ const BASE = new URL(process.env.COLLUDER_URL || "http://100.64.0.10:8090");
 const TIMEOUT_MS = 15_000;
 
 // node:http, not fetch: the collector checks the Host header, which fetch won't let us set
-function get(path) {
+function request(method, path, body) {
+  const data = body === undefined || body === null ? null : Buffer.from(JSON.stringify(body));
   return new Promise((resolve, reject) => {
     const req = http.request({
-      host: BASE.hostname, port: BASE.port || 80, path, method: "GET",
-      headers: { host: BASE.host, accept: "application/json", "x-colluder-actor": "claude" },
+      host: BASE.hostname, port: BASE.port || 80, path, method,
+      // the actor label: the collector lets Claude change only the probes it planted
+      headers: { host: BASE.host, accept: "application/json", "x-colluder-actor": "claude",
+        ...(data ? { "content-type": "application/json", "content-length": data.length } : {}) },
       timeout: TIMEOUT_MS,
     }, (res) => {
       const chunks = [];
@@ -35,12 +38,13 @@ function get(path) {
     });
     req.on("timeout", () => req.destroy(new Error(`no answer from ${BASE.host} in ${TIMEOUT_MS / 1000} s`)));
     req.on("error", reject);
-    req.end();
+    req.end(data ?? undefined);
   });
 }
 
 const send = (msg) => process.stdout.write(JSON.stringify(msg) + "\n");
-const handle = createServer({ api: { get }, send, version: "0.1.0" });
+const api = { get: (path) => request("GET", path), send: (method, path, body) => request(method, path, body) };
+const handle = createServer({ api, send, version: "0.2.0" });
 
 const rl = createInterface({ input: process.stdin, crlfDelay: Infinity });
 rl.on("line", (line) => {

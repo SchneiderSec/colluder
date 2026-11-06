@@ -305,3 +305,20 @@ test("report: what the edge served, the XXE file data, payloads that fired, quer
   assert.match(md, /empty \(the DTD ran; the read returned nothing\)/);
   assert.match(md, /`cm9vdDp4OjA6MA==` decodes as base64url to `root:x:0:0`/, "padding kept");
 });
+
+test("store: who planted a probe and who saved each rule version (PLAN-MCP.md M2)", () => {
+  const s = new Store(":memory:");
+  s.plant("mine", "app.example", "callback", "2026-11-06T10:00:00Z");
+  s.plant("bot", "app.example", "callback", "2026-11-06T10:00:00Z", "claude");
+  assert.equal(s.probe("mine").plantedBy, "you");
+  assert.equal(s.probe("bot").plantedBy, "claude");
+  s.saveRule("bot", { mode: "redirect", status: 302, location: "http://x/" }, "2026-11-06T10:01:00Z", "claude");
+  s.saveRule("bot", { mode: "default" }, "2026-11-06T10:02:00Z");
+  const h = s.ruleHistory("bot").history;
+  assert.deepEqual(h.map((v) => [v.version, v.savedBy]), [[2, "you"], [1, "claude"]]);
+  // a tag a stranger's request created, then planted by Claude, is Claude's
+  s.q.autoProbe.run("seen", "2026-11-06T09:00:00Z");
+  assert.equal(s.probe("seen").plantedBy, "you");
+  s.plant("seen", "app.example", "callback", "2026-11-06T10:03:00Z", "claude");
+  assert.equal(s.probe("seen").plantedBy, "claude");
+});

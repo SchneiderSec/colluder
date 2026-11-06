@@ -88,8 +88,9 @@ in a once-a-minute count, never dropped. See PLAN-REVIEW3.md A1): put `DISCORD_W
 `~/.config/colluder/colluder.env`, restart `colluder`, then switch alerts on in the UI.
 
 ## Claude (MCP)
-`mcp.mjs` lets a Claude Code session read probes and hits, wait for callbacks, and fetch reports
-(PLAN-MCP.md). It runs over stdio, so Claude Code starts it per session. It listens on nothing and
+`mcp.mjs` lets a Claude Code session plant probes, set what they answer, wait for callbacks, read
+hits and fetch reports (PLAN-MCP.md). Claude can change only the probes it planted; yours are
+read-only to it. It runs over stdio, so Claude Code starts it per session. It listens on nothing and
 talks to the collector's API like the dashboard does. Register it once (the operator):
 
     claude mcp add --scope user colluder -- node ~/work/tools/oob-dashboard/mcp.mjs

@@ -77,6 +77,7 @@ function Row({ s, p, k, stop }: { s: AppState; p: Probe | (Counts & Partial<Prob
         : p.retiredAt ? <span className="text-right text-[11px] whitespace-nowrap text-ash">Retired · silent {dur(Date.now() - isoMs(p.retiredAt))}</span>
         : <span className="flex items-center justify-end gap-1.5 text-[11px] whitespace-nowrap text-smoke"><LineForm kind="live" className="w-4 text-ash" />Armed · silent {dur(Date.now() - isoMs(p.plantedAt))}</span>}
       <span className="col-span-2 col-start-2 truncate text-[12.5px] text-smoke">
+        {!isU && p.plantedBy === "claude" && <span className="text-ash" title="Planted by Claude through the MCP">Claude · </span>}
         {isU ? "Hits that carry no tag" : p.target || (p.registered ? "No target noted" : "Unregistered tag: hits arrived for a tag you did not plant")}
       </span>
       {talking ? (

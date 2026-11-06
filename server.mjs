@@ -301,6 +301,15 @@ const server = http.createServer(async (req, res) => {
       return pl ? json(res, 200, pl) : json(res, 503, { error: engine.status.detail, engine: engine.status });
     }
     let m;
+    // Claude (the MCP, PLAN-MCP.md) labels its requests. A label, not auth: anyone on the tailnet can
+    // already do all of this. It keeps Claude's mistakes, or a hit's prompt injection, off what's yours.
+    const actor = req.headers["x-colluder-actor"] === "claude" ? "claude" : "you";
+    if (actor === "claude" && req.method !== "GET" && req.method !== "HEAD") {
+      const own = /^\/api\/probes\/([a-z0-9-]+)(?:\/http-rule)?$/.exec(p);
+      if (p === "/api/probes" || /^\/api\/probes\/[a-z0-9-]+\/http-rule\/preview$/.test(p)) { /* planting and previews: open */ }
+      else if (!own) return json(res, 403, { error: "Not available to Claude: this is for you, in the dashboard." });
+      else if (store.probe(own[1]) && store.probe(own[1]).plantedBy !== "claude") return json(res, 403, { error: `"${own[1]}" was planted by you: Claude can read it but not change it.` });
+    }
     if (req.method === "GET" && (m = /^\/api\/interactions\/(\d+)$/.exec(p))) {
       const it = store.interaction(Number(m[1]));
       if (!it) return json(res, 404, { error: "no such interaction" });
@@ -358,11 +367,11 @@ const server = http.createServer(async (req, res) => {
       // a preset plants with its rule, saved as the next version in the same request
       const v = b.rule ? validateHttpRule(b.rule) : null;
       if (v?.error) return json(res, 400, { error: `Couldn't set up the answer: ${v.error}` });
-      store.plant(tag, String(b.target || "").slice(0, 300), technique, nowIso());
+      store.plant(tag, String(b.target || "").slice(0, 300), technique, nowIso(), actor);
       if (v) {
-        const saved = store.saveRule(tag, v.rule, nowIso());
+        const saved = store.saveRule(tag, v.rule, nowIso(), actor);
         await publishRules();
-        log(`rule saved at plant: ${tag} v${saved.version} (${technique})`);
+        log(`rule saved at plant: ${tag} v${saved.version} (${technique})${actor === "claude" ? " by Claude" : ""}`);
       }
       const probe = probeOut(tag);
       broadcast("probe", probe);
@@ -424,9 +433,9 @@ const server = http.createServer(async (req, res) => {
         const r = respond(v.rule, (activeRules()[m[1]]?.version || 0) + 1, pr);
         return json(res, 200, { raw: serialize(r).toString("utf8"), answer: r.answer, delayMs: r.delayMs });
       }
-      const saved = store.saveRule(m[1], v.rule, nowIso());
+      const saved = store.saveRule(m[1], v.rule, nowIso(), actor);
       await publishRules();
-      log(`rule saved: ${m[1]} v${saved.version} (${v.rule.mode})`);
+      log(`rule saved: ${m[1]} v${saved.version} (${v.rule.mode})${actor === "claude" ? " by Claude" : ""}`);
       broadcast("probe", probeOut(m[1]));
       return json(res, 200, { active: saved, ...store.ruleHistory(m[1], SELF_IPS), edge: edgeStatus });
     }

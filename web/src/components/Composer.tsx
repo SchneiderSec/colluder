@@ -3,9 +3,9 @@ import { ArrowDownToLine, Copy, RefreshCw } from "lucide-react";
 import { useApp, plant, save } from "@/store";
 import { TAG_RE, UNTAGGED } from "@/lib/types";
 import { variants } from "@/lib/raw";
-import { METADATA, redirectable, hostOf } from "@/lib/metadata";
+import { hostOf } from "@/lib/metadata";
+import { CLOUDS, XXE_FILES, ssrfRule, xxeRule } from "@/lib/presets";
 import { ssrfPayloads, xxePayloads, jsonEscape, xmlEscape, type Payload } from "@/lib/kit";
-import type { HttpRule } from "@/lib/types";
 import { copy } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -17,24 +17,6 @@ import { cn } from "@/lib/utils";
 
 const BAD_TAG = "Letters, digits and hyphens; can't start or end with a hyphen.";
 
-// SSRF → cloud metadata (PLAN-PRESETS.md P1): 302 (a POSTing webhook turns it into a GET), two hops
-// back through the probe first so a blind SSRF shows ?hop=2/3 as hits (301 then 307, codes every
-// common client follows), and optionally the decoy reply for HEAD checks.
-const CLOUDS = METADATA.filter(redirectable).filter((r) => /^(aws|alibaba|oracle|do|hetzner|openstack)/.test(r.id));
-function ssrfRule(url: string, headDecoy: boolean): HttpRule {
-  return { mode: "redirect", delayMs: 0, schemes: { http: true, https: true }, status: 302, location: url, loop: 2, hopStatuses: [301, 307], ...(headDecoy ? { decoy: { methods: ["HEAD"] } } : {}) } as HttpRule;
-}
-// XXE (P2): the DTD reads one file. A one-line file works everywhere the URL survives (modern Java
-// rejects a newline in it); php://filter base64-encodes multi-line files on PHP.
-const XXE_FILES: [string, string][] = [
-  ["/etc/hostname", "/etc/hostname (one line, works on Java)"],
-  ["php://filter/convert.base64-encode/resource=/etc/passwd", "/etc/passwd through php://filter (PHP)"],
-  ["file:///c:/windows/win.ini", "C:\\Windows\\win.ini (Windows; multi-line, so only clients that send raw newlines)"],
-  ["custom", "Another file…"],
-];
-function xxeRule(probeHost: string, file: string): HttpRule {
-  return { mode: "preset", delayMs: 0, schemes: { http: true, https: true }, kind: "xxe", params: { host: probeHost, file } } as unknown as HttpRule;
-}
 const PRESET_LABEL: Record<string, string> = { "ssrf-metadata": "SSRF", xxe: "XXE" };
 type CopyAs = "raw" | "url" | "json" | "xml";
 const asCopy = (s: string, c: CopyAs) => (c === "url" ? encodeURIComponent(s) : c === "json" ? jsonEscape(s) : c === "xml" ? xmlEscape(s) : s);

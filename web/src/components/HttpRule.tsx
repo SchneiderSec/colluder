@@ -449,7 +449,7 @@ function HistoryRow({ v, current, live, onLoad }: { v: RuleVersion; current: boo
       <span className="text-[11px] text-smoke">v{v.version}</span>
       <span className="font-semibold">{dayOrTime(v.createdAt)}</span>
       <button type="button" className="cursor-pointer truncate text-left text-smoke hover:text-bone" title={`Load v${v.version} into the editor`} onClick={onLoad}>{what}</button>
-      <span className="text-[11px] whitespace-nowrap text-ash">{current ? (live ? "active · " : "saved · not served yet · ") : ""}answered {plural(v.hits ?? 0, "hit")}{decoys}{depth}</span>
+      <span className="text-[11px] whitespace-nowrap text-ash">{current ? (live ? "active · " : "saved · not served yet · ") : ""}{v.savedBy === "claude" ? "by Claude · " : ""}answered {plural(v.hits ?? 0, "hit")}{decoys}{depth}</span>
     </li>
   );
 }
