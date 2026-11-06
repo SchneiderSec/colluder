@@ -63,6 +63,7 @@ export function StatusBar() {
   const ss = s.stream.state;
   const off = ss !== "connected" && Date.now() - s.stream.since > 30000;
   const last = s.status?.lastHitAt;
+  const clearAt = s.status?.lastClear?.at;
   const host = s.status?.payload?.host;
   const edgeSt = s.status?.edge;
   // the newest hit that carries signal (resolver chatter skipped)
@@ -100,12 +101,14 @@ export function StatusBar() {
           selectHit(lastHit.id);
         }} className="flex min-w-0 cursor-pointer items-center gap-[7px] rounded-[3px] hover:text-bone">
           <span className="text-smoke max-[820px]:hidden">Last hit</span>
-          <b className="min-w-[5ch] truncate font-mono font-[650]">{lastHit.tag ?? "unregistered"}</b>
+          <b className="min-w-[5ch] truncate font-mono font-[650]">{lastHit.tag ?? "no tag"}</b>
           <span className="text-smoke max-[820px]:hidden">{lastHit.protocol.toUpperCase()}</span>
           <b className="font-[650] whitespace-nowrap">{ago(Date.now() - isoMs(lastHit.timestamp))}</b>
           <span className="text-ash max-[1280px]:hidden">{hms(lastHit.timestamp)}</span>
         </button>
-      ) : <Item label="Last hit" word={last ? ago(Date.now() - isoMs(last)) : "none yet"} sub={last ? hms(last) : ""} />}
+      ) : <Item label="Last hit" word={last ? ago(Date.now() - isoMs(last)) : "none yet"}
+          sub={last && clearAt && isoMs(clearAt) >= isoMs(last) ? `${hms(last)} · cleared ${hms(clearAt)}` : last ? hms(last) : ""}
+          title={last && clearAt && isoMs(clearAt) >= isoMs(last) ? "Hits were cleared after this one arrived, so no probe shows it. Settings → Restore last clear brings them back." : undefined} />}
       <div className="ml-auto flex flex-none items-center gap-[18px] max-[820px]:hidden">
         {night && <span className="text-[11px] text-ash">Night shift</span>}
         {host && <span className="font-mono text-[11px] text-smoke max-[1380px]:hidden">{host.slice(0, 8)}….{s.status!.payload!.domain}</span>}
@@ -123,7 +126,7 @@ export function Banners() {
   const out = [];
   if (e && ["down", "missing", "degraded"].includes(e.state)) {
     out.push(
-      <div key="engine" className="flex flex-wrap items-center gap-3 border-b border-rule bg-[#2a1914] px-6 py-[9px] text-[12.5px] text-[#f4c6b8] max-[820px]:px-3.5">
+      <div key="engine" className="flex flex-wrap items-center gap-3 border-b border-rule bg-alarm-ground px-6 py-[9px] text-[12.5px] text-alarm-banner-ink max-[820px]:px-3.5">
         <LineForm kind="down" />
         <span><b>{e.state === "degraded" ? "The engine is having trouble. " : "The engine is not capturing. "}</b>{e.detail}{e.state !== "degraded" && " Payloads will not record hits until it is back."}</span>
         {e.fix && <Button variant="quiet" className="ml-auto max-w-full overflow-hidden" onClick={() => copy(e.fix!, "fix command")}><Copy /><span className="truncate font-mono text-bone">{e.fix}</span></Button>}
@@ -132,7 +135,7 @@ export function Banners() {
   }
   if (s.stream.state !== "connected" && Date.now() - s.stream.since > 8000) {
     out.push(
-      <div key="stream" className="flex items-center gap-3 border-b border-rule bg-[#2b2113] px-6 py-[9px] max-[820px]:px-3.5 text-[12.5px] text-[#f3d9a4]">
+      <div key="stream" className="flex items-center gap-3 border-b border-rule bg-caution-ground px-6 py-[9px] max-[820px]:px-3.5 text-[12.5px] text-caution-ink">
         <LineForm kind="dash" />
         Live updates paused: reconnecting to the dashboard{s.stream.lastEventAt ? `, last update ${ago(Date.now() - s.stream.lastEventAt)}` : ""}. What you see may be out of date.
       </div>,
@@ -143,7 +146,7 @@ export function Banners() {
   if (ed && (ed.state === "stale" || ed.state === "stopped")) {
     const fix = "sudo systemctl restart colluder-edge";
     out.push(
-      <div key="edge" className="flex flex-wrap items-center gap-3 border-b border-rule bg-[#2a1914] px-6 py-[9px] text-[12.5px] text-[#f4c6b8] max-[820px]:px-3.5">
+      <div key="edge" className="flex flex-wrap items-center gap-3 border-b border-rule bg-alarm-ground px-6 py-[9px] text-[12.5px] text-alarm-banner-ink max-[820px]:px-3.5">
         <LineForm kind="down" />
         <span><b>Colluder's edge isn't answering. </b>HTTP and HTTPS hits on your probes are not being captured{ed.heartbeatAt ? ` (last heartbeat ${ago(Date.now() - isoMs(ed.heartbeatAt))})` : ""}. DNS still is.</span>
         <Button variant="quiet" className="ml-auto max-w-full overflow-hidden" onClick={() => copy(fix, "fix command")}><Copy /><span className="truncate font-mono text-bone">{fix}</span></Button>
@@ -154,7 +157,7 @@ export function Banners() {
   if (ed?.state === "running" && ed.codeStale) {
     const fix = "sudo systemctl restart colluder-edge";
     out.push(
-      <div key="edge-code" className="flex flex-wrap items-center gap-3 border-b border-rule bg-[#2b2113] px-6 py-[9px] text-[12.5px] text-[#f3d9a4] max-[820px]:px-3.5">
+      <div key="edge-code" className="flex flex-wrap items-center gap-3 border-b border-rule bg-caution-ground px-6 py-[9px] text-[12.5px] text-caution-ink max-[820px]:px-3.5">
         <span><b className="font-semibold">The edge is running older code than what's installed.</b> Rules still answer, but features added since it started aren't served yet. A restart takes about a second.</span>
         <Button variant="quiet" className="ml-auto max-w-full overflow-hidden" onClick={() => copy(fix, "restart command")}><Copy /><span className="truncate font-mono text-bone">{fix}</span></Button>
       </div>,
@@ -165,7 +168,7 @@ export function Banners() {
   try { acked = localStorage.getItem("colluder.ackCorr") ?? ""; } catch { /* */ }
   if (ch && acked !== JSON.stringify(ch)) {
     out.push(
-      <div key="corr" className="flex items-center gap-3 border-b border-rule bg-[#2b2113] px-6 py-[9px] max-[820px]:px-3.5 text-[12.5px] text-[#f3d9a4]">
+      <div key="corr" className="flex items-center gap-3 border-b border-rule bg-caution-ground px-6 py-[9px] max-[820px]:px-3.5 text-[12.5px] text-caution-ink">
         {s.status?.edge?.state === "running"
           ? <>The engine's correlation id changed at {ch.replace("T", " ").slice(0, 16)} UTC. Older payloads still bring HTTP(S) hits here through Colluder's edge, but not their DNS lookups; copy fresh ones for DNS.</>
           : <>The engine's correlation id changed at {ch.replace("T", " ").slice(0, 16)} UTC. Payloads planted before then no longer reach this dashboard; copy fresh ones.</>}
@@ -173,6 +176,6 @@ export function Banners() {
       </div>,
     );
   }
-  if (s.loadError) out.push(<div key="load" className="border-b border-rule bg-[#2a1914] px-6 py-[9px] text-[12.5px] text-[#f4c6b8] max-[820px]:px-3.5">Could not load Colluder's state: {s.loadError}. Retrying…</div>);
+  if (s.loadError) out.push(<div key="load" className="border-b border-rule bg-alarm-ground px-6 py-[9px] text-[12.5px] text-alarm-banner-ink max-[820px]:px-3.5">Could not load Colluder's state: {s.loadError}. Retrying…</div>);
   return <>{out}</>;
 }

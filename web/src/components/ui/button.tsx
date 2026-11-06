@@ -13,7 +13,7 @@ const buttonVariants = cva(
         secondary: "bg-soot-2 text-bone border border-rule hover:border-ash hover:bg-accent",
         quiet: "bg-transparent text-bone border border-rule hover:border-ash hover:bg-accent",
         ghost: "bg-transparent text-smoke hover:text-bone hover:bg-accent",
-        destructive: "bg-transparent text-[#f3b4a3] border border-[#7a3a2a] hover:bg-[#2a1914]",
+        destructive: "bg-transparent text-alarm-ink border border-alarm-border hover:bg-alarm-ground",
         link: "text-bone underline underline-offset-4 decoration-ash hover:decoration-bone",
       },
       size: {

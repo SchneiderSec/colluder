@@ -24,7 +24,19 @@
   --ink-https: #8aa2ea;
   --ink-smtp: #62b08f;
   --ink-other: #b5ab9c;
-  /* syntax inks: only inside raw panes on the Well. Names (header, parameter, JSON key) in slate,
+  /* hover fill for rows, the darker ground of a burst's children, the tag's highlight */
+  --hover: #211b16;
+  --child: #191510;
+  --mark: #3a2f22;
+  /* status pairs (DESIGN.md: Alarm, Caution) */
+  --alarm-ground: #2a1914;
+  --alarm-ink: #f3b4a3;
+  --alarm-banner-ink: #f4c6b8;
+  --alarm-border: #7a3a2a;
+  --caution-ground: #2b2113;
+  --caution-ink: #f3d9a4;
+  --caution-border: #6b5126;
+  /* syntax inks: raw panes on the Well, and the request line in the hits table. Names (header, parameter, JSON key) in slate,
      values in sage. Kept off amber and off the four protocol inks. */
   --syn-name: oklch(0.76 0.055 235);
   --syn-value: oklch(0.83 0.075 135);
@@ -73,6 +85,16 @@
   --color-https: var(--ink-https);
   --color-smtp: var(--ink-smtp);
   --color-other: var(--ink-other);
+  --color-hover: var(--hover);
+  --color-child: var(--child);
+  --color-mark: var(--mark);
+  --color-alarm-ground: var(--alarm-ground);
+  --color-alarm-ink: var(--alarm-ink);
+  --color-alarm-banner-ink: var(--alarm-banner-ink);
+  --color-alarm-border: var(--alarm-border);
+  --color-caution-ground: var(--caution-ground);
+  --color-caution-ink: var(--caution-ink);
+  --color-caution-border: var(--caution-border);
   --color-syn-name: var(--syn-name);
   --color-syn-value: var(--syn-value);
 
@@ -158,4 +180,13 @@
 /* things scrolled into view clear the sticky strip on a phone */
 @media (max-width: 820px) {
   [role="option"], tr[tabindex], h2, h3 { scroll-margin-top: 56px; scroll-margin-bottom: 40px; }
+}
+
+/* Touch (audit 2026-11-06): small buttons keep their look but get a 44px hit area, centred on them */
+@media (pointer: coarse), (max-width: 820px) {
+  [data-slot="button"] { position: relative; }
+  [data-slot="button"]::before {
+    content: ""; position: absolute; left: 50%; top: 50%;
+    width: max(100%, 44px); height: max(100%, 44px); transform: translate(-50%, -50%);
+  }
 }

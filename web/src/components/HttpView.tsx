@@ -71,7 +71,7 @@ function Exfil({ value }: { value: string }) {
   if (!d) return null;
   return <span className="block font-sans text-[11px] text-ash">decodes as {d.kind} to <span className="font-mono text-[12.5px] text-bone"><Visible text={d.text} /></span></span>;
 }
-const Tag = ({ children }: { children: ReactNode }) => <em className="bg-[#3a2f22] px-px text-bone not-italic">{children}</em>;
+const Tag = ({ children }: { children: ReactNode }) => <em className="bg-mark px-px text-bone not-italic">{children}</em>;
 
 // a request target: path (tag marked when it is the first segment), then ? key = value & …
 // short: the Query section below lists every value in full, so the start line keeps each one brief

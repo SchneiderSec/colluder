@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Bell, BellOff, ChevronRight, Download, FileText, Search, X } from "lucide-react";
-import { useApp, keyOf, markSeen, selectHit, patchProbe, saveRule, fetchTrigger, fetchReport, chatterOf, setTab, unreadFor, loadOlder, searchHits, exportUrl, PROBE_TABS, type AppState, type ProbeTab } from "@/store";
+import { Bell, BellOff, ChevronRight, Download, FileText, Search, Trash2, X } from "lucide-react";
+import { useApp, keyOf, markSeen, selectHit, patchProbe, saveRule, fetchTrigger, fetchReport, chatterOf, setTab, unreadFor, loadOlder, searchHits, exportUrl, deleteProbe, PROBE_TABS, type AppState, type ProbeTab } from "@/store";
+import { probeState } from "@/lib/probeState";
 import { dnsSteps, mostSpecific } from "@/lib/dns";
 import { stageOf } from "@/lib/stage";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -13,7 +14,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Chip, NewDot, NilDot, TypeChip } from "./bits";
+import { Chip, NewDot, NilDot, TechniqueMark, TypeChip } from "./bits";
 import { HitDetail } from "./HitDetail";
 import { HttpRuleTab } from "./HttpRule";
 import { cn } from "@/lib/utils";
@@ -50,21 +51,25 @@ function EditDialog({ p, open, onOpenChange }: { p: Probe; open: boolean; onOpen
 function Head({ s }: { s: AppState }) {
   const [edit, setEdit] = useState(false);
   const [retire, setRetire] = useState(false);
+  const [del, setDel] = useState(false);
   const [resetRule, setResetRule] = useState(true);
   const cls = "flex min-w-0 items-center gap-3.5 border-b border-rule pr-5 pl-6 max-[820px]:flex-wrap max-[820px]:gap-2 max-[820px]:px-3.5 max-[820px]:py-2.5";
   if (s.sel === UNTAGGED) {
     return (
       <div className={cls}>
-        <span className="text-[17px] font-semibold">Unregistered</span>
+        <span className="text-[17px] font-semibold">No tag</span>
         <span className="text-[12.5px] text-smoke">Hits that carry no tag · <b className="font-semibold text-bone">{s.untagged?.hits ?? 0}</b> hits</span>
       </div>
     );
   }
   const p = s.probes.get(s.sel!)!;
+  const st = probeState(p);
+  const canDelete = st === "retired" || st === "late" || st === "unplanted";
   return (
     <div className={cn(cls, "border-b-0")}>
       <span className="font-mono text-[17px] whitespace-nowrap">{p.tag}</span>
-      {p.retiredAt && <Chip grey>retired</Chip>}
+      {st === "unplanted" ? <Chip grey>not planted</Chip> : p.retiredAt && <Chip grey>{st === "late" ? "retired · late hit" : "retired"}</Chip>}
+      {st !== "unplanted" && <TechniqueMark technique={p.technique} className="text-[12.5px]" />}
       <div className="flex min-w-0 gap-3.5 overflow-hidden text-[12.5px] whitespace-nowrap text-smoke">
         <span className="truncate" title={p.note || undefined}>{p.target || "No target noted"}</span>
         <span>Planted <b className="font-semibold text-bone">{dayOrTime(p.plantedAt)}</b></span>
@@ -82,8 +87,24 @@ function Head({ s }: { s: AppState }) {
         <Button variant="quiet" title={`Markdown for a bug report: summary, ${p.triggerBytes ? "the triggering request, " : ""}timeline, sources, decoded exfil and the first web request`}
           onClick={() => fetchReport(p.tag).then((md) => copy(md, `${p.tag} report`), (e) => toast((e as Error).message, true))}><FileText />Copy report</Button>
         <Button variant="quiet" onClick={() => setEdit(true)}>Edit</Button>
-        <Button variant="quiet" onClick={() => (p.retiredAt ? patchProbe(p.tag, { retired: false }).then(() => toast(`Restored ${p.tag}`), (e) => toast((e as Error).message, true)) : setRetire(true))}>{p.retiredAt ? "Restore" : "Retire…"}</Button>
+        {st !== "unplanted" && <Button variant="quiet" onClick={() => (p.retiredAt ? patchProbe(p.tag, { retired: false }).then(() => toast(`Restored ${p.tag}`), (e) => toast((e as Error).message, true)) : setRetire(true))}>{p.retiredAt ? "Restore" : "Retire…"}</Button>}
+        {canDelete && <Button variant="destructive" onClick={() => setDel(true)}><Trash2 />Delete…</Button>}
       </div>
+      <AlertDialog open={del} onOpenChange={setDel}>
+        <AlertDialogContent className="max-w-[460px] border-rule bg-soot-1">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {p.tag}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This removes the probe for good, with {p.hits ? `its ${plural(p.hits, "stored hit")}` : "any hits stored for it"} and its rule history. Restore can't bring it back.{p.hits ? " Export its hits first if you may need them." : ""}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            {!!p.hits && <Button variant="quiet" asChild><a href={exportUrl(p.tag)} download><Download />Export hits</a></Button>}
+            <AlertDialogCancel asChild><Button variant="quiet">Keep it</Button></AlertDialogCancel>
+            <AlertDialogAction asChild><Button variant="destructive" onClick={() => deleteProbe(p.tag).then((n) => toast(`Deleted ${p.tag} and ${plural(n, "stored hit")}`), (e) => toast((e as Error).message, true))}>Delete {p.tag}</Button></AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <EditDialog p={p} open={edit} onOpenChange={setEdit} />
       <AlertDialog open={retire} onOpenChange={setRetire}>
         <AlertDialogContent className="max-w-[440px] border-rule bg-soot-1">
@@ -119,7 +140,7 @@ export function DnsName({ i }: { i: Interaction }) {
   if (!labels.length) return <span className="font-mono text-[12.5px] text-smoke">{short} <span className="font-sans text-[11px] text-ash">(bare id)</span></span>;
   return (
     <span className="font-mono text-[12.5px]">
-      {labels.map((l, n) => <span key={n}>{n > 0 && "."}{l === i.tag ? <em className="bg-[#3a2f22] px-px text-bone not-italic">{l}</em> : <span className="text-bone">{l}</span>}</span>)}
+      {labels.map((l, n) => <span key={n}>{n > 0 && "."}{l === i.tag ? <em className="bg-mark px-px text-bone not-italic">{l}</em> : <span className="text-bone">{l}</span>}</span>)}
       <span className="text-smoke">.{short}</span>
     </span>
   );
@@ -129,6 +150,33 @@ export function DnsName({ i }: { i: Interaction }) {
 // long User-Agent never cuts it off
 const reqOf = (summary: string) => { const k = summary.indexOf(" · "); return k === -1 ? summary : summary.slice(0, k); };
 const uaOf = (summary: string) => { const k = summary.indexOf(" · "); return k === -1 ? "" : summary.slice(k + 3); };
+
+// The request line with the raw panes' inks, so a row reads as parts: method, path, the query's
+// names and values, the version. Display only: the cell's title and every copy keep the exact text.
+function RequestLine({ line }: { line: string }) {
+  const m = /^([A-Z]{2,12}) (\S+)( HTTP\/[\d.]+)?(.*)$/.exec(line);
+  if (!m) return <span className="font-mono text-[12.5px]">{line}</span>;
+  const [, method, target, version = "", rest] = m;
+  const qi = target.indexOf("?");
+  const path = qi === -1 ? target : target.slice(0, qi);
+  const query = qi === -1 ? "" : target.slice(qi + 1);
+  return (
+    <span className="font-mono text-[12.5px]" title={line}>
+      <span className="font-[650] text-bone">{method}</span> <span className="text-bone">{path}</span>
+      {qi !== -1 && <span className="text-ash">?</span>}
+      {query && query.split("&").map((kv, n) => {
+        const eq = kv.indexOf("=");
+        return (
+          <span key={n}>{n > 0 && <span className="text-ash">&amp;</span>}
+            <span className="text-syn-name">{eq === -1 ? kv : kv.slice(0, eq)}</span>
+            {eq !== -1 && <><span className="text-ash">=</span><span className="text-syn-value">{kv.slice(eq + 1)}</span></>}
+          </span>
+        );
+      })}
+      <span className="text-ash">{version}{rest}</span>
+    </span>
+  );
+}
 
 function rowKeys(fn: () => void) {
   return (e: React.KeyboardEvent) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fn(); } };
@@ -145,18 +193,21 @@ function HitRow({ i, open, sel, arrived, child, chatter, inProbe, step, self, st
   useEffect(() => { if (sel && settled()) ref.current?.scrollIntoView({ block: "nearest" }); }, [sel]);
   return (
     <tr ref={ref} tabIndex={sel || stop ? 0 : -1} aria-selected={sel} onClick={(e) => { e.stopPropagation(); onClick(); }} onKeyDown={rowKeys(onClick)}
-      className={cn("group cursor-pointer", arrived && "[&>td]:animate-lit", child && "[&>td]:bg-[#191510] [&>td:first-child]:pl-11", quiet && !sel && "[&>td]:text-smoke")}>
+      className={cn("group cursor-pointer", arrived && "[&>td]:animate-lit", child && "[&>td]:bg-child [&>td:first-child]:pl-11", (quiet || self) && !sel && "[&>td]:text-smoke [&_.text-bone]:text-smoke")}>
       <Td sel={sel} first><span className={cn("flex items-center gap-1.5 font-semibold", isNew ? "text-bone" : "text-smoke")}>{isNew ? <NewDot /> : <NilDot />}#{i.id}</span></Td>
       <Td sel={sel}>{hmsms(i.timestamp)}</Td>
       <Td sel={sel}><TypeChip proto={i.protocol}>{i.protocol === "dns" ? `DNS ${i.qType || "other"}` : undefined}</TypeChip></Td>
-      <Td sel={sel} className="font-mono text-[12.5px]">{i.remoteAddress}</Td>
-      <Td sel={sel} last>{web || i.protocol === "smtp" ? <><span className="font-mono text-[12.5px]">{reqOf(i.summary)}</span>{stageOf(i) && <span className="ml-2 text-[11px] whitespace-nowrap text-smoke" title="What Colluder's edge answered. A redirect sent is not proof it was followed; a later hop is.">· {stageOf(i)}</span>}{uaOf(i.summary) && <span className="ml-2 font-mono text-[11px] text-ash">· {uaOf(i.summary)}</span>}{self && <span className="ml-2 text-[11px] text-ash" title="A self-test (the OOB box, or a source you marked as yours), not a target">· {self === "mine" ? "yours" : "this box"}</span>}</> : i.protocol === "dns" ? <><DnsName i={i} />{chatter && <span className="text-[11px] text-ash" title="A lookup of the bare payload id near this probe's hits: a resolver walking the name, or a client resolving the HTTPS host. Kept, never counted as new."> · resolver chatter{inProbe ? "" : ` around ${chatter}`}</span>}{step && <span className="text-[11px] text-ash" title={`The resolver asked for this on its way to ${step} (QNAME minimisation). Not exfil data.`}> · resolver step toward <span className="font-mono">{labelsOf(step)}</span></span>}</> : <span className="text-[11px] text-smoke">{i.summary}</span>}</Td>
+      <Td sel={sel} className="font-mono text-[12.5px]">
+        <span className={cn(web && !self && !sel && "font-[550] text-bone")}>{i.remoteAddress}</span>
+        {self && <span className="ml-2 font-sans" title="A self-test (the OOB box, or a source you marked as yours), not the target"><Chip grey>{self === "mine" ? "yours" : "this box"}</Chip></span>}
+      </Td>
+      <Td sel={sel} last>{web || i.protocol === "smtp" ? <>{web ? <RequestLine line={reqOf(i.summary)} /> : <span className="font-mono text-[12.5px]">{reqOf(i.summary)}</span>}{stageOf(i) && <span className="ml-2 text-[11px] whitespace-nowrap text-smoke" title="What Colluder's edge answered. A redirect sent is not proof it was followed; a later hop is.">· {stageOf(i)}</span>}{uaOf(i.summary) && <span className="ml-2 font-mono text-[11px] text-ash">· {uaOf(i.summary)}</span>}</> : i.protocol === "dns" ? <><DnsName i={i} />{chatter && <span className="text-[11px] text-ash" title="A lookup of the bare payload id near this probe's hits: a resolver walking the name, or a client resolving the HTTPS host. Kept, never counted as new."> · resolver chatter{inProbe ? "" : ` around ${chatter}`}</span>}{step && <span className="text-[11px] text-ash" title={`The resolver asked for this on its way to ${step} (QNAME minimisation). Not exfil data.`}> · resolver step toward <span className="font-mono">{labelsOf(step)}</span></span>}</> : <span className="text-[11px] text-smoke">{i.summary}</span>}</Td>
     </tr>
   );
 }
 function Td({ children, sel, first, last, className }: { children: React.ReactNode; sel: boolean; first?: boolean; last?: boolean; className?: string }) {
   return (
-    <td className={cn("overflow-hidden border-b border-rule-2 px-2.5 py-1.5 text-[12.5px] text-ellipsis whitespace-nowrap group-hover:bg-[#211b16]",
+    <td className={cn("overflow-hidden border-b border-rule-2 px-2.5 py-1.5 text-[12.5px] text-ellipsis whitespace-nowrap group-hover:bg-hover",
       first && "pl-6 max-[820px]:pl-3.5", last && "max-[820px]:hidden", sel && "border-rule bg-soot-2 text-bone group-hover:bg-soot-2", className)}>{children}</td>
   );
 }
@@ -179,7 +230,7 @@ function ProbeTabs({ s, p, right }: { s: AppState; p: Probe; right?: React.React
     ref.current?.querySelectorAll<HTMLButtonElement>("[role=tab]")[next]?.focus();
   };
   return (
-    <div className="flex h-[35px] min-w-0 items-stretch border-b border-rule pr-5 max-[820px]:pr-3.5">
+    <div className="flex h-[35px] min-w-0 items-stretch border-b border-rule pr-5 max-[820px]:h-11 max-[820px]:pr-3.5">
     <div ref={ref} role="tablist" aria-label={`Probe ${p.tag}`} onKeyDown={onKeyDown}
       className="flex flex-none items-stretch gap-6 overflow-x-auto pl-6 max-[820px]:gap-5 max-[820px]:pl-3.5">
       {PROBE_TABS.map((t) => {
@@ -291,21 +342,33 @@ export function ProbePane() {
   }
   if (!all.length) {
     const capturing = s.status?.engine?.state === "capturing";
+    const st = p ? probeState(p) : "armed";
+    const lc = s.status?.lastClear?.at;
+    const cleared = lc && p && isoMs(lc) > (isoMs(p.plantedAt) || 0) ? lc : null;
     return (
       <section className={cn(wrap, tabbed)} aria-label={`Probe ${s.sel}`}>
         <Head s={s} />{tabs}
         <div id={p ? "probe-panel" : undefined} role={p ? "tabpanel" : undefined} aria-labelledby={p ? "probe-tab-hits" : undefined} className="max-w-[72ch] px-6 py-[18px] text-[12.5px] leading-[19px] text-smoke">
+          {/* one sentence for the probe's actual state: retired and never-planted probes aren't "waiting" */}
+          {st === "retired" ? (
+            <p><b className="font-semibold text-bone">Retired {dayOrTime(p!.retiredAt)} UTC · {cleared ? `no hits since the clear at ${dayOrTime(cleared)}` : "no hits stored"}.</b> New hits on this tag are still recorded and bring it back to the list. Restore it to use its payloads again, or delete it if you're done with it.</p>
+          ) : st === "unplanted" ? (
+            <p><b className="font-semibold text-bone">Nobody planted {p!.tag}.</b> A request named it{cleared ? `, and its hits went in the clear at ${dayOrTime(cleared)}` : ""}. Delete it, or plant it above to keep its hits under a target.</p>
+          ) : (
+          <>
           <p>
-            <b className="font-semibold text-bone">Armed since {dayOrTime(p?.plantedAt)} UTC · no callbacks yet.</b> Waiting for the target to reach any payload above.{" "}
+            <b className="font-semibold text-bone">Armed since {dayOrTime(p?.plantedAt)} UTC · {cleared ? `no hits since the clear at ${dayOrTime(cleared)}` : "no hits yet"}.</b> Waiting for the target to reach any payload above.{" "}
             {capturing ? "The engine is capturing, so a callback will show up here within seconds."
               : <b className="font-semibold text-bone">The engine is not capturing right now (see the banner above), so callbacks are not being recorded until it is back.</b>}
           </p>
           <ul className="mt-2 ml-[18px] list-disc space-y-1">
             <li>Nothing at all? The fetcher may only accept certain schemes, or block unknown hosts. Try the DNS variant: many targets resolve names they never fetch.</li>
             <li>HTTPS needs the tag in the path (one-label certificate). A prefixed HTTPS host fails TLS and looks like silence.</li>
-            <li>Hits arriving under Unregistered instead? The target stripped or rewrote the subdomain.</li>
+            <li>Hits arriving under No tag instead? The target stripped or rewrote the subdomain.</li>
             <li>Testing DNS yourself and nothing shows? A resolver may answer from its cache and never ask us. Use the DNS payload's fresh-label copy (a random label in front of the tag) to force a new lookup.</li>
           </ul>
+          </>
+          )}
         </div>
         <div />
       </section>
@@ -374,7 +437,7 @@ export function ProbePane() {
       </ToggleGroup>
       <label className={cn("flex h-6 min-w-[140px] flex-1 items-center gap-1.5 rounded-[3px] border border-rule bg-soot px-2 focus-within:border-smoke", where === "bar" && "max-[820px]:basis-full", where === "tabs" && "max-w-[340px]")}>
         <Search className="size-3.5 flex-none text-ash" strokeWidth={1.5} />
-        <input aria-label={`Search ${p ? p.tag : "Unregistered"}'s hits`} value={q} onChange={(e) => setQ(e.target.value)} spellCheck={false}
+        <input aria-label={`Search ${p ? p.tag : "untagged"} hits`} value={q} onChange={(e) => setQ(e.target.value)} spellCheck={false}
           placeholder="Search names, paths, bodies, IPs" className="h-full w-full min-w-0 bg-transparent font-mono text-[12.5px] text-bone outline-none placeholder:font-sans placeholder:text-ash" />
         {q && <button type="button" aria-label="Clear search" onClick={() => setQ("")} className="flex-none cursor-pointer text-ash hover:text-bone"><X className="size-3.5" strokeWidth={1.5} /></button>}
       </label>
@@ -385,14 +448,14 @@ export function ProbePane() {
   const firstHit = all[all.length - 1];
   const ownCount = all.filter((i) => keyOf(i) === s.sel).length;
   return (
-    <section className={cn(wrap, tabbed)} aria-label={`Probe ${s.sel === UNTAGGED ? "Unregistered" : s.sel}`}>
+    <section className={cn(wrap, tabbed)} aria-label={`Probe ${s.sel === UNTAGGED ? "No tag" : s.sel}`}>
       <Head s={s} />{p && <ProbeTabs s={s} p={p} right={<div className="ml-auto hidden min-w-0 flex-1 items-center justify-end gap-2.5 pl-6 @min-[900px]/probe:flex">{filterBar("tabs")}</div>} />}
       <div id={p ? "probe-panel" : undefined} role={p ? "tabpanel" : undefined} aria-labelledby={p ? "probe-tab-hits" : undefined} className="flex min-h-0 flex-col">
       {/* the filters sit in the tab strip when the pane is wide; below it otherwise (and on Unregistered) */}
       <div className={cn("flex flex-none flex-wrap items-center gap-x-2.5 gap-y-1.5 border-b border-rule-2 py-1.5 pr-5 pl-6 max-[820px]:px-3.5", p && "@min-[900px]/probe:hidden")}>{filterBar("bar")}</div>
       <div className="max-h-[min(28vh,212px)] min-h-0 overflow-auto max-[820px]:max-h-none [@media(max-height:900px)]:max-h-[min(22vh,160px)]">
         <table className="w-full table-fixed border-collapse">
-          <colgroup><col className="w-[112px] max-[820px]:w-[84px]" /><col className="w-[116px] max-[820px]:w-[96px]" /><col className="w-[106px] max-[820px]:w-[96px]" /><col className="w-[150px] max-[820px]:w-auto" /><col className="max-[820px]:w-0" /></colgroup>
+          <colgroup><col className="w-[112px] max-[820px]:w-[84px]" /><col className="w-[116px] max-[820px]:w-[96px]" /><col className="w-[106px] max-[820px]:w-[96px]" /><col className="w-[218px] max-[820px]:w-auto" /><col className="max-[820px]:w-0" /></colgroup>
           <thead>
             <tr>{["#", "Time (UTC)", "Type", "Source", "Request"].map((t, i) => (
               <th key={t} scope="col" className={cn("sticky top-0 z-[1] border-b border-rule bg-soot px-2.5 py-[5px] text-left text-[11px] font-semibold tracking-[.03em] text-smoke", i === 0 && "pl-6 max-[820px]:pl-3.5", i === 4 && "max-[820px]:hidden")}>{t}</th>
@@ -413,7 +476,7 @@ export function ProbePane() {
         </table>
         {!filtering && !s.olderDone[s.sel] && ownCount < (p ? p.hits : s.untagged?.hits ?? 0) && (
           <button type="button" onClick={() => loadOlder(s.sel!, all[all.length - 1].id).catch((e) => toast((e as Error).message, true))}
-            className="w-full cursor-pointer border-b border-rule-2 px-6 py-1.5 text-left text-[12.5px] text-smoke hover:bg-[#211b16] hover:text-bone">
+            className="w-full cursor-pointer border-b border-rule-2 px-6 py-1.5 text-left text-[12.5px] text-smoke hover:bg-hover hover:text-bone">
             Load older hits <span className="text-ash">({ownCount} of {p ? p.hits : s.untagged?.hits} shown)</span>
           </button>
         )}

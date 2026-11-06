@@ -307,7 +307,7 @@ const server = http.createServer(async (req, res) => {
     if (actor === "claude" && req.method !== "GET" && req.method !== "HEAD") {
       const own = /^\/api\/probes\/([a-z0-9-]+)(?:\/http-rule)?$/.exec(p);
       if (p === "/api/probes" || /^\/api\/probes\/[a-z0-9-]+\/http-rule\/preview$/.test(p)) { /* planting and previews: open */ }
-      else if (!own) return json(res, 403, { error: "Not available to Claude: this is for you, in the dashboard." });
+      else if (!own || req.method === "DELETE") return json(res, 403, { error: "Not available to Claude: this is for you, in the dashboard." });
       else if (store.probe(own[1]) && store.probe(own[1]).plantedBy !== "claude") return json(res, 403, { error: `"${own[1]}" was planted by you: Claude can read it but not change it.` });
     }
     if (req.method === "GET" && (m = /^\/api\/interactions\/(\d+)$/.exec(p))) {
@@ -391,6 +391,17 @@ const server = http.createServer(async (req, res) => {
       probe = decorate(probe);
       broadcast("probe", probe);
       return json(res, 200, probe);
+    }
+    // Delete: only a retired probe, or a tag nobody planted, so a live probe is never lost by a slip
+    if (req.method === "DELETE" && (m = /^\/api\/probes\/([a-z0-9-]+)$/.exec(p))) {
+      const probe = store.probe(m[1]);
+      if (!probe) return json(res, 404, { error: "no such probe" });
+      if (probe.registered && !probe.retiredAt) return json(res, 409, { error: `Retire "${m[1]}" before deleting it.` });
+      const hits = store.deleteProbe(m[1]);
+      await publishRules();
+      log(`probe deleted: ${m[1]} (${hits} hits)`);
+      broadcast("probe-deleted", { tag: m[1], hits });
+      return json(res, 200, { deleted: m[1], hits });
     }
     if (req.method === "POST" && p === "/api/sources/mine") {
       const b = await body(req);

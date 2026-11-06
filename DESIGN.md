@@ -596,3 +596,15 @@ A Bone pill (Alarm Ink when something failed) that rises 44px above the bottom e
 - Parsed view: with a Query section, the start line shows each value briefly; any value over 600 characters shows "+n chars".
 - On a phone the status bar keeps short labels (Eng, Str, Edge) and rail targets are 44px.
 - Names: technique "Default reply" (was Callback), copy formats "as is · URL-encoded · JSON · XML", "Clear all hits…".
+
+## Audit fixes (2026-11-06)
+- **One state per probe, one set of words** (`web/src/lib/probeState.ts`), read by the list row, the probe pane, the payload band and the status bar: Armed, Retired, Late hit, Not planted. A retired probe never says "waiting"; a tag nobody planted never says "Armed".
+- **Cleared hits are named.** A probe with nothing since a clear reads "No hits since the clear at 15:30"; the status bar's Last hit adds "· cleared 15:30" with a tooltip pointing to Restore.
+- **"No tag" and "not planted".** Hits without any tag are the **No tag** row (it was "Unregistered", the same word as a tag nobody planted). A tag a request named but nobody planted gets a grey "not planted" chip, and leaves the list once it has no hits.
+- **Probes can be deleted.** Retired probes and not-planted tags get a destructive **Delete…** in the header (with Export hits in the confirm); the Retired section gets **Delete all…**, which skips probes with a late hit. Deleting is permanent: the probe, every stored hit (cleared ones too) and its rule history. Live probes must be retired first; Claude (the MCP) can't delete.
+- **Filter probes** in the list header (tag, target, note); "Latest activity first" moved to the heading's tooltip.
+- **Technique mark:** an icon plus word (SSRF → metadata, XXE, Redirect, Hosted file) in the row and header. The plain callback has none, since it's the default.
+- **Colour, amended rules.** The syntax inks (Slate names, Sage values) now also colour the query in the hits table's Request cell, with the method in Bone 650 and the version in Ash; still never used for UI chrome. Self-test rows (this box, yours) recede to Smoke with a grey "this box"/"yours" chip in Source, so target hits are the Bone rows; a target's source IP is Bone 550. Hit-detail labels (Source, rDNS, ASN / owner) use the 11px Label style so values stand apart.
+- **A retired probe's payload band** folds to one line: "Retired 05:18. Restore it to use these payloads again, or plant a new tag above." with "Show its payloads".
+- **Touch:** under 820px or on coarse pointers every button keeps its look but gets a centred 44px hit area; the probe tab strip is 44px tall.
+- **Tokens:** hover, child-row, tag-mark, Alarm and Caution colours are CSS tokens (`--hover`, `--child`, `--mark`, `--alarm-*`, `--caution-*`); components no longer hard-code them.

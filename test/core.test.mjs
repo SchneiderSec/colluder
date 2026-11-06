@@ -322,3 +322,23 @@ test("store: who planted a probe and who saved each rule version (PLAN-MCP.md M2
   s.plant("seen", "app.example", "callback", "2026-11-06T10:03:00Z", "claude");
   assert.equal(s.probe("seen").plantedBy, "claude");
 });
+
+test("store: deleting a probe takes its hits (cleared ones too) and its rules, and nothing else", () => {
+  const s = new Store(":memory:");
+  const add = (tag, n) => {
+    const raw = { protocol: "dns", "unique-id": ID, "full-id": `n${n}.${tag}.${ID}`, "q-type": "A", "remote-address": "192.0.2.1",
+      timestamp: `2026-11-06T10:00:${String(n).padStart(2, "0")}.0Z`, "raw-request": "q", "raw-response": "r" };
+    s.insert(JSON.stringify(raw), parseInteraction(raw, D), "2026-11-06T10:01:00Z");
+  };
+  s.plant("gone", "app.example", "callback", "2026-11-06T09:00:00Z");
+  s.plant("kept", "app.example", "callback", "2026-11-06T09:00:00Z");
+  add("gone", 1); add("gone", 2); add("kept", 3);
+  s.saveRule("gone", { mode: "redirect", status: 302, location: "http://x/" }, "2026-11-06T10:02:00Z");
+  s.clearAll("2026-11-06T10:03:00Z");
+  add("gone", 4);
+  assert.equal(s.deleteProbe("gone"), 3, "the cleared hits go too, so a restore can't bring a ghost back");
+  assert.equal(s.probe("gone"), null);
+  assert.equal(s.ruleHistory("gone").history.length, 0);
+  assert.equal(s.restoreLastClear(), 1, "only kept's hit comes back");
+  assert.equal(s.hits("kept").length, 1);
+});

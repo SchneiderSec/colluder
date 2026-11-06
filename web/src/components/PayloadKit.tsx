@@ -27,7 +27,7 @@ export function Marked({ text, tag, code }: { text: string; tag: string; code?: 
   let at = 0;
   for (const m of text.matchAll(re)) {
     if (m.index! > at) out.push(text.slice(at, m.index));
-    out.push(m[0] === tag ? <em key={m.index} className="bg-[#3a2f22] px-px text-bone not-italic">{m[0]}</em> : <span key={m.index} className="text-ash">{m[0]}</span>);
+    out.push(m[0] === tag ? <em key={m.index} className="bg-mark px-px text-bone not-italic">{m[0]}</em> : <span key={m.index} className="text-ash">{m[0]}</span>);
     at = m.index! + m[0].length;
   }
   out.push(text.slice(at));

@@ -219,13 +219,13 @@ export function HttpRuleTab({ p }: { p: Probe }) {
     <div id="probe-panel" role="tabpanel" aria-labelledby="probe-tab-http" className="@container min-h-0 overflow-auto max-[820px]:overflow-visible">
     <div className="relative grid grid-cols-[minmax(0,1fr)_400px] content-start gap-x-7 px-6 pt-[18px] @max-[940px]:grid-cols-1 max-[820px]:px-3.5">
       {(!edge || edge.state === "absent") && (
-        <div className="col-span-full mb-4 flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-[3px] border border-[#6b5126] bg-[#2b2113] px-3 py-2 text-[12.5px] leading-[18px] text-[#f3d9a4]">
+        <div className="col-span-full mb-4 flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-[3px] border border-caution-border bg-caution-ground px-3 py-2 text-[12.5px] leading-[18px] text-caution-ink">
           <span><b className="font-semibold">Rules aren't served yet.</b> Until you run the cutover, the internet still gets interactsh's default reply. Rules save and preview here meanwhile.</span>
           <Button variant="quiet" size="sm" className="max-w-full" onClick={() => copy(CUTOVER, "cutover command")}><Copy /><span className="truncate font-mono">{CUTOVER}</span></Button>
         </div>
       )}
       {edge && edge.state !== "absent" && !live && (
-        <p className="col-span-full mb-4 rounded-[3px] border border-[#6a2f22] bg-[#2a1914] px-3 py-2 text-[12.5px] leading-[18px] text-[#f4c6b8]">
+        <p className="col-span-full mb-4 rounded-[3px] border border-alarm-border bg-alarm-ground px-3 py-2 text-[12.5px] leading-[18px] text-alarm-banner-ink">
           <b className="font-semibold">The edge isn't answering.</b> Your probes get no HTTP reply and their hits aren't captured until it's back (sudo systemctl restart colluder-edge).
         </p>
       )}

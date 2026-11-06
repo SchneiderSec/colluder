@@ -7,6 +7,7 @@ import { hostOf } from "@/lib/metadata";
 import { CLOUDS, XXE_FILES, ssrfRule, xxeRule } from "@/lib/presets";
 import { ssrfPayloads, xxePayloads, jsonEscape, xmlEscape, type Payload } from "@/lib/kit";
 import { copy } from "@/lib/toast";
+import { dayOrTime } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -72,6 +73,11 @@ export function Composer() {
   const [allRows, setAllRows] = useState(false);
   useEffect(() => setAllRows(false), [shownTag]);
   const folded = reading && !pinned && !!vs;
+  // a retired probe's payloads still reach Colluder, but offering them invites firing a probe you've
+  // stopped watching: one line says so, with the rows one click away
+  const [retiredOpen, setRetiredOpen] = useState(false);
+  useEffect(() => setRetiredOpen(false), [shownTag]);
+  const retiredShown = !!shownProbe?.retiredAt && !retiredOpen;
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -154,14 +160,19 @@ export function Composer() {
           </div>
         )}
       </form>
-      {err && <p id="tag-err" className="col-start-2 -mt-1 text-[12.5px] text-[#f3b4a3] max-[820px]:col-start-1">{err}</p>}
+      {err && <p id="tag-err" className="col-start-2 -mt-1 text-[12.5px] text-alarm-ink max-[820px]:col-start-1">{err}</p>}
 
       <div className="pt-[3px] text-[12.5px] leading-[17px] text-smoke max-[820px]:flex max-[820px]:gap-1.5 max-[820px]:pt-0.5">
         {preview ? "Preview for" : shownTag ? "Payloads for" : "Base payload"}
         <span className="block truncate font-mono text-[12.5px] text-bone">{shownTag ?? "no tag"}</span>
         {unsaved && <span className="block text-[11px] leading-[15px] text-amber max-[820px]:hidden" title="Planted, but its rule isn't saved yet: payloads copied now get the default reply">default reply until you save its {unsaved}</span>}
       </div>
-      {presetRows && !plain && reading && !pinned ? (
+      {retiredShown ? (
+        <p className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px] text-smoke">
+          <span>Retired {dayOrTime(shownProbe!.retiredAt)}. Restore it to use these payloads again, or plant a new tag above.</span>
+          <Button variant="ghost" size="sm" className="text-ash" onClick={() => setRetiredOpen(true)}>Show its payloads</Button>
+        </p>
+      ) : presetRows && !plain && reading && !pinned ? (
         <div ref={varsRef} className="flex min-w-0 flex-wrap items-center gap-1">
           {presetRows.map((p) => (
             <Button key={p.code} data-copy variant="ghost" size="sm" title={`${p.note ?? ""}\n${p.text}`} aria-label={`Copy ${p.name} payload`} onClick={() => copy(asCopy(p.text, copyAs), `${p.name} payload`)}>
@@ -216,7 +227,7 @@ export function Composer() {
                 <span className="truncate font-mono text-[12.5px] text-smoke" title={v.value}>
                   {([[v.parts, "max-[820px]:hidden"], [v.short, "hidden max-[820px]:inline"]] as const).map(([parts, cls]) => (
                     <span key={cls} className={cls}>
-                      {parts.map(([k, t], i) => (k === "em" ? <em key={i} className="bg-[#3a2f22] px-px text-bone not-italic">{t}</em> : <span key={i}>{t}</span>))}
+                      {parts.map(([k, t], i) => (k === "em" ? <em key={i} className="bg-mark px-px text-bone not-italic">{t}</em> : <span key={i}>{t}</span>))}
                     </span>
                   ))}
                 </span>

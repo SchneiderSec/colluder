@@ -203,6 +203,22 @@ export async function patchProbe(tag: string, body: { target?: string; note?: st
   const p = await api<Probe>(`/api/probes/${tag}`, { method: "PATCH", body });
   set({ probes: new Map(state.probes).set(p.tag, p) });
 }
+// Delete a retired probe (or a tag nobody planted) for good: the probe, its stored hits, its rules
+function dropProbe(tag: string) {
+  if (!state.probes.has(tag)) return;
+  const probes = new Map(state.probes);
+  probes.delete(tag);
+  const older = { ...state.older };
+  delete older[tag];
+  const wasSel = state.sel === tag;
+  set({ probes, older, list: state.list.filter((i) => i.tag !== tag), ...(wasSel ? { sel: null, hit: null } : {}) });
+  if (wasSel) { history.replaceState(null, "", "#probes"); dispatchEvent(new Event("hashchange")); }
+}
+export async function deleteProbe(tag: string) {
+  const r = await api<{ deleted: string; hits: number }>(`/api/probes/${encodeURIComponent(tag)}`, { method: "DELETE", body: {} });
+  dropProbe(tag);
+  return r.hits;
+}
 export async function lookupAsn(ip: string) {
   const e = await api<Enrich>(`/api/enrich/${encodeURIComponent(ip)}/asn`, { method: "POST", body: {} });
   set({ enrich: new Map(state.enrich).set(ip, e) });
@@ -283,6 +299,7 @@ export function connect() {
   on<Interaction>("interaction", onInteraction);
   on<Probe | null>("probe", (p) => { if (p) set({ probes: new Map(state.probes).set(p.tag, p) }); });
   on<Counts>("untagged", (u) => set({ untagged: u }));
+  on<{ tag: string }>("probe-deleted", (d) => dropProbe(d.tag));
   on<Enrich>("enrich", (e) => set({ enrich: new Map(state.enrich).set(e.ip, e) }));
   on<{ reason: string; count: number }>("reload", (d) => {
     toast(d.reason === "cleared" ? `Took out the trash: ${plural(d.count, "interaction")} hidden` : `Restored ${plural(d.count, "interaction")}`);

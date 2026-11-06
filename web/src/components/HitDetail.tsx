@@ -146,7 +146,7 @@ export function HitDetail({ id }: { id: number }) {
       </div>
 
       <div className="flex flex-none flex-wrap items-center gap-x-[22px] gap-y-1 text-[12.5px] whitespace-nowrap max-[820px]:whitespace-normal">
-        <span className="flex items-center gap-2"><span className="text-smoke">{d.protocol === "dns" ? "Resolver" : "Source"}</span><span className="font-mono text-[12.5px]">{d.remoteAddress}</span>{fromBox && <span className="text-[11px] text-ash" title="This is the OOB box itself: a self-test, not a target.">this box</span>}
+        <span className="flex items-center gap-2"><span className="text-[11px] font-[650] tracking-[.04em] text-smoke">{d.protocol === "dns" ? "Resolver" : "Source"}</span><span className={cn("font-mono text-[12.5px]", !fromBox && !mine && "font-[550] text-bone")}>{d.remoteAddress}</span>{fromBox && <span title="This is the OOB box itself: a self-test, not a target."><Chip grey>this box</Chip></span>}
           {d.protocol !== "dns" && !fromBox && (
             <Button variant="quiet" size="sm" title={mine ? "Hits from this address count as targets again" : "Your browser or proxy: its hits become self-tests (left out of reach and the report's first request)"}
               onClick={() => setMine(d.remoteAddress, !mine).then(() => toast(mine ? `${d.remoteAddress} is no longer marked as yours.` : `${d.remoteAddress} is marked as yours: its hits are self-tests now.`), (x) => toast((x as Error).message, true))}>
@@ -155,12 +155,12 @@ export function HitDetail({ id }: { id: number }) {
           )}</span>
         {web && forwardedFor(d.rawRequest).map(([h, v]) => (
           <span key={h} className="flex min-w-0 items-center gap-2" title={`From the ${h} header. The sender sets it, so it may be spoofed.`}>
-            <span className="text-smoke">Forwarded for</span><span className="truncate font-mono text-[12.5px] text-bone">{v}</span>
+            <span className="text-[11px] font-[650] tracking-[.04em] text-smoke">Forwarded for</span><span className="truncate font-mono text-[12.5px] text-bone">{v}</span>
           </span>
         ))}
-        <span className="flex min-w-0 items-center gap-2"><span className="text-smoke">rDNS</span>{e.rdnsAt && e.rdns ? <span className="truncate font-mono text-[12.5px]">{e.rdns}</span> : <span className="text-[12.5px] text-ash">{e.rdnsAt ? "no PTR record" : "looking up…"}</span>}</span>
+        <span className="flex min-w-0 items-center gap-2"><span className="text-[11px] font-[650] tracking-[.04em] text-smoke">rDNS</span>{e.rdnsAt && e.rdns ? <span className="truncate font-mono text-[12.5px]">{e.rdns}</span> : <span className="text-[12.5px] text-ash">{e.rdnsAt ? "no PTR record" : "looking up…"}</span>}</span>
         <span className="flex flex-wrap items-center gap-2">
-          <span className="text-smoke">ASN / owner</span>
+          <span className="text-[11px] font-[650] tracking-[.04em] text-smoke">ASN / owner</span>
           {e.asn ? <span className="font-mono text-[12.5px]">{[e.asn, e.asnName, e.asnCc, e.asnPrefix].filter(Boolean).join(" · ")}</span> : (
             <>
               <Button variant="quiet" size="sm" disabled={asnBusy} onClick={() => { setAsnBusy(true); lookupAsn(d.remoteAddress).catch((x) => toast((x as Error).message, true)).finally(() => setAsnBusy(false)); }}>
