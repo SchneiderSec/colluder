@@ -25,6 +25,16 @@ test("exfil labels before the tag are kept, tag is the closest label", () => {
   assert.deepEqual(it.extraLabels, ["agvsbg8"]);
 });
 
+test("https tag joined to the id by a dash, in one label", () => {
+  const it = parseInteraction({ protocol: "https", "unique-id": ID, "full-id": `cutover-http-${ID}`, "raw-request": `GET /k/kc2 HTTP/1.1\r\nHost: cutover-http-${ID}.${D}\r\n\r\n` }, D);
+  assert.equal(it.tag, "cutover-http");
+  assert.equal(it.tagSource, "subdomain");
+  const dns = parseInteraction({ protocol: "dns", "unique-id": ID, "full-id": `data.fetch-${ID}` }, D);
+  assert.deepEqual([dns.tag, dns.extraLabels], ["fetch", ["data"]]);
+  // glued to the id with no separator: not a tag
+  assert.equal(parseInteraction({ protocol: "dns", "unique-id": ID, "full-id": `ab${ID}` }, D).tag, null);
+});
+
 test("https path tag on a bare host", () => {
   const it = parseInteraction({ protocol: "https", "unique-id": ID, "full-id": ID, "raw-request": `GET /xff/abc?q=1 HTTP/1.1\r\nHost: ${ID}.${D}\r\n\r\n` }, D);
   assert.equal(it.tag, "xff");

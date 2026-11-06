@@ -171,6 +171,10 @@ test("edge: ownership needs a 33-char label starting with one of our correlation
   assert.deepEqual(ownership(`${ID.toUpperCase()}.${DOMAIN}.`, [CID]), { uniqueId: ID, fullId: ID });
   assert.equal(ownership(`e2e.zzzzzzzzzzzzzzzzzzzzklmnopqrstuvw.${DOMAIN}`, [CID]), null);
   assert.equal(ownership(`e2e.${ID}x.${DOMAIN}`, [CID]), null);
+  // the HTTPS form: tag and id in one label
+  assert.deepEqual(ownership(`cutover-http-${ID}.${DOMAIN}:443`, [CID]), { uniqueId: ID, fullId: `cutover-http-${ID}` });
+  assert.equal(ownership(`ab${ID}.${DOMAIN}`, [CID]), null, "no dash, not ours");
+  assert.equal(ownership(`-${ID}.${DOMAIN}`, [CID]), null);
 });
 
 // ---------- integration ----------

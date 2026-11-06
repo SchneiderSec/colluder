@@ -90,7 +90,7 @@ export async function loadState() {
 // ---------- unread ----------
 export const keyOf = (i: Interaction) => i.tag || UNTAGGED;
 // Resolver chatter: recursive resolvers doing QNAME minimisation (and clients resolving the
-// HTTPS host, whose tag sits in the path) look up the bare payload id right next to a tagged hit.
+// older path-form HTTPS host) look up the bare payload id right next to a tagged hit.
 // Those lookups are real but carry no signal, so they are labelled and never count as new.
 export const CHATTER_MS = 10_000;
 const chatterCache = new WeakMap<Interaction[], Map<number, string>>();

@@ -189,7 +189,7 @@ export function HitDetail({ id }: { id: number }) {
       )}
       {tlsOnly && (
         <p className="flex-none text-body text-smoke">
-          <b className="font-semibold text-bone">TLS handshake only.</b> The client asked for <span className="font-mono text-bone">{tlsOnly.sni}</span>{tlsOnly.alpn.length ? <> (ALPN {tlsOnly.alpn.join(", ")})</> : null} and closed before sending a request{tlsOnly.error ? <> ({tlsOnly.error})</> : null}. Most often it rejected the certificate, which covers one label under the domain. It proves the target connected; for the request itself, use the path form <span className="font-mono text-bone">https://&lt;id&gt;.{s.status?.payload?.domain ?? "domain"}/{d.tag ?? "tag"}/</span>. The request pane is empty; the ClientHello bytes are in the download.
+          <b className="font-semibold text-bone">TLS handshake only.</b> The client asked for <span className="font-mono text-bone">{tlsOnly.sni}</span>{tlsOnly.alpn.length ? <> (ALPN {tlsOnly.alpn.join(", ")})</> : null} and closed before sending a request{tlsOnly.error ? <> ({tlsOnly.error})</> : null}. Most often it rejected the certificate, which covers one label under the domain. It proves the target connected; for the request itself, join the tag to the id with a dash: <span className="font-mono text-bone">https://{d.tag ?? "tag"}-&lt;id&gt;.{s.status?.payload?.domain ?? "domain"}/</span>. The request pane is empty; the ClientHello bytes are in the download.
         </p>
       )}
       {a?.malformed && (

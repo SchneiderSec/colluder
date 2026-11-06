@@ -28,7 +28,7 @@ Built on the matched v1.4.1 CLI client that is known to capture DNS/HTTP/HTTPS f
 ## Operating Context
 
 - Server: interactsh-server v1.4.1 at oob.example (203.0.113.10, 53/80/443), `-auth` token, wildcard LE cert `*.oob.example`.
-- One engine client = one correlation id = one base payload. Probes are told apart by a tag: a subdomain prefix label (`fetch.<id>…`, DNS/HTTP only) or the first path segment (`https://<id>.oob.example/xff/…`). HTTPS payloads must be single-label because the cert is single-label wildcard.
+- One engine client = one correlation id = one base payload. Probes are told apart by a tag: a subdomain prefix label (`fetch.<id>…`, DNS/HTTP only) or, for HTTPS, joined to the id by a dash in the same label (`https://xff-<id>.oob.example/`), because the cert is a single-label wildcard. The older path form (`https://<id>.oob.example/xff/`) is still read.
 - Real traffic: DNS hits usually outnumber HTTP heavily (sample: 25 DNS to 2 HTTP from one SSRF), often from third-party resolvers rather than the target itself.
 - Evidence feeds reports. The quality bar is captured requests and responses, so raw data must copy out exactly.
 - Multiple base payloads / multiple engine clients are out of MVP scope (later extension). A Caido plugin front-end on the same engine+collector is a possible later extension.

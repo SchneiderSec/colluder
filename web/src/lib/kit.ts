@@ -24,14 +24,14 @@ export const SECTIONS: { id: Section | "metadata" | "gopher" | "xxe" | "xss" | "
 
 // host: the payload host, <id>.<domain>. Plain-HTTP callbacks put the tag (and code) in labels; HTTPS
 // keeps a single label in front of the domain (the certificate is a one-label wildcard), so the tag
-// and code go in the path.
+// joins the id with a dash (<tag>-<id>) and the code goes in the path.
 const sub = (code: string, tag: string, host: string) => `${code}.${tag}.${host}`;
 
 export function callbacks(tag: string, host: string): Payload[] {
   const v = (code: string, name: string, text: string, note?: string): Payload => ({ code, section: "callbacks", name, text, note });
   return [
     v("kc1", "HTTP", `http://${sub("kc1", tag, host)}/`, "Also a DNS lookup of the name, so a target that resolves but can't connect still shows up."),
-    v("kc2", "HTTPS", `https://${host}/${tag}/k/kc2`, "Tag and code in the path: the certificate covers one label."),
+    v("kc2", "HTTPS", `https://${tag}-${host}/k/kc2`, "Tag joined to the id with a dash, code in the path: one label, so the certificate covers it."),
     v("kc3", "DNS name", sub("kc3", tag, host), "For fields that only take a hostname, or a resolve-only check."),
     v("kc4", "Protocol-relative", `//${sub("kc4", tag, host)}/`, "Takes the scheme of the page or request it lands in."),
     v("kc5", "Email address", `kc5@${tag}.${host}`, "Delivery arrives as an SMTP hit; the MX lookup comes first as DNS."),
@@ -114,7 +114,7 @@ export function ssrfPayloads(tag: string, host: string): Payload[] {
   return [
     v("ks1", "First choice", `http://${sub("ks1", tag, host)}/`, "Use this one first: clients follow http → http redirects most reliably."),
     v("ks2", "Plausible path", `http://${sub("ks2", tag, host)}/latest/meta-data/`, "For filters that want a path that looks like the real thing."),
-    v("ks3", "Over HTTPS", `https://${host}/${tag}/k/ks3`, "Java HttpURLConnection and Ruby open-uri won't follow https → http, so this one can stop at the first hop."),
+    v("ks3", "Over HTTPS", `https://${tag}-${host}/k/ks3`, "Java HttpURLConnection and Ruby open-uri won't follow https → http, so this one can stop at the first hop."),
   ];
 }
 

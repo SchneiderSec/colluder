@@ -37,15 +37,15 @@ A probe is a tag you plant somewhere. The composer gives three payloads per tag:
 |---|---|---|
 | DNS | `tag.<id>.oob.example` | hostname fields, resolve-only targets |
 | HTTP | `http://tag.<id>.oob.example/` | URL fields |
-| HTTPS | `https://<id>.oob.example/tag/` | tag in the **path**: the wildcard certificate covers one label only |
+| HTTPS | `https://tag-<id>.oob.example/` | tag **joined to the id with a dash**: the wildcard certificate covers one label only, so `tag.<id>` fails TLS. The older path form `https://<id>.oob.example/tag/` is still read. |
 
 Hits are matched to probes by the label just before the id, or (HTTP/S) by the first path
 segment. Labels further left are kept as exfil data. Hits for tags you never planted create an
 "unregistered" probe; hits with no tag go to Unregistered.
 
 **Resolver chatter.** Public resolvers using QNAME minimisation (Cloudflare, Google) look up the
-bare payload id (`NS`, `A`, …) before the tagged name, and a client fetching an HTTPS payload
-resolves the bare host because its tag sits in the path. An untagged DNS lookup of the bare id
+bare payload id (`NS`, `A`, …) before the tagged name, and a client fetching an older path-form
+HTTPS payload resolves the bare host. An untagged DNS lookup of the bare id
 within 10 s of a tagged hit is labelled "resolver chatter around <tag>": it stays listed under
 Unregistered but never counts as new, so it can't light up the tab title.
 

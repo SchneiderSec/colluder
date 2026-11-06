@@ -67,9 +67,11 @@ export function ownership(hostHeader, cids) {
   const host = String(hostHeader || "").toLowerCase().replace(/:\d+$/, "").replace(/\.$/, "");
   const labels = host.split(".");
   for (let i = 0; i < labels.length; i++) {
-    const l = labels[i];
-    if (l.length === 33 && /^[a-z0-9]+$/.test(l) && cids.some((c) => l.startsWith(c))) {
-      return { uniqueId: l, fullId: labels.slice(0, i + 1).join(".") };
+    // the id alone (<id>), or with the tag joined to it by a dash (<tag>-<id>): one label, so the
+    // *.domain certificate covers it over HTTPS. interactsh-server finds the id inside the label too.
+    const m = /^(?:[a-z0-9][a-z0-9-]{0,62}-)?([a-z0-9]{33})$/.exec(labels[i]);
+    if (m && cids.some((c) => m[1].startsWith(c))) {
+      return { uniqueId: m[1], fullId: labels.slice(0, i + 1).join(".") };
     }
   }
   return null;

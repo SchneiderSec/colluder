@@ -365,7 +365,7 @@ export function ProbePane() {
           </p>
           <ul className="mt-2 ml-[18px] list-disc space-y-1">
             <li>Nothing at all? The fetcher may only accept certain schemes, or block unknown hosts. Try the DNS variant: many targets resolve names they never fetch.</li>
-            <li>HTTPS needs the tag in the path (one-label certificate). A prefixed HTTPS host fails TLS and looks like silence.</li>
+            <li>HTTPS needs the tag joined to the id with a dash (<span className="font-mono">tag-&lt;id&gt;</span>): the certificate covers one label, so a dotted prefix fails TLS and looks like silence.</li>
             <li>Hits arriving under No tag instead? The target stripped or rewrote the subdomain.</li>
             <li>Testing DNS yourself and nothing shows? A resolver may answer from its cache and never ask us. Use the DNS payload's fresh-label copy (a random label in front of the tag) to force a new lookup.</li>
           </ul>

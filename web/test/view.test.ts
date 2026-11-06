@@ -109,7 +109,7 @@ test("kit: callbacks and bypasses carry their code next to the tag; codes are un
   const codes = [...cb, ...by].map((p) => p.code);
   assert.equal(new Set(codes).size, codes.length);
   assert.equal(cb[0].text, `http://kc1.fetch.${H}/`);
-  assert.equal(cb[1].text, `https://${H}/fetch/k/kc2`);
+  assert.equal(cb[1].text, `https://fetch-${H}/k/kc2`);
   assert.equal(cb.find((p) => p.code === "kc6")!.text, `\\\\kc6.fetch.${H}\\k`);
   assert.equal(by[0].text, `http://api.shop.example@ka1.fetch.${H}/`);
   assert.equal(by[2].text, `http://ka3.fetch.${H}#@api.shop.example/`);

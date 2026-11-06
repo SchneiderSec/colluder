@@ -67,9 +67,9 @@ export function variants(host: string | undefined, domain: string | undefined, t
   const all = [
     { proto: "dns", value: tag ? `${tag}.${host}` : host, parts: tag ? [["em", tag], ["", "." + host]] : [["", host]], note: "Hostname fields; targets that only resolve." },
     { proto: "http", value: tag ? `http://${tag}.${host}/` : `http://${host}/`, parts: tag ? [["", "http://"], ["em", tag], ["", `.${host}/`]] : [["", `http://${host}/`]], note: tag ? "URL fields; tag in the subdomain." : "URL fields." },
-    { proto: "https", value: tag ? `https://${host}/${tag}/` : `https://${host}/`, parts: tag ? [["", `https://${idPart}.${domain}/`], ["em", tag], ["", "/"]] : [["", `https://${host}/`]], note: "Tag in the path: the certificate covers one label." },
+    { proto: "https", value: tag ? `https://${tag}-${host}/` : `https://${host}/`, parts: tag ? [["", "https://"], ["em", tag], ["", `-${host}/`]] : [["", `https://${host}/`]], note: tag ? "URL fields; tag joined to the id with a dash (one label, so the certificate covers it)." : "URL fields." },
   ] as const satisfies readonly { proto: string; value: string; parts: readonly (readonly [string, string])[]; note: string }[];
-  // Phones: show the host as "c0ffee12…" so the tag (end of the HTTPS path) is never cut off.
+  // Phones: show the host as "c0ffee12…" so the payload stays on one line with the tag whole.
   // Display only: the title and every copy carry the full value.
   const short = `${idPart.slice(0, 8)}…`;
   const shorten = (t: string) => t.replace(`${idPart}.${domain}`, short).replace(idPart, short);
