@@ -106,24 +106,24 @@ export function Composer() {
   const fld = "flex h-9 items-center gap-[9px] overflow-hidden rounded-[3px] border border-rule bg-soot px-3 whitespace-nowrap transition-colors focus-within:border-smoke";
   return (
     <section aria-label="Plant a probe" className="grid grid-cols-[132px_minmax(0,1fr)] gap-y-2.5 border-b border-rule bg-soot-1 px-6 pt-3.5 pb-3 max-[820px]:grid-cols-1 max-[820px]:px-3.5">
-      <h1 className="self-start pt-[6px] text-[17px] font-[650] max-[820px]:pt-0">Plant a probe</h1>
+      <h1 className="self-start pt-[6px] text-headline font-[650] max-[820px]:pt-0">Plant a probe</h1>
       <form onSubmit={submit} noValidate autoComplete="off"
         className="grid grid-cols-[minmax(200px,318px)_minmax(0,1fr)_236px_auto] gap-2.5 max-[1180px]:grid-cols-[minmax(160px,1fr)_minmax(0,1.4fr)_172px_auto] max-[820px]:grid-cols-1">
         <label className={cn(fld, err && "border-bad")}>
-          <span className="text-[12.5px] font-[550] text-smoke">Tag</span>
+          <span className="text-body font-[550] text-smoke">Tag</span>
           <input ref={tagRef} value={tag} maxLength={32} spellCheck={false} placeholder="e.g. avatar" aria-invalid={!!err} aria-describedby="tag-err"
             onChange={(e) => { const v = e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""); setTag(v); setErr(v && !TAG_RE.test(v) ? BAD_TAG : ""); }}
-            className="min-w-0 flex-1 bg-transparent font-mono text-[12.5px] text-bone outline-none placeholder:text-ash" />
-          {host && <span className="font-mono text-[12.5px] text-ash">.{host.slice(0, 8)}…</span>}
+            className="min-w-0 flex-1 bg-transparent font-mono text-body text-bone outline-none placeholder:text-ash" />
+          {host && <span className="font-mono text-body text-ash">.{host.slice(0, 8)}…</span>}
         </label>
         <label className={fld}>
-          <span className="text-[12.5px] font-[550] text-smoke">Target</span>
+          <span className="text-body font-[550] text-smoke">Target</span>
           <input value={target} maxLength={300} onChange={(e) => setTarget(e.target.value)} placeholder="Where you planted it, e.g. api.shop.example · POST /import url="
-            className="min-w-0 flex-1 bg-transparent text-[12.5px] text-bone outline-none placeholder:text-ash" />
+            className="min-w-0 flex-1 bg-transparent text-body text-bone outline-none placeholder:text-ash" />
         </label>
         <Select value={technique} onValueChange={setTechnique}>
-          <SelectTrigger aria-label="Technique" className="h-9 w-full justify-start gap-[9px] rounded-[3px] border-rule bg-soot text-[12.5px] [&>svg]:ml-auto">
-            <span className="text-[12.5px] font-[550] text-smoke max-[1180px]:sr-only max-[820px]:not-sr-only">Technique</span><SelectValue />
+          <SelectTrigger aria-label="Technique" className="h-9 w-full justify-start gap-[9px] rounded-[3px] border-rule bg-soot text-body [&>svg]:ml-auto">
+            <span className="text-body font-[550] text-smoke max-[1180px]:sr-only max-[820px]:not-sr-only">Technique</span><SelectValue />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="callback">Default reply</SelectItem>
@@ -135,24 +135,24 @@ export function Composer() {
         </Select>
         <Button type="submit" variant="default" size="lg" className="h-9"><ArrowDownToLine />Plant</Button>
         {technique === "xxe" && (
-          <div className="col-span-full flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[12.5px] text-smoke">
+          <div className="col-span-full flex flex-wrap items-center gap-x-4 gap-y-1.5 text-body text-smoke">
             <Select value={xxeFile} onValueChange={setXxeFile}>
-              <SelectTrigger aria-label="File to read" className="h-8 w-auto gap-[9px] rounded-[3px] border-rule bg-soot text-[12.5px]"><span className="font-[550] text-smoke">File</span><SelectValue /></SelectTrigger>
+              <SelectTrigger aria-label="File to read" className="h-8 w-auto gap-[9px] rounded-[3px] border-rule bg-soot text-body"><span className="font-[550] text-smoke">File</span><SelectValue /></SelectTrigger>
               <SelectContent>{XXE_FILES.map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}</SelectContent>
             </Select>
             {xxeFile === "custom" && (
               <label className="flex h-8 w-[280px] items-center rounded-[3px] border border-rule bg-soot px-2.5 focus-within:border-smoke">
                 <input aria-label="Path of the file to read" spellCheck={false} value={xxeCustom} onChange={(e) => setXxeCustom(e.target.value)} placeholder="/etc/issue or file:///…"
-                  className="min-w-0 flex-1 bg-transparent font-mono text-[12.5px] text-bone outline-none placeholder:font-sans placeholder:text-ash" />
+                  className="min-w-0 flex-1 bg-transparent font-mono text-body text-bone outline-none placeholder:font-sans placeholder:text-ash" />
               </label>
             )}
             <span className="max-w-[110ch] text-ash">Serves at once: a DTD that reads the file and sends it back as a hit, plus feed.xml and sitemap.xml for "import from URL" features. Modern Java rejects a newline in the URL, so keep to one-line files there; libxml2 2.9+ and .NET 4.5.2+ don't load external entities by default.</span>
           </div>
         )}
         {technique === "ssrf-metadata" && (
-          <div className="col-span-full flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[12.5px] text-smoke">
+          <div className="col-span-full flex flex-wrap items-center gap-x-4 gap-y-1.5 text-body text-smoke">
             <Select value={cloud} onValueChange={setCloud}>
-              <SelectTrigger aria-label="Cloud" className="h-8 w-auto gap-[9px] rounded-[3px] border-rule bg-soot text-[12.5px]"><span className="font-[550] text-smoke">Cloud</span><SelectValue /></SelectTrigger>
+              <SelectTrigger aria-label="Cloud" className="h-8 w-auto gap-[9px] rounded-[3px] border-rule bg-soot text-body"><span className="font-[550] text-smoke">Cloud</span><SelectValue /></SelectTrigger>
               <SelectContent>{CLOUDS.map((c) => <SelectItem key={c.id} value={c.id}>{c.provider}: {c.name}</SelectItem>)}</SelectContent>
             </Select>
             <label className="flex cursor-pointer items-center gap-[7px]"><input type="checkbox" className="size-3.5 accent-bone" checked={headDecoy} onChange={(e) => setHeadDecoy(e.target.checked)} />Decoy reply for HEAD checks</label>
@@ -160,15 +160,15 @@ export function Composer() {
           </div>
         )}
       </form>
-      {err && <p id="tag-err" className="col-start-2 -mt-1 text-[12.5px] text-alarm-ink max-[820px]:col-start-1">{err}</p>}
+      {err && <p id="tag-err" className="col-start-2 -mt-1 text-body text-alarm-ink max-[820px]:col-start-1">{err}</p>}
 
-      <div className="pt-[3px] text-[12.5px] leading-[17px] text-smoke max-[820px]:flex max-[820px]:gap-1.5 max-[820px]:pt-0.5">
+      <div className="pt-[3px] text-body leading-[1.0625rem] text-smoke max-[820px]:flex max-[820px]:gap-1.5 max-[820px]:pt-0.5">
         {preview ? "Preview for" : shownTag ? "Payloads for" : "Base payload"}
-        <span className="block truncate font-mono text-[12.5px] text-bone">{shownTag ?? "no tag"}</span>
-        {unsaved && <span className="block text-[11px] leading-[15px] text-amber max-[820px]:hidden" title="Planted, but its rule isn't saved yet: payloads copied now get the default reply">default reply until you save its {unsaved}</span>}
+        <span className="block truncate font-mono text-body text-bone">{shownTag ?? "no tag"}</span>
+        {unsaved && <span className="block text-label leading-[0.9375rem] text-amber max-[820px]:hidden" title="Planted, but its rule isn't saved yet: payloads copied now get the default reply">default reply until you save its {unsaved}</span>}
       </div>
       {retiredShown ? (
-        <p className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px] text-smoke">
+        <p className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-body text-smoke">
           <span>Retired {dayOrTime(shownProbe!.retiredAt)}. Restore it to use these payloads again, or plant a new tag above.</span>
           <Button variant="ghost" size="sm" className="text-ash" onClick={() => setRetiredOpen(true)}>Show its payloads</Button>
         </p>
@@ -185,17 +185,17 @@ export function Composer() {
         <div ref={varsRef} className="grid min-w-0 grid-cols-[164px_minmax(0,max-content)_28px_minmax(0,1fr)] items-center gap-x-2.5 gap-y-0.5 max-[820px]:grid-cols-[minmax(0,1fr)_28px]">
           {(allRows ? presetRows : presetRows.slice(0, 3)).map((p) => (
             <div key={p.code} className="contents">
-              <span title={p.note} className="flex items-center gap-2 text-[12.5px] whitespace-nowrap text-smoke max-[820px]:col-span-full"><TypeChip proto={/^https:/.test(p.text) ? "https" : "http"} />{p.name}</span>
-              <span className="truncate font-mono text-[12.5px] text-smoke" title={p.text}><Marked text={p.text} tag={shownTag!} code={p.code} /></span>
+              <span title={p.note} className="flex items-center gap-2 text-body whitespace-nowrap text-smoke max-[820px]:col-span-full"><TypeChip proto={/^https:/.test(p.text) ? "https" : "http"} />{p.name}</span>
+              <span className="truncate font-mono text-body text-smoke" title={p.text}><Marked text={p.text} tag={shownTag!} code={p.code} /></span>
               <Button data-copy variant="ghost" size="icon-sm" aria-label={`Copy ${p.name} payload`} onClick={() => copy(asCopy(p.text, copyAs), `${p.name} payload${copyAs === "raw" ? "" : `, ${copyAs === "url" ? "URL-encoded" : copyAs === "json" ? "JSON-escaped" : "XML-escaped"}`}`)}><Copy /></Button>
-              <span className="truncate pl-2 text-[11px] text-ash max-[1180px]:hidden" title={p.note}>{p.note}</span>
+              <span className="truncate pl-2 text-label text-ash max-[1180px]:hidden" title={p.note}>{p.note}</span>
             </div>
           ))}
-          <div className="col-span-full mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-ash">
+          <div className="col-span-full mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-label text-ash">
             <span className="flex items-center gap-2">Copy
               <ToggleGroup type="single" value={copyAs} onValueChange={(v) => v && setCopyAs(v as CopyAs)} aria-label="Copy as" className="overflow-hidden rounded-[3px] border border-rule">
                 {([["raw", "as is"], ["url", "URL-encoded"], ["json", "JSON"], ["xml", "XML"]] as [CopyAs, string][]).map(([v, l]) => (
-                  <ToggleGroupItem key={v} value={v} className="h-[22px] rounded-none border-l border-rule px-2 text-[11px] text-smoke first:border-l-0 data-[state=on]:bg-soot-2 data-[state=on]:font-semibold data-[state=on]:text-bone">{l}</ToggleGroupItem>
+                  <ToggleGroupItem key={v} value={v} className="h-[22px] rounded-none border-l border-rule px-2 text-label text-smoke first:border-l-0 data-[state=on]:bg-soot-2 data-[state=on]:font-semibold data-[state=on]:text-bone">{l}</ToggleGroupItem>
                 ))}
               </ToggleGroup>
             </span>
@@ -216,7 +216,7 @@ export function Composer() {
       ) : (
       <div ref={varsRef} className="grid min-w-0 auto-rows-[24px] grid-cols-[62px_minmax(0,max-content)_54px_minmax(0,1fr)] items-center gap-x-2.5 max-[820px]:grid-cols-[52px_minmax(0,1fr)_54px]">
         {!vs ? (
-          <p className="col-span-full flex items-center gap-2 text-[12.5px] text-smoke">
+          <p className="col-span-full flex items-center gap-2 text-body text-smoke">
             <LineForm kind="dash" />{s.status?.engine ? `No payload yet. ${s.status.engine.detail}` : "Waiting for the engine's payload…"}
           </p>
         ) : (
@@ -224,7 +224,7 @@ export function Composer() {
             {vs.map((v) => (
               <div key={v.proto} className="contents">
                 <TypeChip proto={v.proto} />
-                <span className="truncate font-mono text-[12.5px] text-smoke" title={v.value}>
+                <span className="truncate font-mono text-body text-smoke" title={v.value}>
                   {([[v.parts, "max-[820px]:hidden"], [v.short, "hidden max-[820px]:inline"]] as const).map(([parts, cls]) => (
                     <span key={cls} className={cls}>
                       {parts.map(([k, t], i) => (k === "em" ? <em key={i} className="bg-mark px-px text-bone not-italic">{t}</em> : <span key={i}>{t}</span>))}
@@ -248,10 +248,10 @@ export function Composer() {
                     </Tooltip>
                   )}
                 </span>
-                <span className="truncate pl-2 text-[11px] text-ash max-[1180px]:hidden">{v.note}</span>
+                <span className="truncate pl-2 text-label text-ash max-[1180px]:hidden">{v.note}</span>
               </div>
             ))}
-            {preview && <p className="col-span-full text-[11px] text-ash">Not planted yet: these already work, but Plant records the tag and target so the hits read as a story.</p>}
+            {preview && <p className="col-span-full text-label text-ash">Not planted yet: these already work, but Plant records the tag and target so the hits read as a story.</p>}
             {presetRows && plain && <Button variant="ghost" size="sm" className="col-span-full justify-self-start text-ash" onClick={() => setPlain(false)}>{PRESET_LABEL[shownTechnique ?? ""] ?? "Preset"} payloads</Button>}
             {reading && pinned && <Button variant="ghost" size="sm" className="col-span-full justify-self-start text-ash" onClick={() => pin(false)}>Fold payloads while reading hits</Button>}
           </>

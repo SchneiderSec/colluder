@@ -49,8 +49,8 @@ function RingedTail() {
 function CountChips({ c }: { c: Counts }) {
   return (
     <>
-      {PROTOS.filter((k) => c[k]).map((k) => <TypeChip key={k} proto={k} className="text-[11px] font-semibold">{`${k.toUpperCase()} ${c[k]}`}</TypeChip>)}
-      {!!c.other && <TypeChip proto="other" className="text-[11px]">{`OTHER ${c.other}`}</TypeChip>}
+      {PROTOS.filter((k) => c[k]).map((k) => <TypeChip key={k} proto={k} className="text-label font-semibold">{`${k.toUpperCase()} ${c[k]}`}</TypeChip>)}
+      {!!c.other && <TypeChip proto="other" className="text-label">{`OTHER ${c.other}`}</TypeChip>}
     </>
   );
 }
@@ -72,41 +72,41 @@ function Row({ s, p, k, stop }: { s: AppState; p: Probe | (Counts & Partial<Prob
       className={cn("grid w-full cursor-pointer grid-cols-[12px_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-[3px] border-b border-rule-2 py-[11px] pr-4 pl-5 text-left hover:bg-hover",
         sel && "bg-soot-2 hover:bg-soot-2", isU && "border-t border-t-rule", s.lit === k && "animate-lit")}>
       {unread ? <NewDot title="New hits since you last looked" /> : <NilDot />}
-      <span className={cn("flex min-w-0 items-center gap-[9px] overflow-hidden font-mono text-[13.5px]", talking && !quiet ? "font-[550] text-bone" : "text-smoke", isU && "font-sans font-semibold")}>
+      <span className={cn("flex min-w-0 items-center gap-[9px] overflow-hidden font-mono text-title", talking && !quiet ? "font-[550] text-bone" : "text-smoke", isU && "font-sans font-semibold")}>
         <span className="truncate">{isU ? "No tag" : p.tag}</span>
-        {talking && <b className="font-sans text-[12.5px] font-medium whitespace-nowrap text-smoke">{plural(p.hits, "hit")}</b>}
+        {talking && <b className="font-sans text-body font-medium whitespace-nowrap text-smoke">{plural(p.hits, "hit")}</b>}
         {!isU && !!p.muted && <BellOff aria-label="Discord alerts muted" className="size-3 flex-none text-ash" strokeWidth={1.5} />}
       </span>
       {/* right: the state in one word, or when it last heard something */}
       {/* right: is it listening (a moving line) or not (a still, dim one), then when it last heard */}
       {st === "unplanted" ? <span className="justify-self-end"><Chip grey>not planted</Chip></span>
-        : isU ? <span className="text-right text-[12.5px] whitespace-nowrap text-bone" title={p.lastHitAt ?? ""}>{dayOrTime(p.lastHitAt)}</span>
+        : isU ? <span className="text-right text-body whitespace-nowrap text-bone" title={p.lastHitAt ?? ""}>{dayOrTime(p.lastHitAt)}</span>
         : st === "armed" || st === "heard" ? (
           <span className="flex items-center justify-end gap-1.5 whitespace-nowrap" title="Armed: planted and listening">
             <LineForm kind="live" signal="listen" seed={p.tag} className="w-4 text-bone" />
-            {talking ? <span className="text-[12.5px] text-bone" title={p.lastHitAt ?? ""}>{dayOrTime(p.lastHitAt)}</span> : <span className="text-[11px] text-smoke">Armed · silent {dur(Date.now() - isoMs(p.plantedAt))}</span>}
+            {talking ? <span className="text-body text-bone" title={p.lastHitAt ?? ""}>{dayOrTime(p.lastHitAt)}</span> : <span className="text-label text-smoke">Armed · silent {dur(Date.now() - isoMs(p.plantedAt))}</span>}
           </span>
         ) : (
-          <span className="flex items-center justify-end gap-1.5 text-[11px] whitespace-nowrap text-ash" title={`Retired ${dayOrTime(p.retiredAt)}: out of the active list. New hits are still recorded.`}>
+          <span className="flex items-center justify-end gap-1.5 text-label whitespace-nowrap text-ash" title={`Retired ${dayOrTime(p.retiredAt)}: out of the active list. New hits are still recorded.`}>
             <LineForm kind="off" className="w-4" />
-            {talking ? <>{st === "late" ? "Late hit " : "Retired · last hit "}<span className={cn("text-[12.5px]", st === "late" ? "text-bone" : "text-ash")}>{dayOrTime(p.lastHitAt)}</span></> : <>Retired {dayOrTime(p.retiredAt)}</>}
+            {talking ? <>{st === "late" ? "Late hit " : "Retired · last hit "}<span className={cn("text-body", st === "late" ? "text-bone" : "text-ash")}>{dayOrTime(p.lastHitAt)}</span></> : <>Retired {dayOrTime(p.retiredAt)}</>}
           </span>
         )}
-      <span className="col-span-2 col-start-2 flex min-w-0 items-center gap-2 text-[12.5px] text-smoke">
+      <span className="col-span-2 col-start-2 flex min-w-0 items-center gap-2 text-body text-smoke">
         {!isU && st !== "unplanted" && p.technique !== "callback" && <TechniqueMark technique={p.technique} />}
         {!isU && p.plantedBy === "claude" && <Chip grey>Claude</Chip>}
         <span className="truncate">{isU ? "Hits that carry no tag" : st === "unplanted" ? "A request used this tag; nobody planted it" : p.target || "No target noted"}</span>
       </span>
       {talking ? (
-        <span className="col-start-2 flex min-w-0 flex-wrap gap-x-3 gap-y-1 text-[11px]">
+        <span className="col-start-2 flex min-w-0 flex-wrap gap-x-3 gap-y-1 text-label">
           {!!unread && <Chip>{unread} new</Chip>}
           {st === "late" && <Chip grey>late hit · retired {dayOrTime(p.retiredAt!)}</Chip>}
           <CountChips c={p} />
         </span>
-      ) : <span className="col-span-2 col-start-2 truncate text-[11px] text-ash">{quietLine(p as Probe, s.status?.lastClear?.at)}</span>}
+      ) : <span className="col-span-2 col-start-2 truncate text-label text-ash">{quietLine(p as Probe, s.status?.lastClear?.at)}</span>}
       {talking && <Timeline s={s} k={k} start={isU ? null : p.plantedAt ?? null} />}
       {!isU && p.httpRule && (
-        <span className={cn("col-span-2 col-start-2 flex min-w-0 items-center gap-[5px] text-[11px]", s.status?.edge?.state === "running" ? "text-smoke" : "text-ash")} title={`HTTP rule v${p.httpRule.version}: ${p.httpRule.line}`}>
+        <span className={cn("col-span-2 col-start-2 flex min-w-0 items-center gap-[5px] text-label", s.status?.edge?.state === "running" ? "text-smoke" : "text-ash")} title={`HTTP rule v${p.httpRule.version}: ${p.httpRule.line}`}>
           <Redo2 className="size-3 flex-none text-ash" strokeWidth={1.5} />
           <span className="truncate">{s.status?.edge?.state === "running" ? `Answers ${p.httpRule.scope} with ${p.httpRule.line}` : `Rule v${p.httpRule.version} saved, not served yet: ${p.httpRule.line}`}</span>
         </span>
@@ -194,21 +194,21 @@ export function ProbeList() {
   return (
     <section aria-label="Probes" className="flex min-h-0 flex-col border-r border-rule max-[820px]:max-h-[48vh] max-[820px]:border-r-0">
       <div className="flex h-[42px] flex-none items-center gap-2 border-b border-rule pr-3 pl-5">
-        <h2 className="text-[13.5px] font-[650]" title="Latest activity first">Probes</h2><span className="text-[12.5px] text-smoke">{active.length}</span>
+        <h2 className="text-title font-[650]" title="Latest activity first">Probes</h2><span className="text-body text-smoke">{active.length}</span>
         <label className="ml-auto flex h-7 w-[min(190px,50%)] items-center gap-1.5 rounded-[3px] border border-rule bg-soot px-2 focus-within:border-smoke">
           <Search className="size-3.5 flex-none text-ash" strokeWidth={1.5} aria-hidden="true" />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Filter probes" aria-label="Filter probes by tag, target or note"
-            className="min-w-0 flex-1 bg-transparent text-[12.5px] text-bone outline-none placeholder:text-ash" onKeyDown={(e) => e.key === "Escape" && setQ("")} />
+            className="min-w-0 flex-1 bg-transparent text-body text-bone outline-none placeholder:text-ash" onKeyDown={(e) => e.key === "Escape" && setQ("")} />
           {q && <button type="button" aria-label="Clear filter" className="text-ash hover:text-bone" onClick={() => setQ("")}><X className="size-3.5" /></button>}
         </label>
       </div>
       <div ref={listRef} role="listbox" aria-label="Probes" onKeyDown={onListKey} className="flex min-h-0 flex-1 flex-col overflow-auto">
         {needle && !active.length && !retired.length && (
-          <p className="px-5 py-[18px] text-[12.5px] text-smoke">No probe matches “{q.trim()}”. <button type="button" className="underline decoration-ash underline-offset-2 hover:decoration-bone" onClick={() => setQ("")}>Clear the filter</button></p>
+          <p className="px-5 py-[18px] text-body text-smoke">No probe matches “{q.trim()}”. <button type="button" className="underline decoration-ash underline-offset-2 hover:decoration-bone" onClick={() => setQ("")}>Clear the filter</button></p>
         )}
         {s.loaded && !needle && !active.length && !s.untagged?.hits && !retired.length && (
-          <div className="max-w-[46ch] px-5 py-[22px] text-[12.5px] leading-[19px] text-smoke">
-            <b className="mb-1 block text-[13.5px] font-semibold text-bone">No probes yet.</b>
+          <div className="max-w-[46ch] px-5 py-[22px] text-body leading-[1.1875rem] text-smoke">
+            <b className="mb-1 block text-title font-semibold text-bone">No probes yet.</b>
             Plant one above: a tag (e.g. avatar) and where you'll put it. Then copy a payload into the target. Hits show up here the moment something calls back.
           </div>
         )}
@@ -216,7 +216,7 @@ export function ProbeList() {
         <div className="flex-1" />
         {!!retired.length && (
           <div className="flex items-center border-t border-rule-2 pr-3">
-            <button type="button" aria-expanded={showRetired || !!needle} onClick={() => setShowRetired(!showRetired)} className="flex flex-1 items-center gap-1.5 px-5 py-2 text-left text-[12.5px] text-smoke hover:text-bone max-[820px]:min-h-11">
+            <button type="button" aria-expanded={showRetired || !!needle} onClick={() => setShowRetired(!showRetired)} className="flex flex-1 items-center gap-1.5 px-5 py-2 text-left text-body text-smoke hover:text-bone max-[820px]:min-h-11">
               {showRetired || needle ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}Retired ({retired.length}){retiredNew > 0 && <span className="text-amber"> · {retiredNew} new</span>}
             </button>
             {(showRetired || needle) && !needle && <Button variant="ghost" size="sm" className="text-smoke" onClick={() => setDelAll(true)}><Trash2 />Delete all…</Button>}
@@ -227,7 +227,7 @@ export function ProbeList() {
         {!!s.untagged?.hits && (
           <>
             <Row s={s} p={s.untagged} k={UNTAGGED} />
-            <p className="pr-4 pb-2.5 pl-10 text-[11px] leading-[15px] text-ash">A hit that names a tag nobody planted gets its own row, marked “not planted”.</p>
+            <p className="pr-4 pb-2.5 pl-10 text-label leading-[0.9375rem] text-ash">A hit that names a tag nobody planted gets its own row, marked “not planted”.</p>
           </>
         )}
       </div>

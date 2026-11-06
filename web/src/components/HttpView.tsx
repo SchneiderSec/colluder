@@ -61,7 +61,7 @@ function Host({ value, tag, domain }: { value: string; tag: string | null; domai
   );
 }
 const Pill = ({ children, strong, title }: { children: ReactNode; strong?: boolean; title?: string }) => (
-  <span title={title} className={cn("ml-2 inline-block rounded-[9px] border border-rule px-1.5 align-[1px] font-sans text-[11px] leading-[15px] whitespace-nowrap", strong ? "text-bone" : "text-smoke")}>{children}</span>
+  <span title={title} className={cn("ml-2 inline-block rounded-[9px] border border-rule px-1.5 align-[1px] font-sans text-label leading-[0.9375rem] whitespace-nowrap", strong ? "text-bone" : "text-smoke")}>{children}</span>
 );
 // decoded text with control characters drawn as escapes in Ash, so nothing invisible slips by
 const Visible = ({ text }: { text: string }) => <>{showControls(text).map(([k, t], n) => (k === "ctl" ? <span key={n} className="text-ash">{t}</span> : t))}</>;
@@ -69,7 +69,7 @@ const Visible = ({ text }: { text: string }) => <>{showControls(text).map(([k, t
 function Exfil({ value }: { value: string }) {
   const d = decodeExfil(value);
   if (!d) return null;
-  return <span className="block font-sans text-[11px] text-ash">decodes as {d.kind} to <span className="font-mono text-[12.5px] text-bone"><Visible text={d.text} /></span></span>;
+  return <span className="block font-sans text-label text-ash">decodes as {d.kind} to <span className="font-mono text-body text-bone"><Visible text={d.text} /></span></span>;
 }
 const Tag = ({ children }: { children: ReactNode }) => <em className="bg-mark px-px text-bone not-italic">{children}</em>;
 
@@ -101,13 +101,13 @@ const CLAMP = 600;
 function Clamp({ text, children }: { text: string; children: (t: string) => ReactNode }) {
   const [all, setAll] = useState(false);
   if (text.length <= CLAMP || all) return <>{children(text)}</>;
-  return <>{children(text.slice(0, CLAMP))}<button type="button" onClick={() => setAll(true)} className="ml-1 cursor-pointer font-sans text-[11px] text-smoke underline decoration-ash underline-offset-2 hover:text-bone">+{(text.length - CLAMP).toLocaleString("en-US")} chars</button></>;
+  return <>{children(text.slice(0, CLAMP))}<button type="button" onClick={() => setAll(true)} className="ml-1 cursor-pointer font-sans text-label text-smoke underline decoration-ash underline-offset-2 hover:text-bone">+{(text.length - CLAMP).toLocaleString("en-US")} chars</button></>;
 }
 
 function Section({ title, meta, children }: { title?: string; meta?: ReactNode; children: ReactNode }) {
   return (
     <section className="border-t border-rule-2 pt-2 pb-3 first:border-t-0 first:pt-0">
-      {title && <h4 className="mb-1.5 flex items-baseline gap-2 font-sans text-[11px] font-[650] tracking-[.03em] text-smoke">{title}{meta && <span className="font-normal tracking-normal text-ash">{meta}</span>}</h4>}
+      {title && <h4 className="mb-1.5 flex items-baseline gap-2 font-sans text-label font-[650] tracking-[.03em] text-smoke">{title}{meta && <span className="font-normal tracking-normal text-ash">{meta}</span>}</h4>}
       {children}
     </section>
   );
@@ -170,14 +170,14 @@ export function HttpParsed({ p, tag, domain, capture, clientHttp2 }: { p: Parsed
   const order = p.kind === "response" ? "as sent" : capture === "edge" ? "in the order received" : "as logged by interactsh: sorted, names normalised";
   const bodyBytes = new TextEncoder().encode(p.body).length;
   return (
-    <div className="font-mono text-[12.5px] leading-[18px] text-bone">
+    <div className="font-mono text-body leading-[1.125rem] text-bone">
       <Section>
         {p.kind === "request" ? (
           <div className="[overflow-wrap:anywhere]"><b className="mr-[1ch] font-[650]">{p.method}</b><Target target={p.target!} tag={tag} short={q.length > 0} /><span className="ml-[1ch] text-ash">{p.version}</span></div>
         ) : (
           <>
             <div><span className="mr-[1ch] text-ash">{p.version}</span><b className={cn("mr-[1ch] font-[650]", statusInk(p.status!))}>{p.status}</b>{p.reason}</div>
-            {clientHttp2 && capture === "engine" && <p className="mt-1 font-sans text-[11px] text-ash">interactsh's rendering of its reply; the client spoke HTTP/2.</p>}
+            {clientHttp2 && capture === "engine" && <p className="mt-1 font-sans text-label text-ash">interactsh's rendering of its reply; the client spoke HTTP/2.</p>}
           </>
         )}
       </Section>

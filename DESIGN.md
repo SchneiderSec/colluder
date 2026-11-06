@@ -345,8 +345,8 @@ A warm, low-chroma brown-black ground with bone ink. The only saturated colours 
 - **Accent Hover** (#30271f): hover fill for secondary, quiet and ghost buttons.
 - **Rule** (#3a3129): structural borders between regions, field strokes, scrollbar thumb.
 - **Rule 2** (#2a231d): row dividers inside lists and tables, raw-pane frames, section rules inside a parsed request.
-- **Smoke** (#a99f90): secondary text, labels, column headers.
-- **Ash** (#8f8576): tertiary text: hints, footnotes, placeholders, sub-captions.
+- **Smoke** (#b3a99a; was #a99f90): secondary text, labels, column headers.
+- **Ash** (#9a8f80; was #8f8576): tertiary text: hints, footnotes, placeholders, sub-captions.
 - **Fur** (#9a9084): the mark's tile and the raccoon tail's body. Not a text colour.
 
 ### Status
@@ -448,7 +448,7 @@ Restrained, mostly outlined, with exactly one bright button per working region.
 - **Ghost:** no border, Smoke text, turning Bone with an Accent Hover fill on hover (copy icons, Copy both, Got it).
 - **Destructive:** transparent, Alarm Ink text, a dark-red border, Alarm Ground on hover.
 - **Link:** Bone text with an Ash underline that turns Bone on hover.
-- **Focus:** global 1.5px Bone outline, 2px offset. **Disabled:** 45% opacity.
+- **Focus:** global 1.5px Bone outline, 2px offset. **Disabled:** 60% opacity; a disabled primary takes the secondary look.
 
 ### Chips
 - **Type chip:** an 8px ink square plus the uppercase protocol word in the same ink, 650 with 0.03em tracking (DNS A, DNS ×4, HTTP 3).
@@ -613,3 +613,11 @@ A Bone pill (Alarm Ink when something failed) that rises 44px above the bottom e
 - **The Line Grammar Rule, amended.** A live line moves: a dim wire (38%) with a short pulse of signal travelling left to right every 1.8s (ease-in-out). Motion means live and nothing else on screen moves continuously. Dashed (starting or reconnecting) and struck (down) stay still. A fourth form, **off**, is a still line at 45% for things that are off by choice: retired probes, Discord alerts turned off.
 - **Each live thing has its own signal** (amended the same day, after "they all look uniform"): the **engine** is a heartbeat trace with a beat running through it, then a rest; the **stream** carries two small packets along the wire; the **edge** sends a pulse out and back (request, answer); an **armed probe** listens: a slower, dimmer pulse coming in from the right, each probe on its own phase (from its tag), so the list shimmers instead of marching in step; **alerts** send one pulse, then a long rest. Lines of the same kind without a seed share one phase. With reduced motion the pulse is removed and the wire is solid, beside the same word.
 - Where it appears: the status bar (Engine capturing, Stream connected, Edge answering), every armed probe row (silent ones and ones with hits, before the last-hit time), the probe header ("Armed", or "Retired" with the off line), and Discord alerts in the list footer and Settings.
+
+## Type and contrast pass (2026-11-06, audit)
+- **Smoke is #b3a99a and Ash is #9a8f80** (were #a99f90 and #8f8576). Ash was 4.31:1 on a selected row (Soot 2) and only 4.7–5.1:1 elsewhere; now it is at least 4.9:1 on every surface (5.9 on Soot) and Smoke at least 6.3:1. They moved together, so the step between them stays the same (1.37 vs 1.39).
+- **The four sizes are theme tokens in rem**, times `--type-scale`: `text-label` 11px, `text-body` 12.5px, `text-title` 13.5px, `text-headline` 17px at the default. A browser's default font size carries through; no component uses a px font size. (`lib/utils.ts` teaches tailwind-merge that these are sizes, not colours.)
+- **The label size defaults to weight 450 with 0.01em tracking**, because 11px at 400 is thin light-on-dark in condensed Archivo. An explicit weight or tracking class on the element still wins (chips stay 650).
+- **Text size setting:** Settings → Display → Compact | Comfortable. Comfortable multiplies the four sizes by 1.08 (12.5 → 13.5), per browser (`colluder.textSize`). The status bar drops the payload host below 1640px and the last-hit clock below 1520px in Comfortable mode so nothing overlaps.
+- **Disabled buttons** are 60% opacity (was 45%). A disabled primary drops to the secondary look (Soot 2, Smoke text, Rule border) instead of fading the bone fill, which read as broken at 2.9:1.
+- The hover glow on the primary button is the `--bone-glow` token.

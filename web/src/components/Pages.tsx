@@ -6,11 +6,13 @@ import { plural } from "@/lib/format";
 import { copy, toast } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { applyTypeScale, readTypeScale, type TypeScale } from "@/lib/typeScale";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import type { Status } from "@/lib/types";
 
 const Page = ({ children }: { children: ReactNode }) => <div className="min-h-0 overflow-auto px-8 py-7 max-[820px]:px-4"><div className="max-w-[800px]">{children}</div></div>;
-const H = ({ children }: { children: ReactNode }) => <h2 className="mt-6 mb-2 text-[13.5px] font-[650]">{children}</h2>;
+const H = ({ children }: { children: ReactNode }) => <h2 className="mt-6 mb-2 text-title font-[650]">{children}</h2>;
 
 function edgeRows(e: Status["edge"]): [string, ReactNode][] {
   if (!e || e.state === "absent") return [["State", <span className="text-smoke">Not installed yet (before the cutover). HTTP rules are saved, but interactsh still answers the internet. To go live: <code className="font-mono">sudo ~/work/tools/oob-dashboard/deploy/cutover-phase2.sh</code> (see PHASE2.md).</span>]];
@@ -25,6 +27,7 @@ function edgeRows(e: Status["edge"]): [string, ReactNode][] {
 export function Settings() {
   const s = useApp((x) => x);
   const [confirm, setConfirm] = useState(false);
+  const [scale, setScale] = useState<TypeScale>(readTypeScale);
   const st = s.status;
   const e = st?.engine;
   const rows: [string, ReactNode][] = e ? [
@@ -40,18 +43,29 @@ export function Settings() {
   ] : [];
   return (
     <Page>
-      <h1 className="text-[17px] font-bold">Settings</h1>
+      <h1 className="text-headline font-bold">Settings</h1>
       <p className="mt-1 text-smoke">Colluder · Your insider on the wire.</p>
 
       <H>Engine</H>
-      <dl className="grid grid-cols-[200px_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-[12.5px] max-[820px]:grid-cols-1">
+      <dl className="grid grid-cols-[200px_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-body max-[820px]:grid-cols-1">
         {rows.map(([k, v]) => <div key={k} className="contents"><dt className="text-smoke">{k}</dt><dd>{v}</dd></div>)}
       </dl>
 
       <H>Edge</H>
-      <dl className="grid grid-cols-[200px_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-[12.5px] max-[820px]:grid-cols-1">
+      <dl className="grid grid-cols-[200px_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-body max-[820px]:grid-cols-1">
         {edgeRows(st?.edge).map(([k, v]) => <div key={k} className="contents"><dt className="text-smoke">{k}</dt><dd>{v}</dd></div>)}
       </dl>
+
+      <H>Display</H>
+      <div className="flex flex-wrap items-center gap-2.5 border-t border-rule py-3 text-smoke">
+        Text size
+        <ToggleGroup type="single" value={scale} onValueChange={(v) => { if (!v) return; setScale(v as TypeScale); applyTypeScale(v as TypeScale); }} aria-label="Text size" className="overflow-hidden rounded-[3px] border border-rule">
+          {([["compact", "Compact"], ["comfortable", "Comfortable"]] as [TypeScale, string][]).map(([v, l]) => (
+            <ToggleGroupItem key={v} value={v} className="h-7 rounded-none border-l border-rule px-3 text-body text-smoke first:border-l-0 data-[state=on]:bg-soot-2 data-[state=on]:font-semibold data-[state=on]:text-bone">{l}</ToggleGroupItem>
+          ))}
+        </ToggleGroup>
+        <span className="text-ash">Comfortable sets everything one step larger (12.5px text becomes 13.5px). This browser only.</span>
+      </div>
 
       <H>Alerts</H>
       <div className="flex items-center gap-2.5 border-t border-rule py-3 text-smoke">
@@ -66,7 +80,7 @@ export function Settings() {
       </div>
 
       <H>Data</H>
-      <p className="text-[12.5px] text-smoke">{plural(s.list.length, "interaction")} shown. Clearing hides them without deleting anything.</p>
+      <p className="text-body text-smoke">{plural(s.list.length, "interaction")} shown. Clearing hides them without deleting anything.</p>
       <div className="mt-2.5 flex gap-2">
         <Button variant="destructive" disabled={!s.list.length} onClick={() => setConfirm(true)}><Trash2 />Clear all hits…</Button>
         {st?.lastClear && (
@@ -89,10 +103,10 @@ export function Settings() {
       </AlertDialog>
 
       <H>Keyboard</H>
-      <ul className="space-y-1.5 text-[12.5px] text-smoke">
+      <ul className="space-y-1.5 text-body text-smoke">
         {[[["p", "/"], "plant a probe"], [["j", "k"], "next / previous hit"], [["Esc"], "leave a field"]].map(([keys, what]) => (
           <li key={what as string} className="flex items-center gap-1.5">
-            {(keys as string[]).map((k, i) => <span key={k} className="contents">{i > 0 && <span>or</span>}<kbd className="rounded-[3px] border border-rule bg-soot-2 px-1.5 font-mono text-[11px] text-bone">{k}</kbd></span>)}
+            {(keys as string[]).map((k, i) => <span key={k} className="contents">{i > 0 && <span>or</span>}<kbd className="rounded-[3px] border border-rule bg-soot-2 px-1.5 font-mono text-label text-bone">{k}</kbd></span>)}
             <span className="ml-1">{what as string}</span>
           </li>
         ))}

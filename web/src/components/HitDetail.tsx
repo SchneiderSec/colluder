@@ -53,11 +53,11 @@ function RawPane({ title, sub, text, exact, http, p, tag, domain, capture, clien
   const lines = shown ? shown.split(/\r?\n/) : [];
   return (
     <div className="@container/pane relative flex min-h-[220px] min-w-0 flex-col rounded-[3px] border border-rule-2 bg-well max-[820px]:min-h-[200px]">
-      <div className="flex h-8 flex-none items-center gap-2 border-b border-rule-2 pr-1.5 pl-3 text-[12.5px] font-[650]">
-        {title}<span className="truncate text-[11px] font-normal text-ash">{sub}</span>
+      <div className="flex h-8 flex-none items-center gap-2 border-b border-rule-2 pr-1.5 pl-3 text-body font-[650]">
+        {title}<span className="truncate text-label font-normal text-ash">{sub}</span>
         <Button variant="ghost" size="sm" className="ml-auto" onClick={() => copy(exact, title.toLowerCase())}><Copy />Copy</Button>
       </div>
-      <div ref={box} tabIndex={0} className={cn("raw min-h-0 flex-1 overflow-auto px-3 font-mono text-[12.5px] leading-[18px] text-bone [tab-size:4]", p ? "py-2.5" : "py-2 whitespace-pre in-[.wrap]:break-all in-[.wrap]:whitespace-pre-wrap")}>
+      <div ref={box} tabIndex={0} className={cn("raw min-h-0 flex-1 overflow-auto px-3 font-mono text-body leading-[1.125rem] text-bone [tab-size:4]", p ? "py-2.5" : "py-2 whitespace-pre in-[.wrap]:break-all in-[.wrap]:whitespace-pre-wrap")}>
         {!shown && <span className="font-sans text-ash">Empty</span>}
         {p ? <HttpParsed p={p} tag={tag} domain={domain} capture={capture} clientHttp2={clientHttp2} /> : lines.map((ln, idx) => {
           const head = inHead;
@@ -72,7 +72,7 @@ function RawPane({ title, sub, text, exact, http, p, tag, domain, capture, clien
       </div>
       {below > 0 && (
         <button type="button" onClick={() => box.current?.scrollBy({ top: box.current.clientHeight * 0.8, behavior: "smooth" })}
-          className="absolute right-2 bottom-2 flex items-center gap-1 rounded-[9px] border border-rule bg-soot-2 px-2 py-0.5 text-[11px] text-smoke shadow-[0_-8px_16px_8px_var(--well)] hover:text-bone">
+          className="absolute right-2 bottom-2 flex items-center gap-1 rounded-[9px] border border-rule bg-soot-2 px-2 py-0.5 text-label text-smoke shadow-[0_-8px_16px_8px_var(--well)] hover:text-bone">
           <ArrowDown className="size-3" />{below} more {below === 1 ? "line" : "lines"}
         </button>
       )}
@@ -81,7 +81,7 @@ function RawPane({ title, sub, text, exact, http, p, tag, domain, capture, clien
 }
 
 
-const segCls = "h-6 rounded-none px-2.5 text-[11px] text-smoke data-[state=on]:bg-soot-2 data-[state=on]:font-semibold data-[state=on]:text-bone";
+const segCls = "h-6 rounded-none px-2.5 text-label text-smoke data-[state=on]:bg-soot-2 data-[state=on]:font-semibold data-[state=on]:text-bone";
 
 export function HitDetail({ id }: { id: number }) {
   const s = useApp((x) => x);
@@ -137,7 +137,7 @@ export function HitDetail({ id }: { id: number }) {
   return (
     <article aria-label={`Hit ${d.id}`} className={cn(box, wrap && "wrap")}>
       <div className="flex min-h-[30px] flex-none flex-wrap items-center gap-3">
-        <span className="text-[17px] font-bold tracking-[.01em]">#{d.id}</span>
+        <span className="text-headline font-bold tracking-[.01em]">#{d.id}</span>
         <TypeChip proto={d.protocol} />
         {d.id > open && !chatter && <Chip>new</Chip>}
         <span className="text-smoke">Received <span className="text-bone">{d.timestamp.replace("T", " ").replace(/(\.\d{3})\d*Z$/, "$1 UTC")}</span></span>
@@ -145,8 +145,8 @@ export function HitDetail({ id }: { id: number }) {
         <Button className="ml-auto" onClick={() => copy(evidence(d, e, probe, s.status?.payload?.domain), "evidence block")}><FileText />Copy as evidence</Button>
       </div>
 
-      <div className="flex flex-none flex-wrap items-center gap-x-[22px] gap-y-1 text-[12.5px] whitespace-nowrap max-[820px]:whitespace-normal">
-        <span className="flex items-center gap-2"><span className="text-[11px] font-[650] tracking-[.04em] text-smoke">{d.protocol === "dns" ? "Resolver" : "Source"}</span><span className={cn("font-mono text-[12.5px]", !fromBox && !mine && "font-[550] text-bone")}>{d.remoteAddress}</span>{fromBox && <span title="This is the OOB box itself: a self-test, not a target."><Chip grey>this box</Chip></span>}
+      <div className="flex flex-none flex-wrap items-center gap-x-[22px] gap-y-1 text-body whitespace-nowrap max-[820px]:whitespace-normal">
+        <span className="flex items-center gap-2"><span className="text-label font-[650] tracking-[.04em] text-smoke">{d.protocol === "dns" ? "Resolver" : "Source"}</span><span className={cn("font-mono text-body", !fromBox && !mine && "font-[550] text-bone")}>{d.remoteAddress}</span>{fromBox && <span title="This is the OOB box itself: a self-test, not a target."><Chip grey>this box</Chip></span>}
           {d.protocol !== "dns" && !fromBox && (
             <Button variant="quiet" size="sm" title={mine ? "Hits from this address count as targets again" : "Your browser or proxy: its hits become self-tests (left out of reach and the report's first request)"}
               onClick={() => setMine(d.remoteAddress, !mine).then(() => toast(mine ? `${d.remoteAddress} is no longer marked as yours.` : `${d.remoteAddress} is marked as yours: its hits are self-tests now.`), (x) => toast((x as Error).message, true))}>
@@ -155,58 +155,58 @@ export function HitDetail({ id }: { id: number }) {
           )}</span>
         {web && forwardedFor(d.rawRequest).map(([h, v]) => (
           <span key={h} className="flex min-w-0 items-center gap-2" title={`From the ${h} header. The sender sets it, so it may be spoofed.`}>
-            <span className="text-[11px] font-[650] tracking-[.04em] text-smoke">Forwarded for</span><span className="truncate font-mono text-[12.5px] text-bone">{v}</span>
+            <span className="text-label font-[650] tracking-[.04em] text-smoke">Forwarded for</span><span className="truncate font-mono text-body text-bone">{v}</span>
           </span>
         ))}
-        <span className="flex min-w-0 items-center gap-2"><span className="text-[11px] font-[650] tracking-[.04em] text-smoke">rDNS</span>{e.rdnsAt && e.rdns ? <span className="truncate font-mono text-[12.5px]">{e.rdns}</span> : <span className="text-[12.5px] text-ash">{e.rdnsAt ? "no PTR record" : "looking up…"}</span>}</span>
+        <span className="flex min-w-0 items-center gap-2"><span className="text-label font-[650] tracking-[.04em] text-smoke">rDNS</span>{e.rdnsAt && e.rdns ? <span className="truncate font-mono text-body">{e.rdns}</span> : <span className="text-body text-ash">{e.rdnsAt ? "no PTR record" : "looking up…"}</span>}</span>
         <span className="flex flex-wrap items-center gap-2">
-          <span className="text-[11px] font-[650] tracking-[.04em] text-smoke">ASN / owner</span>
-          {e.asn ? <span className="font-mono text-[12.5px]">{[e.asn, e.asnName, e.asnCc, e.asnPrefix].filter(Boolean).join(" · ")}</span> : (
+          <span className="text-label font-[650] tracking-[.04em] text-smoke">ASN / owner</span>
+          {e.asn ? <span className="font-mono text-body">{[e.asn, e.asnName, e.asnCc, e.asnPrefix].filter(Boolean).join(" · ")}</span> : (
             <>
               <Button variant="quiet" size="sm" disabled={asnBusy} onClick={() => { setAsnBusy(true); lookupAsn(d.remoteAddress).catch((x) => toast((x as Error).message, true)).finally(() => setAsnBusy(false)); }}>
                 <Search />{asnBusy ? "Looking up…" : "Look up"}
               </Button>
-              <span className="text-[11px] text-ash max-[820px]:basis-full">Sends this IP to a third-party service (Team Cymru).</span>
+              <span className="text-label text-ash max-[820px]:basis-full">Sends this IP to a third-party service (Team Cymru).</span>
             </>
           )}
         </span>
       </div>
       {chatter && (
-        <p className="flex-none text-[12.5px] text-smoke">
+        <p className="flex-none text-body text-smoke">
           <b className="font-semibold text-bone">Likely resolver chatter.</b> A lookup of the bare payload id within 10 s of a hit on <span className="font-mono text-bone">{chatter}</span>: a resolver walking the name label by label (QNAME minimisation), or a client resolving the HTTPS host. Kept, but not counted as new.
         </p>
       )}
-      {d.protocol === "dns" && <p className="flex-none text-[12.5px] text-smoke">DNS hits come from the resolver that asked on the target's behalf. It is often a public or ISP resolver, not the target itself.</p>}
+      {d.protocol === "dns" && <p className="flex-none text-body text-smoke">DNS hits come from the resolver that asked on the target's behalf. It is often a public or ISP resolver, not the target itself.</p>}
       {step && (
-        <p className="flex-none text-[12.5px] text-smoke">
+        <p className="flex-none text-body text-smoke">
           <b className="font-semibold text-bone">Resolver step, not data.</b> The same resolver asked for <span className="font-mono text-bone">{step}</span> within seconds. Resolvers that minimise queries ask for the name one label at a time, so the labels here are part of that longer name.
         </p>
       )}
       {stage && (
-        <p className="flex-none text-[12.5px] text-smoke">What the edge did: <span className="text-bone">{stage[0].toUpperCase() + stage.slice(1)}.</span>
+        <p className="flex-none text-body text-smoke">What the edge did: <span className="text-bone">{stage[0].toUpperCase() + stage.slice(1)}.</span>
           {d.answer?.to && <span className="text-ash"> Whether the target followed that last redirect shows in its own response.{(d.answer.hop ?? 0) > 1 ? " Arriving at this hop proves it follows redirects." : ""}</span>}
         </p>
       )}
       {tlsOnly && (
-        <p className="flex-none text-[12.5px] text-smoke">
+        <p className="flex-none text-body text-smoke">
           <b className="font-semibold text-bone">TLS handshake only.</b> The client asked for <span className="font-mono text-bone">{tlsOnly.sni}</span>{tlsOnly.alpn.length ? <> (ALPN {tlsOnly.alpn.join(", ")})</> : null} and closed before sending a request{tlsOnly.error ? <> ({tlsOnly.error})</> : null}. Most often it rejected the certificate, which covers one label under the domain. It proves the target connected; for the request itself, use the path form <span className="font-mono text-bone">https://&lt;id&gt;.{s.status?.payload?.domain ?? "domain"}/{d.tag ?? "tag"}/</span>. The request pane is empty; the ClientHello bytes are in the download.
         </p>
       )}
       {a?.malformed && (
-        <p className="flex-none text-[12.5px] text-smoke">
+        <p className="flex-none text-body text-smoke">
           <b className="font-semibold text-bone">Malformed request ({a.malformed}).</b> A strict HTTP parser would refuse it (a raw space or newline in the target is what an XXE file read looks like), so the edge recorded it exactly as it came and answered from the probe's rule.
         </p>
       )}
       {(d.binary || a?.droppedBytes || tlsOnly) && (
-        <p className="flex flex-none flex-wrap items-center gap-x-2 text-[12.5px] text-smoke">
+        <p className="flex flex-none flex-wrap items-center gap-x-2 text-body text-smoke">
           {d.binary && !tlsOnly && <span><b className="font-semibold text-bone">Not UTF-8.</b> The text below is a UTF-8 view of {d.rawLength?.toLocaleString("en-US")} bytes, so its copies aren't exact; the SHA-256 is of the bytes.</span>}
           {!!a?.droppedBytes && <span><b className="font-semibold text-bone">Body truncated.</b> The edge kept the first 1 MB and dropped {a.droppedBytes.toLocaleString("en-US")} bytes; copies and curl carry only what was kept.</span>}
           {(d.binary || tlsOnly) && <a className="text-bone underline decoration-ash underline-offset-2 hover:decoration-bone" href={`/api/interactions/${d.id}/raw`} download>Download the exact bytes</a>}
         </p>
       )}
-      {kit && <p className="flex-none text-[12.5px] text-smoke">Payload: <span className="text-bone">{SECTION_LABEL[kit.section]}, {kit.name}</span> <span className="font-mono text-ash">({kit.code})</span></p>}
+      {kit && <p className="flex-none text-body text-smoke">Payload: <span className="text-bone">{SECTION_LABEL[kit.section]}, {kit.name}</span> <span className="font-mono text-ash">({kit.code})</span></p>}
       {!step && !!d.extraLabels?.length && !(kit && d.extraLabels.length === 1) && (
-        <p className="flex-none text-[12.5px] text-smoke">
+        <p className="flex-none text-body text-smoke">
           Extra labels before the tag: <span className="font-mono text-bone">{d.extraLabels.join(".")}</span>
           {decodeLabels(d.extraLabels).map(({ label, decoded }) => (
             <span key={label}> · <span className="font-mono">{label}</span> decodes as {decoded.kind} to <span className="font-mono text-bone">{decoded.text.replace(/[\r\n\t]/g, (c) => (c === "\n" ? "\\n" : c === "\t" ? "\\t" : "\\r"))}</span></span>
@@ -228,8 +228,8 @@ export function HitDetail({ id }: { id: number }) {
             <ToggleGroupItem value="decoded" className={cn(segCls, "border-l border-rule")}>Decoded</ToggleGroupItem>
           </ToggleGroup>
         )}
-        {web && parsed ? <span className="mr-auto ml-2.5 text-[12.5px] text-ash">Display only; copies stay exact</span> : (
-          <label className="mr-auto ml-2.5 flex cursor-pointer items-center gap-[7px] text-[12.5px]">
+        {web && parsed ? <span className="mr-auto ml-2.5 text-body text-ash">Display only; copies stay exact</span> : (
+          <label className="mr-auto ml-2.5 flex cursor-pointer items-center gap-[7px] text-body">
             <Switch checked={wrap} onCheckedChange={(v) => { setWrap(v); save("colluder.wrap", v); }} aria-label="Wrap long lines" />
             <span className="text-smoke">Wrap long lines</span><span className="text-ash max-[1180px]:hidden">display only; copies stay exact</span>
           </label>
@@ -247,7 +247,7 @@ export function HitDetail({ id }: { id: number }) {
           text={!web && decoded ? decode(d.rawResponse, d.protocol) : d.rawResponse} exact={d.rawResponse} />
       </div>
 
-      <div aria-label="Custody record" className="flex flex-none flex-wrap items-center gap-x-4 gap-y-1 rounded-[3px] border border-rule bg-soot px-3 py-1.5 text-[11px] whitespace-nowrap max-[820px]:flex-col max-[820px]:items-start">
+      <div aria-label="Custody record" className="flex flex-none flex-wrap items-center gap-x-4 gap-y-1 rounded-[3px] border border-rule bg-soot px-3 py-1.5 text-label whitespace-nowrap max-[820px]:flex-col max-[820px]:items-start">
         <b className="font-[650]">Custody</b>
         <span title={`Captured by ${d.answer ? "Colluder's edge" : "the engine"} ${d.timestamp}`}><span className="text-smoke">{d.answer ? "Edge " : "Engine "}</span><span className="font-mono">{d.timestamp}</span></span>
         <span title={`Received by dashboard ${d.receivedAt}`}>

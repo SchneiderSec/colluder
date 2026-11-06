@@ -96,17 +96,17 @@ function errorField(msg?: string) {
   return null;
 }
 const CUTOVER = "sudo ~/work/tools/oob-dashboard/deploy/cutover-phase2.sh";
-const fld = "flex h-[30px] min-w-0 items-center gap-2 rounded-[3px] border border-rule bg-well px-2.5 font-mono text-[12.5px] text-bone transition-colors focus-within:border-smoke";
+const fld = "flex h-[30px] min-w-0 items-center gap-2 rounded-[3px] border border-rule bg-well px-2.5 font-mono text-body text-bone transition-colors focus-within:border-smoke";
 const inputCls = "min-w-0 flex-1 bg-transparent outline-none placeholder:text-ash";
-const seg = "h-[26px] rounded-none border-l border-rule px-[11px] text-[12.5px] text-smoke first:border-l-0 data-[state=on]:bg-soot-2 data-[state=on]:font-semibold data-[state=on]:text-bone";
+const seg = "h-[26px] rounded-none border-l border-rule px-[11px] text-body text-smoke first:border-l-0 data-[state=on]:bg-soot-2 data-[state=on]:font-semibold data-[state=on]:text-bone";
 
 const Row = ({ label, children, help, error }: { label: string; children: ReactNode; help?: ReactNode; error?: string | null }) => (
   <>
-    <dt className="pt-[5px] text-[12.5px] font-[550] text-smoke">{label}</dt>
+    <dt className="pt-[5px] text-body font-[550] text-smoke">{label}</dt>
     <dd className="flex min-w-0 flex-col gap-1.5">
       {children}
-      {error && <p role="alert" className="max-w-[64ch] text-[11px] leading-4 text-bad">{error}</p>}
-      {help && <p className="max-w-[64ch] text-[11px] leading-4 text-ash">{help}</p>}
+      {error && <p role="alert" className="max-w-[64ch] text-label leading-4 text-bad">{error}</p>}
+      {help && <p className="max-w-[64ch] text-label leading-4 text-ash">{help}</p>}
     </dd>
   </>
 );
@@ -202,7 +202,7 @@ export function HttpRuleTab({ p }: { p: Probe }) {
     } catch (e) { toast((e as Error).message, true); } finally { setSaving(false); }
   };
 
-  if (loadErr) return <div id="probe-panel" role="tabpanel" aria-labelledby="probe-tab-http" className="px-6 py-[18px] text-[12.5px] text-bad">Couldn't load this probe's rule: {loadErr}</div>;
+  if (loadErr) return <div id="probe-panel" role="tabpanel" aria-labelledby="probe-tab-http" className="px-6 py-[18px] text-body text-bad">Couldn't load this probe's rule: {loadErr}</div>;
   const tpl = templates(p.tag, host);
   const loop = draft.mode === "redirect" ? draft.loop ?? 0 : 0;
   const hops = loop ? loop + 1 : 1;
@@ -219,20 +219,20 @@ export function HttpRuleTab({ p }: { p: Probe }) {
     <div id="probe-panel" role="tabpanel" aria-labelledby="probe-tab-http" className="@container min-h-0 overflow-auto max-[820px]:overflow-visible">
     <div className="relative grid grid-cols-[minmax(0,1fr)_400px] content-start gap-x-7 px-6 pt-[18px] @max-[940px]:grid-cols-1 max-[820px]:px-3.5">
       {(!edge || edge.state === "absent") && (
-        <div className="col-span-full mb-4 flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-[3px] border border-caution-border bg-caution-ground px-3 py-2 text-[12.5px] leading-[18px] text-caution-ink">
+        <div className="col-span-full mb-4 flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-[3px] border border-caution-border bg-caution-ground px-3 py-2 text-body leading-[1.125rem] text-caution-ink">
           <span><b className="font-semibold">Rules aren't served yet.</b> Until you run the cutover, the internet still gets interactsh's default reply. Rules save and preview here meanwhile.</span>
           <Button variant="quiet" size="sm" className="max-w-full" onClick={() => copy(CUTOVER, "cutover command")}><Copy /><span className="truncate font-mono">{CUTOVER}</span></Button>
         </div>
       )}
       {edge && edge.state !== "absent" && !live && (
-        <p className="col-span-full mb-4 rounded-[3px] border border-alarm-border bg-alarm-ground px-3 py-2 text-[12.5px] leading-[18px] text-alarm-banner-ink">
+        <p className="col-span-full mb-4 rounded-[3px] border border-alarm-border bg-alarm-ground px-3 py-2 text-body leading-[1.125rem] text-alarm-banner-ink">
           <b className="font-semibold">The edge isn't answering.</b> Your probes get no HTTP reply and their hits aren't captured until it's back (sudo systemctl restart colluder-edge).
         </p>
       )}
       <dl onBlurCapture={onLeave} className="m-0 grid grid-cols-[96px_minmax(0,1fr)] content-start gap-x-[18px] gap-y-4 pb-4 max-[820px]:grid-cols-1 max-[820px]:gap-y-1.5">
         <Row label="Answer with" help={draft.mode === "default" ? `interactsh's standard reply: 200, CORS headers, the id reversed in the body.${live ? " Sent by Colluder's edge, so the hit records exactly what went out." : ""}` : "For HTTP and HTTPS hits on this probe. DNS lookups still get interactsh's answer."}>
           {draft.mode === "preset"
-            ? <div className="flex flex-wrap items-center gap-2"><span className="text-[12.5px] font-semibold">XXE preset</span><Button variant="ghost" size="sm" onClick={() => setMode("default")}>Use another kind of answer</Button></div>
+            ? <div className="flex flex-wrap items-center gap-2"><span className="text-body font-semibold">XXE preset</span><Button variant="ghost" size="sm" onClick={() => setMode("default")}>Use another kind of answer</Button></div>
             : <Seg label="Answer with" value={draft.mode} onChange={setMode} items={MODES} />}
         </Row>
 
@@ -242,7 +242,7 @@ export function HttpRuleTab({ p }: { p: Probe }) {
               <div className="flex flex-wrap items-center gap-2">
                 <Seg label="Redirect status" mono value={String(draft.status)} onChange={(v) => set({ status: Number(v) })} items={["301", "302", "303", "307", "308"].map((s) => [s, s])} />
                 <Select value={ODD.some(([c]) => c === String(draft.status)) ? String(draft.status) : ""} onValueChange={(v) => set({ status: Number(v) })}>
-                  <SelectTrigger aria-label="Unusual redirect status" className={cn("h-[28px] w-auto gap-1.5 rounded-[3px] border-rule bg-transparent px-2.5 font-mono text-[12.5px]", ODD.some(([c]) => c === String(draft.status)) && "bg-soot-2 font-semibold text-bone")}><SelectValue placeholder="Unusual…" /></SelectTrigger>
+                  <SelectTrigger aria-label="Unusual redirect status" className={cn("h-[28px] w-auto gap-1.5 rounded-[3px] border-rule bg-transparent px-2.5 font-mono text-body", ODD.some(([c]) => c === String(draft.status)) && "bg-soot-2 font-semibold text-bone")}><SelectValue placeholder="Unusual…" /></SelectTrigger>
                   <SelectContent>{ODD.map(([c, l]) => <SelectItem key={c} value={c}>{l}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
@@ -252,7 +252,7 @@ export function HttpRuleTab({ p }: { p: Probe }) {
                 <label className={cn(fld, "flex-1", bad("location"))}><input aria-label="Location" aria-invalid={errF === "location"} spellCheck={false} value={draft.location ?? ""} placeholder="A URL, or pick from Targets" className={cn(inputCls, "placeholder:font-sans")} onChange={(e) => set({ location: e.target.value })}
                   onBlur={(e) => { const v = e.target.value.trim(); if (/^[a-z0-9.-]+\.[a-z]{2,}(?::\d+)?(?:[/?#].*)?$/i.test(v)) set({ location: `https://${v}` }); }} /></label>
                 <Select value="" onValueChange={(v) => set({ location: v })}>
-                  <SelectTrigger aria-label="Pick a target" className="h-[30px] w-auto gap-1.5 rounded-[3px] border-rule bg-transparent px-2.5 text-[12.5px] font-[550]"><SelectValue placeholder="Targets" /></SelectTrigger>
+                  <SelectTrigger aria-label="Pick a target" className="h-[30px] w-auto gap-1.5 rounded-[3px] border-rule bg-transparent px-2.5 text-body font-[550]"><SelectValue placeholder="Targets" /></SelectTrigger>
                   <SelectContent>{TARGETS.map(([l, u]) => <SelectItem key={u} value={u}>{l}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
@@ -260,10 +260,10 @@ export function HttpRuleTab({ p }: { p: Probe }) {
             <Row label="Loop first" error={errFor("loop")} help={loop ? <>A blind SSRF that follows redirects shows up as a run of {loop + 1} hits: the first request, then <b className="font-[550] text-smoke">?hop=2</b> to <b className="font-[550] text-smoke">?hop={loop + 1}</b>. One that doesn't follow stops after the first. Each hop keeps the scheme it arrived on.{loop >= 9 && <> <b className="font-[550] text-bone">Go's HTTP client stops after 10 redirects</b>, so with {loop} hops a Go client never reaches the final Location; use 8 or fewer to test past it.</>}</> : "Bounce the client back through this probe before the final redirect, so following redirects shows up as a run of hits."}>
               <div className="flex items-center gap-2">
                 <Switch aria-label="Loop through this probe first" checked={loop > 0} onCheckedChange={(on) => { set({ loop: on ? 3 : 0 }); setHop(1); }} />
-                {loop > 0 && <><Num label="Hops" value={loop} max={20} onChange={(n) => { set({ loop: Math.max(n, 1) }); setHop(1); }} /><span className="text-[12.5px] text-smoke">hops through this probe first</span></>}
+                {loop > 0 && <><Num label="Hops" value={loop} max={20} onChange={(n) => { set({ loop: Math.max(n, 1) }); setHop(1); }} /><span className="text-body text-smoke">hops through this probe first</span></>}
               </div>
               {reached.length > 0 && (
-                <div className="text-[12.5px] text-bone"><span className="text-smoke">Seen on v{rs?.active?.version}, per client (self-tests and decoy replies left out):</span>
+                <div className="text-body text-bone"><span className="text-smoke">Seen on v{rs?.active?.version}, per client (self-tests and decoy replies left out):</span>
                   <ul className="mt-0.5 space-y-0.5">{reached.map((l) => <li key={l}>{l}.</li>)}</ul>
                 </div>
               )}
@@ -279,7 +279,7 @@ export function HttpRuleTab({ p }: { p: Probe }) {
         {draft.mode === "preset" && draft.params && (
           <>
             <Row label="Serves" help={<>Any path under the probe, by its last segment; everything else gets the default reply, which is where the file arrives (as a <span className="font-mono">kx0</span> hit).</>}>
-              <ul className="space-y-0.5 text-[12.5px] text-smoke">
+              <ul className="space-y-0.5 text-body text-smoke">
                 <li><span className="font-mono text-bone">x.dtd</span> · a DTD that reads the file and sends it back</li>
                 <li><span className="font-mono text-bone">feed.xml</span>, <span className="font-mono text-bone">sitemap.xml</span> · documents that pull the DTD, for "import from URL" features</li>
               </ul>
@@ -310,7 +310,7 @@ export function HttpRuleTab({ p }: { p: Probe }) {
           <>
             <Row label="Template" help="Fills the type and body with this probe's own payload host, so fetches it causes come back here as hits.">
               <Select value={draft.template || ""} onValueChange={(v) => set({ template: v, contentType: tpl[v].contentType, body: tpl[v].body, bodyEncoding: "text" })}>
-                <SelectTrigger aria-label="Template" className="h-[30px] w-fit min-w-[280px] gap-1.5 rounded-[3px] border-rule bg-transparent px-2.5 text-[12.5px]"><SelectValue placeholder="Start from a template" /></SelectTrigger>
+                <SelectTrigger aria-label="Template" className="h-[30px] w-fit min-w-[280px] gap-1.5 rounded-[3px] border-rule bg-transparent px-2.5 text-body"><SelectValue placeholder="Start from a template" /></SelectTrigger>
                 <SelectContent>{Object.entries(tpl).map(([k, t]) => <SelectItem key={k} value={k}>{t.label}</SelectItem>)}</SelectContent>
               </Select>
             </Row>
@@ -325,7 +325,7 @@ export function HttpRuleTab({ p }: { p: Probe }) {
         {(draft.mode === "custom" || draft.mode === "file") && (
           <Row label="Body" error={errFor("body")} help={`Up to 256 KB. ${draft.bodyEncoding === "base64" ? "Base64 is decoded before sending, for binary bodies." : "Sent as UTF-8."}`}>
             <textarea aria-label="Body" aria-invalid={errF === "body"} spellCheck={false} rows={8} value={draft.body ?? ""} onChange={(e) => set({ body: e.target.value })}
-              className={cn("min-h-[120px] w-full resize-y rounded-[3px] border border-rule bg-well", "px-2.5 py-2 font-mono text-[12.5px] leading-[18px] text-bone outline-none focus:border-smoke", bad("body"))} />
+              className={cn("min-h-[120px] w-full resize-y rounded-[3px] border border-rule bg-well", "px-2.5 py-2 font-mono text-body leading-[1.125rem] text-bone outline-none focus:border-smoke", bad("body"))} />
             <Seg label="Body encoding" value={draft.bodyEncoding ?? "text"} onChange={(v) => set({ bodyEncoding: v })} items={[["text", "Text"], ["base64", "Base64"]]} />
           </Row>
         )}
@@ -333,10 +333,10 @@ export function HttpRuleTab({ p }: { p: Probe }) {
         {draft.mode !== "default" && (
           <>
             <Row label="Delay" error={errFor("delay")} help="Hold the answer to probe timeouts, up to 60 s.">
-              <div className="flex items-center gap-2"><Num label="Delay in milliseconds" invalid={errF === "delay"} value={draft.delayMs} max={60000} w="w-[84px]" onChange={(n) => set({ delayMs: n })} /><span className="text-[12.5px] text-smoke">ms before answering</span></div>
+              <div className="flex items-center gap-2"><Num label="Delay in milliseconds" invalid={errF === "delay"} value={draft.delayMs} max={60000} w="w-[84px]" onChange={(n) => set({ delayMs: n })} /><span className="text-body text-smoke">ms before answering</span></div>
             </Row>
             <Row label="Applies to" error={errFor("schemes")} help="A scheme that's off gets the default reply.">
-              <div className="flex items-center gap-4 text-[12.5px]">
+              <div className="flex items-center gap-4 text-body">
                 {(["http", "https"] as const).map((k) => (
                   <label key={k} className="flex cursor-pointer items-center gap-[7px]">
                     <input type="checkbox" className="size-3.5 accent-bone" checked={draft.schemes[k]} onChange={(e) => set({ schemes: { ...draft.schemes, [k]: e.target.checked } })} />{k.toUpperCase()}
@@ -348,10 +348,10 @@ export function HttpRuleTab({ p }: { p: Probe }) {
             <Row label="Decoy" error={errFor("decoy")} help={draft.decoy ? <>Matching requests get interactsh's default reply at once, so a validator that fetches the URL before saving it sees nothing odd; everyone else gets the rule. The first-requests count starts again with each saved version{live ? " and if the edge restarts" : ""}.</> : "Send a harmless reply to some requests first: beats validators that fetch the URL before accepting it."}>
               <div className="flex items-center gap-2">
                 <Switch aria-label="Decoy reply" checked={!!draft.decoy} onCheckedChange={(on) => set({ decoy: on ? { first: 1, ua: "", sources: "" } : null })} />
-                {draft.decoy && <span className="text-[12.5px] text-smoke">default reply for any of these</span>}
+                {draft.decoy && <span className="text-body text-smoke">default reply for any of these</span>}
               </div>
               {draft.decoy && (
-                <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2.5 gap-y-1.5 text-[12.5px] text-smoke">
+                <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2.5 gap-y-1.5 text-body text-smoke">
                   <span>First</span>
                   <span className="flex items-center gap-2"><Num label="Decoy first requests" value={draft.decoy.first ?? 0} max={20} w="w-[52px]" onChange={(n) => set({ decoy: { ...draft.decoy, first: n } })} />requests</span>
                   <span>User-Agent has</span>
@@ -367,12 +367,12 @@ export function HttpRuleTab({ p }: { p: Probe }) {
 
       <aside className="flex min-w-0 flex-col gap-3.5 pb-4" aria-label="Preview and history">
         <div className="flex flex-col rounded-[3px] border border-rule-2 bg-well">
-          <div className="flex h-8 items-center gap-2 border-b border-rule-2 pr-1.5 pl-3 text-[12.5px] font-[650]">
+          <div className="flex h-8 items-center gap-2 border-b border-rule-2 pr-1.5 pl-3 text-body font-[650]">
             <span className="whitespace-nowrap">{live ? "Next answer" : "Answer after cutover"}</span>
             {(() => {
               const meta = `${scheme.toUpperCase()}${loop ? ` · hop ${hop}/${hops}` : ""}${draft.mode !== "default" && decoyOf(draft.decoy) ? " · past the decoy" : ""}${dirty ? " · unsaved" : ""}${preview.delayMs ? ` · after ${preview.delayMs} ms` : ""}`;
               const why = [draft.mode !== "default" && decoyOf(draft.decoy) && "what a request past the decoy gets", dirty && "includes your unsaved changes"].filter(Boolean).join("; ");
-              return <span className="truncate text-[11px] font-normal text-ash" title={why ? `${meta}: ${why}` : meta}>{meta}</span>;
+              return <span className="truncate text-label font-normal text-ash" title={why ? `${meta}: ${why}` : meta}>{meta}</span>;
             })()}
             <span className="ml-auto flex items-center gap-0.5">
               <Seg label="Preview scheme" value={scheme} onChange={setScheme} items={[["http", "HTTP"], ["https", "HTTPS"]]} />
@@ -383,26 +383,26 @@ export function HttpRuleTab({ p }: { p: Probe }) {
             </span>
           </div>
           {pending
-            ? <p className="px-3 py-2.5 text-[12.5px] text-ash">{preview.error!.replace(/ is required\.?$/, "")} needed to preview the answer.</p>
+            ? <p className="px-3 py-2.5 text-body text-ash">{preview.error!.replace(/ is required\.?$/, "")} needed to preview the answer.</p>
             : preview.error
-            ? <p className="px-3 py-2.5 text-[12.5px] text-bad">Can't answer like this yet: {preview.error}</p>
-            : <pre className="m-0 max-h-[260px] overflow-auto px-3 py-2 font-mono text-[12.5px] leading-[18px] break-all whitespace-pre-wrap text-bone">{preview.raw ?? " "}</pre>}
+            ? <p className="px-3 py-2.5 text-body text-bad">Can't answer like this yet: {preview.error}</p>
+            : <pre className="m-0 max-h-[260px] overflow-auto px-3 py-2 font-mono text-body leading-[1.125rem] break-all whitespace-pre-wrap text-bone">{preview.raw ?? " "}</pre>}
         </div>
 
         <div className="rounded-[3px] border border-rule bg-soot">
-          <div className="flex h-7 items-center gap-2 border-b border-rule-2 px-3 text-[12.5px] font-[650]">Rule history<span className="truncate text-[11px] font-normal text-ash">each hit records the version that answered it</span></div>
+          <div className="flex h-7 items-center gap-2 border-b border-rule-2 px-3 text-body font-[650]">Rule history<span className="truncate text-label font-normal text-ash">each hit records the version that answered it</span></div>
           <ol className="m-0 list-none py-1">
             {(rs?.history ?? []).map((v) => <HistoryRow key={v.version} v={v} live={live} current={v.version === rs?.active?.version} onLoad={() => { setDraft(norm(v.rule)); setHop(1); }} />)}
             {(live || !!rs?.defaultHits) && (
-              <li className="grid grid-cols-[22px_44px_minmax(0,1fr)_auto] items-baseline gap-2.5 px-3 py-[5px] text-[12.5px]">
-                <span className="text-[11px] text-ash">—</span><span className="font-semibold text-smoke">{dayOrTime(p.plantedAt)}</span><span className="truncate text-smoke">Default reply from Colluder (no rule)</span>
-                <span className="text-[11px] text-ash">answered {plural(rs?.defaultHits ?? 0, "hit")}</span>
+              <li className="grid grid-cols-[22px_44px_minmax(0,1fr)_auto] items-baseline gap-2.5 px-3 py-[5px] text-body">
+                <span className="text-label text-ash">—</span><span className="font-semibold text-smoke">{dayOrTime(p.plantedAt)}</span><span className="truncate text-smoke">Default reply from Colluder (no rule)</span>
+                <span className="text-label text-ash">answered {plural(rs?.defaultHits ?? 0, "hit")}</span>
               </li>
             )}
             {!!rs?.interactshHits && (
-              <li className="grid grid-cols-[22px_44px_minmax(0,1fr)_auto] items-baseline gap-2.5 px-3 py-[5px] text-[12.5px]">
+              <li className="grid grid-cols-[22px_44px_minmax(0,1fr)_auto] items-baseline gap-2.5 px-3 py-[5px] text-body">
                 <span /><span /><span className="truncate text-smoke">Answered by interactsh (before the edge)</span>
-                <span className="text-[11px] text-ash">{plural(rs.interactshHits, "hit")}</span>
+                <span className="text-label text-ash">{plural(rs.interactshHits, "hit")}</span>
               </li>
             )}
           </ol>
@@ -410,10 +410,10 @@ export function HttpRuleTab({ p }: { p: Probe }) {
       </aside>
 
       <div className={cn("sticky bottom-0 col-span-full flex flex-wrap items-center gap-2 border-t border-rule-2 bg-soot py-3 max-[820px]:bottom-7", !dirty && "max-[820px]:static")}>
-        {dirty && <span className="mr-1 flex items-center gap-1.5 text-[12.5px] text-smoke"><i className="inline-block size-1.5 rounded-full border-[1.5px] border-smoke" />Unsaved changes</span>}
+        {dirty && <span className="mr-1 flex items-center gap-1.5 text-body text-smoke"><i className="inline-block size-1.5 rounded-full border-[1.5px] border-smoke" />Unsaved changes</span>}
         <Button disabled={!dirty || saving || !!preview.error} onClick={save}>Save as v{nextVersion}</Button>
         <Button variant="quiet" disabled={!dirty || saving} onClick={() => { setDraft(base); setHop(1); }}>Discard</Button>
-        <span className="ml-2 text-[11px] text-ash">{live ? "Saved rules answer the next hit." : "Saved rules go live with the cutover."} Earlier hits keep the answer they got.</span>
+        <span className="ml-2 text-label text-ash">{live ? "Saved rules answer the next hit." : "Saved rules go live with the cutover."} Earlier hits keep the answer they got.</span>
       </div>
     </div>
     </div>
@@ -423,7 +423,7 @@ export function HttpRuleTab({ p }: { p: Probe }) {
 function CopyLine({ text, what }: { text: string; what: string }) {
   return (
     <div className="flex min-w-0 items-center gap-1">
-      <code className="truncate font-mono text-[12.5px] text-smoke" title={text}>{text}</code>
+      <code className="truncate font-mono text-body text-smoke" title={text}>{text}</code>
       <Button variant="ghost" size="icon-sm" aria-label={`Copy ${what}`} onClick={() => copy(text, what)}><Copy /></Button>
     </div>
   );
@@ -445,11 +445,11 @@ function HistoryRow({ v, current, live, onLoad }: { v: RuleVersion; current: boo
   const depth = r.mode === "redirect" && r.loop && v.maxHop ? ` · deepest hop ${v.maxHop}/${r.loop + 1}${(v.clients?.length ?? 0) > 1 ? ` (${v.clients!.length} clients)` : ""}` : "";
   const decoys = v.decoys ? ` · ${v.decoys} decoy` : "";
   return (
-    <li className={cn("grid grid-cols-[22px_44px_minmax(0,1fr)_auto] items-baseline gap-2.5 px-3 py-[5px] text-[12.5px]", current && "bg-soot-2")}>
-      <span className="text-[11px] text-smoke">v{v.version}</span>
+    <li className={cn("grid grid-cols-[22px_44px_minmax(0,1fr)_auto] items-baseline gap-2.5 px-3 py-[5px] text-body", current && "bg-soot-2")}>
+      <span className="text-label text-smoke">v{v.version}</span>
       <span className="font-semibold">{dayOrTime(v.createdAt)}</span>
       <button type="button" className="cursor-pointer truncate text-left text-smoke hover:text-bone" title={`Load v${v.version} into the editor`} onClick={onLoad}>{what}</button>
-      <span className="text-[11px] whitespace-nowrap text-ash">{current ? (live ? "active · " : "saved · not served yet · ") : ""}{v.savedBy === "claude" ? "by Claude · " : ""}answered {plural(v.hits ?? 0, "hit")}{decoys}{depth}</span>
+      <span className="text-label whitespace-nowrap text-ash">{current ? (live ? "active · " : "saved · not served yet · ") : ""}{v.savedBy === "claude" ? "by Claude · " : ""}answered {plural(v.hits ?? 0, "hit")}{decoys}{depth}</span>
     </li>
   );
 }

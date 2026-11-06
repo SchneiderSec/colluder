@@ -14,8 +14,8 @@
   --rule: #3a3129;
   --rule-2: #2a231d;
   --bone: #ece3d1;
-  --smoke: #a99f90;
-  --ash: #8f8576;
+  --smoke: #b3a99a;
+  --ash: #9a8f80;
   --amber: #f2b33d;
   --fur: #9a9084;
   --bad: #e8735a;
@@ -25,6 +25,7 @@
   --ink-smtp: #62b08f;
   --ink-other: #b5ab9c;
   /* hover fill for rows, the darker ground of a burst's children, the tag's highlight */
+  --bone-glow: #fff8ea;
   --hover: #211b16;
   --child: #191510;
   --mark: #3a2f22;
@@ -64,6 +65,15 @@
 }
 
 @theme inline {
+  /* The four sizes (DESIGN.md), in rem so a browser's default font size carries through, times
+     --type-scale (1, or 1.08 for "Comfortable" in Settings). The label size is thin light-on-dark at
+     400, so it defaults to 450 with a touch of tracking; an explicit font-/tracking- class still wins. */
+  --text-label: calc(0.6875rem * var(--type-scale));
+  --text-label--font-weight: 450;
+  --text-label--letter-spacing: 0.01em;
+  --text-body: calc(0.78125rem * var(--type-scale));
+  --text-title: calc(0.84375rem * var(--type-scale));
+  --text-headline: calc(1.0625rem * var(--type-scale));
   --font-sans: Archivo, system-ui, sans-serif;
   --font-mono: "Fragment Mono", ui-monospace, monospace;
   --font-brand: "Schibsted Grotesk", Archivo, sans-serif;
@@ -85,6 +95,7 @@
   --color-https: var(--ink-https);
   --color-smtp: var(--ink-smtp);
   --color-other: var(--ink-other);
+  --color-bone-glow: var(--bone-glow);
   --color-hover: var(--hover);
   --color-child: var(--child);
   --color-mark: var(--mark);
@@ -133,9 +144,11 @@
 @layer base {
   * { @apply border-border; scrollbar-color: var(--rule) transparent; scrollbar-width: thin; }
   html, body, #root { height: 100%; }
+  :root { --type-scale: 1; }
+  :root.type-comfortable { --type-scale: 1.08; }
   body {
     @apply bg-background text-foreground font-sans antialiased;
-    font-size: 12.5px;
+    font-size: var(--text-body);
     line-height: 1.4;
     font-variation-settings: "wdth" 96;
     font-variant-numeric: tabular-nums;

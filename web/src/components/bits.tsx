@@ -10,7 +10,7 @@ export const inkClass = (p: string) => INK[protoKey(p)];
 // Protocol chip: colour square + word (never colour alone)
 export function TypeChip({ proto, children, className }: { proto: string; children?: ReactNode; className?: string }) {
   return (
-    <span className={cn("inline-flex items-center gap-1.5 text-[12.5px] font-[650] tracking-[.03em] whitespace-nowrap before:size-2 before:rounded-[2px] before:bg-current before:content-['']", inkClass(proto), className)}>
+    <span className={cn("inline-flex items-center gap-1.5 text-body font-[650] tracking-[.03em] whitespace-nowrap before:size-2 before:rounded-[2px] before:bg-current before:content-['']", inkClass(proto), className)}>
       {children ?? proto.toUpperCase()}
     </span>
   );
@@ -19,7 +19,7 @@ export function TypeChip({ proto, children, className }: { proto: string; childr
 export const NewDot = ({ title = "New" }: { title?: string }) => <i title={title} className="inline-block size-1.5 flex-none rounded-full bg-amber" />;
 export const NilDot = () => <i className="inline-block w-1.5 flex-none" />;
 export const Chip = ({ children, grey }: { children: ReactNode; grey?: boolean }) => (
-  <span className={cn("rounded-[9px] border px-[7px] text-[11px] leading-[17px] font-[650] tracking-[.04em] whitespace-nowrap",
+  <span className={cn("rounded-[9px] border px-[7px] text-label leading-[1.0625rem] font-[650] tracking-[.04em] whitespace-nowrap",
     grey ? "border-rule bg-soot text-smoke" : "border-caution-border bg-caution-ground text-amber")}>{children}</span>
 );
 
@@ -35,7 +35,7 @@ export function TechniqueMark({ technique, className }: { technique?: string | n
   if (!t) return null;
   const [label, Icon] = t;
   return (
-    <span className={cn("inline-flex flex-none items-center gap-1 text-[11px] font-[650] tracking-[.03em] whitespace-nowrap text-smoke", className)}>
+    <span className={cn("inline-flex flex-none items-center gap-1 text-label font-[650] tracking-[.03em] whitespace-nowrap text-smoke", className)}>
       <Icon className="size-3 text-ash" strokeWidth={1.75} aria-hidden="true" />{label}
     </span>
   );
@@ -77,7 +77,7 @@ export function Toaster() {
   useEffect(() => onToast(setT), []);
   return (
     <div role="status" aria-live="polite"
-      className={cn("pointer-events-none fixed bottom-[92px] left-1/2 z-50 -translate-x-1/2 rounded px-3.5 py-[7px] text-[12.5px] font-semibold text-soot shadow-[0_6px_18px_rgba(0,0,0,.4)] transition-all duration-300 ease-out-expo",
+      className={cn("pointer-events-none fixed bottom-[92px] left-1/2 z-50 -translate-x-1/2 rounded px-3.5 py-[7px] text-body font-semibold text-soot shadow-[0_6px_18px_rgba(0,0,0,.4)] transition-all duration-300 ease-out-expo",
         t ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0", t?.bad ? "bg-alarm-ink" : "bg-bone")}>
       {t?.msg}
     </div>

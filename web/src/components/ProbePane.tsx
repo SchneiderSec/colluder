@@ -32,11 +32,11 @@ function EditDialog({ p, open, onOpenChange }: { p: Probe; open: boolean; onOpen
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-[560px] border-rule bg-soot-1">
         <DialogHeader><DialogTitle>Edit {p.tag}</DialogTitle><DialogDescription>Where you planted it and anything worth remembering.</DialogDescription></DialogHeader>
-        <label className="text-[12.5px] text-smoke">Target<Input className="mt-1.5" value={target} maxLength={300} placeholder="e.g. api.shop.example · POST /import url=" onChange={(e) => setTarget(e.target.value)} /></label>
-        <label className="text-[12.5px] text-smoke">Note<Textarea className="mt-1.5" rows={3} value={note} maxLength={2000} onChange={(e) => setNote(e.target.value)} /></label>
-        <label className="text-[12.5px] text-smoke">Trigger request
-          <span className="mt-0.5 block text-[11px] text-ash">The request that made the target call back, pasted from your proxy. It opens the probe report.</span>
-          <Textarea className="mt-1.5 max-h-[40vh] font-mono text-[12.5px] leading-[18px]" rows={7} spellCheck={false} maxLength={32768} disabled={trigger === null}
+        <label className="text-body text-smoke">Target<Input className="mt-1.5" value={target} maxLength={300} placeholder="e.g. api.shop.example · POST /import url=" onChange={(e) => setTarget(e.target.value)} /></label>
+        <label className="text-body text-smoke">Note<Textarea className="mt-1.5" rows={3} value={note} maxLength={2000} onChange={(e) => setNote(e.target.value)} /></label>
+        <label className="text-body text-smoke">Trigger request
+          <span className="mt-0.5 block text-label text-ash">The request that made the target call back, pasted from your proxy. It opens the probe report.</span>
+          <Textarea className="mt-1.5 max-h-[40vh] font-mono text-body leading-[1.125rem]" rows={7} spellCheck={false} maxLength={32768} disabled={trigger === null}
             placeholder={trigger === null ? "Loading…" : "POST /api/webhooks HTTP/1.1\nHost: api.shop.example\n…"} value={trigger ?? ""} onChange={(e) => setTrigger(e.target.value)} />
         </label>
         <DialogFooter>
@@ -57,8 +57,8 @@ function Head({ s }: { s: AppState }) {
   if (s.sel === UNTAGGED) {
     return (
       <div className={cls}>
-        <span className="text-[17px] font-semibold">No tag</span>
-        <span className="text-[12.5px] text-smoke">Hits that carry no tag · <b className="font-semibold text-bone">{s.untagged?.hits ?? 0}</b> hits</span>
+        <span className="text-headline font-semibold">No tag</span>
+        <span className="text-body text-smoke">Hits that carry no tag · <b className="font-semibold text-bone">{s.untagged?.hits ?? 0}</b> hits</span>
       </div>
     );
   }
@@ -67,12 +67,12 @@ function Head({ s }: { s: AppState }) {
   const canDelete = st === "retired" || st === "late" || st === "unplanted";
   return (
     <div className={cn(cls, "border-b-0")}>
-      <span className="font-mono text-[17px] whitespace-nowrap">{p.tag}</span>
+      <span className="font-mono text-headline whitespace-nowrap">{p.tag}</span>
       {st === "unplanted" ? <Chip grey>not planted</Chip>
-        : p.retiredAt ? <span className="flex items-center gap-1.5 text-[12.5px] whitespace-nowrap text-ash" title="Out of the active list. New hits on this tag are still recorded."><LineForm kind="off" className="w-4" />{st === "late" ? "Retired · late hit" : "Retired"}</span>
-        : <span className="flex items-center gap-1.5 text-[12.5px] font-[550] whitespace-nowrap text-bone" title="Planted and listening: a callback shows up here within seconds"><LineForm kind="live" signal="listen" seed={p.tag} className="w-4" />Armed</span>}
-      {st !== "unplanted" && <TechniqueMark technique={p.technique} className="text-[12.5px]" />}
-      <div className="flex min-w-0 gap-3.5 overflow-hidden text-[12.5px] whitespace-nowrap text-smoke">
+        : p.retiredAt ? <span className="flex items-center gap-1.5 text-body whitespace-nowrap text-ash" title="Out of the active list. New hits on this tag are still recorded."><LineForm kind="off" className="w-4" />{st === "late" ? "Retired · late hit" : "Retired"}</span>
+        : <span className="flex items-center gap-1.5 text-body font-[550] whitespace-nowrap text-bone" title="Planted and listening: a callback shows up here within seconds"><LineForm kind="live" signal="listen" seed={p.tag} className="w-4" />Armed</span>}
+      {st !== "unplanted" && <TechniqueMark technique={p.technique} className="text-body" />}
+      <div className="flex min-w-0 gap-3.5 overflow-hidden text-body whitespace-nowrap text-smoke">
         <span className="truncate" title={p.note || undefined}>{p.target || "No target noted"}</span>
         <span>Planted <b className="font-semibold text-bone">{dayOrTime(p.plantedAt)}</b></span>
         {p.note && <span className="truncate text-ash" title={p.note}>Note: {p.note}</span>}
@@ -116,7 +116,7 @@ function Head({ s }: { s: AppState }) {
             <AlertDialogDescription>It moves to Retired at the bottom of the list. Its hits stay, and new hits on this tag are still recorded.</AlertDialogDescription>
           </AlertDialogHeader>
           {p.httpRule && (
-            <label className="flex items-start gap-2 text-[12.5px] text-smoke">
+            <label className="flex items-start gap-2 text-body text-smoke">
               <input type="checkbox" className="mt-[3px] accent-bone" checked={resetRule} onChange={(e) => setResetRule(e.target.checked)} />
               <span>Also reset its HTTP answer to the default reply, so it {s.status?.edge?.state === "running" ? "stops answering" : "won't answer after the cutover"} with <span className="text-bone">{p.httpRule.line}</span></span>
             </label>
@@ -139,9 +139,9 @@ export function DnsName({ i }: { i: Interaction }) {
   const prefix = i.fullId.endsWith(i.uniqueId) ? i.fullId.slice(0, -i.uniqueId.length).replace(/\.$/, "") : "";
   const labels = prefix ? prefix.split(".") : [];
   const short = `${i.uniqueId.slice(0, 8)}…`;
-  if (!labels.length) return <span className="font-mono text-[12.5px] text-smoke">{short} <span className="font-sans text-[11px] text-ash">(bare id)</span></span>;
+  if (!labels.length) return <span className="font-mono text-body text-smoke">{short} <span className="font-sans text-label text-ash">(bare id)</span></span>;
   return (
-    <span className="font-mono text-[12.5px]">
+    <span className="font-mono text-body">
       {labels.map((l, n) => <span key={n}>{n > 0 && "."}{l === i.tag ? <em className="bg-mark px-px text-bone not-italic">{l}</em> : <span className="text-bone">{l}</span>}</span>)}
       <span className="text-smoke">.{short}</span>
     </span>
@@ -157,13 +157,13 @@ const uaOf = (summary: string) => { const k = summary.indexOf(" · "); return k 
 // names and values, the version. Display only: the cell's title and every copy keep the exact text.
 function RequestLine({ line }: { line: string }) {
   const m = /^([A-Z]{2,12}) (\S+)( HTTP\/[\d.]+)?(.*)$/.exec(line);
-  if (!m) return <span className="font-mono text-[12.5px]">{line}</span>;
+  if (!m) return <span className="font-mono text-body">{line}</span>;
   const [, method, target, version = "", rest] = m;
   const qi = target.indexOf("?");
   const path = qi === -1 ? target : target.slice(0, qi);
   const query = qi === -1 ? "" : target.slice(qi + 1);
   return (
-    <span className="font-mono text-[12.5px]" title={line}>
+    <span className="font-mono text-body" title={line}>
       <span className="font-[650] text-bone">{method}</span> <span className="text-bone">{path}</span>
       {qi !== -1 && <span className="text-ash">?</span>}
       {query && query.split("&").map((kv, n) => {
@@ -199,17 +199,17 @@ function HitRow({ i, open, sel, arrived, child, chatter, inProbe, step, self, st
       <Td sel={sel} first><span className={cn("flex items-center gap-1.5 font-semibold", isNew ? "text-bone" : "text-smoke")}>{isNew ? <NewDot /> : <NilDot />}#{i.id}</span></Td>
       <Td sel={sel}>{hmsms(i.timestamp)}</Td>
       <Td sel={sel}><TypeChip proto={i.protocol}>{i.protocol === "dns" ? `DNS ${i.qType || "other"}` : undefined}</TypeChip></Td>
-      <Td sel={sel} className="font-mono text-[12.5px]">
+      <Td sel={sel} className="font-mono text-body">
         <span className={cn(web && !self && !sel && "font-[550] text-bone")}>{i.remoteAddress}</span>
         {self && <span className="ml-2 font-sans" title="A self-test (the OOB box, or a source you marked as yours), not the target"><Chip grey>{self === "mine" ? "yours" : "this box"}</Chip></span>}
       </Td>
-      <Td sel={sel} last>{web || i.protocol === "smtp" ? <>{web ? <RequestLine line={reqOf(i.summary)} /> : <span className="font-mono text-[12.5px]">{reqOf(i.summary)}</span>}{stageOf(i) && <span className="ml-2 text-[11px] whitespace-nowrap text-smoke" title="What Colluder's edge answered. A redirect sent is not proof it was followed; a later hop is.">· {stageOf(i)}</span>}{uaOf(i.summary) && <span className="ml-2 font-mono text-[11px] text-ash">· {uaOf(i.summary)}</span>}</> : i.protocol === "dns" ? <><DnsName i={i} />{chatter && <span className="text-[11px] text-ash" title="A lookup of the bare payload id near this probe's hits: a resolver walking the name, or a client resolving the HTTPS host. Kept, never counted as new."> · resolver chatter{inProbe ? "" : ` around ${chatter}`}</span>}{step && <span className="text-[11px] text-ash" title={`The resolver asked for this on its way to ${step} (QNAME minimisation). Not exfil data.`}> · resolver step toward <span className="font-mono">{labelsOf(step)}</span></span>}</> : <span className="text-[11px] text-smoke">{i.summary}</span>}</Td>
+      <Td sel={sel} last>{web || i.protocol === "smtp" ? <>{web ? <RequestLine line={reqOf(i.summary)} /> : <span className="font-mono text-body">{reqOf(i.summary)}</span>}{stageOf(i) && <span className="ml-2 text-label whitespace-nowrap text-smoke" title="What Colluder's edge answered. A redirect sent is not proof it was followed; a later hop is.">· {stageOf(i)}</span>}{uaOf(i.summary) && <span className="ml-2 font-mono text-label text-ash">· {uaOf(i.summary)}</span>}</> : i.protocol === "dns" ? <><DnsName i={i} />{chatter && <span className="text-label text-ash" title="A lookup of the bare payload id near this probe's hits: a resolver walking the name, or a client resolving the HTTPS host. Kept, never counted as new."> · resolver chatter{inProbe ? "" : ` around ${chatter}`}</span>}{step && <span className="text-label text-ash" title={`The resolver asked for this on its way to ${step} (QNAME minimisation). Not exfil data.`}> · resolver step toward <span className="font-mono">{labelsOf(step)}</span></span>}</> : <span className="text-label text-smoke">{i.summary}</span>}</Td>
     </tr>
   );
 }
 function Td({ children, sel, first, last, className }: { children: React.ReactNode; sel: boolean; first?: boolean; last?: boolean; className?: string }) {
   return (
-    <td className={cn("overflow-hidden border-b border-rule-2 px-2.5 py-1.5 text-[12.5px] text-ellipsis whitespace-nowrap group-hover:bg-hover",
+    <td className={cn("overflow-hidden border-b border-rule-2 px-2.5 py-1.5 text-body text-ellipsis whitespace-nowrap group-hover:bg-hover",
       first && "pl-6 max-[820px]:pl-3.5", last && "max-[820px]:hidden", sel && "border-rule bg-soot-2 text-bone group-hover:bg-soot-2", className)}>{children}</td>
   );
 }
@@ -240,15 +240,15 @@ function ProbeTabs({ s, p, right }: { s: AppState; p: Probe; right?: React.React
         return (
           <button key={t} type="button" role="tab" id={`probe-tab-${t}`} aria-selected={on} aria-controls="probe-panel" tabIndex={on ? 0 : -1}
             onClick={() => setTab(t)}
-            className={cn("relative flex flex-none cursor-pointer items-center gap-[7px] text-[12.5px] font-[550] whitespace-nowrap text-smoke hover:text-bone focus-visible:outline-[1.5px] focus-visible:-outline-offset-2 focus-visible:outline-bone",
+            className={cn("relative flex flex-none cursor-pointer items-center gap-[7px] text-body font-[550] whitespace-nowrap text-smoke hover:text-bone focus-visible:outline-[1.5px] focus-visible:-outline-offset-2 focus-visible:outline-bone",
               on && "text-bone after:absolute after:inset-x-0 after:-bottom-px after:h-0.5 after:rounded-[1px] after:bg-bone")}>
             {TAB_LABEL[t]}
             {t === "hits" ? <span className="font-normal text-smoke">{p.hits}</span>
-              : t === "http" && s.ruleDrafts[p.tag] ? <span className="text-[11px] font-normal text-smoke italic" title="Unsaved changes, kept until you save or discard">{draftShort(s.ruleDrafts[p.tag] as { mode?: string; status?: number })}, edited</span>
+              : t === "http" && s.ruleDrafts[p.tag] ? <span className="text-label font-normal text-smoke italic" title="Unsaved changes, kept until you save or discard">{draftShort(s.ruleDrafts[p.tag] as { mode?: string; status?: number })}, edited</span>
               : t === "http" && p.httpRule ? (s.status?.edge?.state === "running"
-                ? <span className="font-mono text-[11px] font-normal text-bone" title={p.httpRule.line}>{p.httpRule.short}</span>
-                : <span className="font-mono text-[11px] font-normal text-ash" title={`v${p.httpRule.version} saved, not served until the cutover`}>{p.httpRule.short}</span>)
-              : <span className="text-[11px] font-normal text-ash" title="interactsh-server's standard answer">default</span>}
+                ? <span className="font-mono text-label font-normal text-bone" title={p.httpRule.line}>{p.httpRule.short}</span>
+                : <span className="font-mono text-label font-normal text-ash" title={`v${p.httpRule.version} saved, not served until the cutover`}>{p.httpRule.short}</span>)
+              : <span className="text-label font-normal text-ash" title="interactsh-server's standard answer">default</span>}
             {t === "hits" && unread > 0 && <NewDot title={`${plural(unread, "new hit")} since you switched tabs`} />}
           </button>
         );
@@ -325,7 +325,7 @@ export function ProbePane() {
     return (
       <section className={wrap}>
         <div className="border-b border-rule" /><div />
-        <div className="flex items-center justify-center border-t border-rule bg-soot-1 text-[12.5px] text-ash">
+        <div className="flex items-center justify-center border-t border-rule bg-soot-1 text-body text-ash">
           {s.probes.size ? "Select a probe to see who called." : "Your probes and their callbacks will appear here."}
         </div>
       </section>
@@ -350,7 +350,7 @@ export function ProbePane() {
     return (
       <section className={cn(wrap, tabbed)} aria-label={`Probe ${s.sel}`}>
         <Head s={s} />{tabs}
-        <div id={p ? "probe-panel" : undefined} role={p ? "tabpanel" : undefined} aria-labelledby={p ? "probe-tab-hits" : undefined} className="max-w-[72ch] px-6 py-[18px] text-[12.5px] leading-[19px] text-smoke">
+        <div id={p ? "probe-panel" : undefined} role={p ? "tabpanel" : undefined} aria-labelledby={p ? "probe-tab-hits" : undefined} className="max-w-[72ch] px-6 py-[18px] text-body leading-[1.1875rem] text-smoke">
           {/* one sentence for the probe's actual state: retired and never-planted probes aren't "waiting" */}
           {st === "retired" ? (
             <p><b className="font-semibold text-bone">Retired {dayOrTime(p!.retiredAt)} UTC · {cleared ? `no hits since the clear at ${dayOrTime(cleared)}` : "no hits stored"}.</b> New hits on this tag are still recorded and bring it back to the list. Restore it to use its payloads again, or delete it if you're done with it.</p>
@@ -418,13 +418,13 @@ export function ProbePane() {
           </span>
         </Td>
         <Td sel={sel}>{hmsms(first.timestamp)}</Td>
-        <Td sel={sel}><TypeChip proto="dns">DNS ×{own.length || items.length}</TypeChip>{own.length > 0 && own.length < items.length && <span className="ml-1.5 text-[11px] text-ash" title="Lookups of the bare payload id near this probe's hits: resolver chatter, kept but not counted">+{items.length - own.length} chatter</span>}</Td>
-        <Td sel={sel}>{srcs.size === 1 ? <span className="font-mono text-[12.5px]">{first.remoteAddress}</span> : `${srcs.size} resolvers`}</Td>
+        <Td sel={sel}><TypeChip proto="dns">DNS ×{own.length || items.length}</TypeChip>{own.length > 0 && own.length < items.length && <span className="ml-1.5 text-label text-ash" title="Lookups of the bare payload id near this probe's hits: resolver chatter, kept but not counted">+{items.length - own.length} chatter</span>}</Td>
+        <Td sel={sel}>{srcs.size === 1 ? <span className="font-mono text-body">{first.remoteAddress}</span> : `${srcs.size} resolvers`}</Td>
         <Td sel={sel} last>
-          <DnsName i={top} />{names > 1 && <span className="text-[11px] text-ash"> +{names - 1} {names === 2 ? "name" : "names"}</span>}<span className="text-[11px] text-smoke"> · </span>
-          <span className="text-[11px] text-smoke">{qtypes} · {Math.max(...items.map((i) => isoMs(i.timestamp))) - Math.min(...items.map((i) => isoMs(i.timestamp)))} ms · </span>
-          {allChatter && <span className="text-[11px] text-ash">resolver chatter around {chatterTags.join(", ")} · </span>}
-          <span className="font-mono text-[11px] text-smoke">{[...srcs].sort((a, b) => b[1] - a[1]).map(([ip, n]) => `${ip} ×${n}`).join(" · ")}</span>
+          <DnsName i={top} />{names > 1 && <span className="text-label text-ash"> +{names - 1} {names === 2 ? "name" : "names"}</span>}<span className="text-label text-smoke"> · </span>
+          <span className="text-label text-smoke">{qtypes} · {Math.max(...items.map((i) => isoMs(i.timestamp))) - Math.min(...items.map((i) => isoMs(i.timestamp)))} ms · </span>
+          {allChatter && <span className="text-label text-ash">resolver chatter around {chatterTags.join(", ")} · </span>}
+          <span className="font-mono text-label text-smoke">{[...srcs].sort((a, b) => b[1] - a[1]).map(([ip, n]) => `${ip} ×${n}`).join(" · ")}</span>
         </Td>
       </tr>,
     );
@@ -434,16 +434,16 @@ export function ProbePane() {
     <>
       <ToggleGroup type="multiple" value={kinds} onValueChange={setKinds} aria-label="Show only" className="flex-none overflow-hidden rounded-[3px] border border-rule">
         {[["dns", "DNS"], ["web", "HTTP(S)"], ["smtp", "SMTP"]].map(([v, l], n) => (
-          <ToggleGroupItem key={v} value={v} className={cn("h-6 rounded-none px-2.5 text-[11px] text-smoke data-[state=on]:bg-soot-2 data-[state=on]:font-semibold data-[state=on]:text-bone", n > 0 && "border-l border-rule")}>{l}</ToggleGroupItem>
+          <ToggleGroupItem key={v} value={v} className={cn("h-6 rounded-none px-2.5 text-label text-smoke data-[state=on]:bg-soot-2 data-[state=on]:font-semibold data-[state=on]:text-bone", n > 0 && "border-l border-rule")}>{l}</ToggleGroupItem>
         ))}
       </ToggleGroup>
       <label className={cn("flex h-6 min-w-[140px] flex-1 items-center gap-1.5 rounded-[3px] border border-rule bg-soot px-2 focus-within:border-smoke", where === "bar" && "max-[820px]:basis-full", where === "tabs" && "max-w-[340px]")}>
         <Search className="size-3.5 flex-none text-ash" strokeWidth={1.5} />
         <input aria-label={`Search ${p ? p.tag : "untagged"} hits`} value={q} onChange={(e) => setQ(e.target.value)} spellCheck={false}
-          placeholder="Search names, paths, bodies, IPs" className="h-full w-full min-w-0 bg-transparent font-mono text-[12.5px] text-bone outline-none placeholder:font-sans placeholder:text-ash" />
+          placeholder="Search names, paths, bodies, IPs" className="h-full w-full min-w-0 bg-transparent font-mono text-body text-bone outline-none placeholder:font-sans placeholder:text-ash" />
         {q && <button type="button" aria-label="Clear search" onClick={() => setQ("")} className="flex-none cursor-pointer text-ash hover:text-bone"><X className="size-3.5" strokeWidth={1.5} /></button>}
       </label>
-      {filtering && <span className="text-[11px] whitespace-nowrap text-ash">{results === null ? "searching…" : `${results.length}${results.length === 500 ? "+" : ""} ${results.length === 1 ? "match" : "matches"}`}</span>}
+      {filtering && <span className="text-label whitespace-nowrap text-ash">{results === null ? "searching…" : `${results.length}${results.length === 500 ? "+" : ""} ${results.length === 1 ? "match" : "matches"}`}</span>}
       <Button variant="ghost" size="sm" asChild className="flex-none"><a href={exportUrl(s.sel!)} download title="Every stored hit of this probe as JSON lines, raw bytes included"><Download />Export</a></Button>
     </>
   );
@@ -460,7 +460,7 @@ export function ProbePane() {
           <colgroup><col className="w-[112px] max-[820px]:w-[84px]" /><col className="w-[116px] max-[820px]:w-[96px]" /><col className="w-[106px] max-[820px]:w-[96px]" /><col className="w-[218px] max-[820px]:w-auto" /><col className="max-[820px]:w-0" /></colgroup>
           <thead>
             <tr>{["#", "Time (UTC)", "Type", "Source", "Request"].map((t, i) => (
-              <th key={t} scope="col" className={cn("sticky top-0 z-[1] border-b border-rule bg-soot px-2.5 py-[5px] text-left text-[11px] font-semibold tracking-[.03em] text-smoke", i === 0 && "pl-6 max-[820px]:pl-3.5", i === 4 && "max-[820px]:hidden")}>{t}</th>
+              <th key={t} scope="col" className={cn("sticky top-0 z-[1] border-b border-rule bg-soot px-2.5 py-[5px] text-left text-label font-semibold tracking-[.03em] text-smoke", i === 0 && "pl-6 max-[820px]:pl-3.5", i === 4 && "max-[820px]:hidden")}>{t}</th>
             ))}</tr>
           </thead>
           <tbody onKeyDown={(e) => {
@@ -473,16 +473,16 @@ export function ProbePane() {
             e.preventDefault(); el.focus(); el.click();
           }}>
             {rows}
-            {filtering && results?.length === 0 && <tr><td colSpan={5} className="px-6 py-3 text-[12.5px] text-ash">No stored hits match. Search covers names, request lines, raw requests and source IPs.</td></tr>}
+            {filtering && results?.length === 0 && <tr><td colSpan={5} className="px-6 py-3 text-body text-ash">No stored hits match. Search covers names, request lines, raw requests and source IPs.</td></tr>}
           </tbody>
         </table>
         {!filtering && !s.olderDone[s.sel] && ownCount < (p ? p.hits : s.untagged?.hits ?? 0) && (
           <button type="button" onClick={() => loadOlder(s.sel!, all[all.length - 1].id).catch((e) => toast((e as Error).message, true))}
-            className="w-full cursor-pointer border-b border-rule-2 px-6 py-1.5 text-left text-[12.5px] text-smoke hover:bg-hover hover:text-bone">
+            className="w-full cursor-pointer border-b border-rule-2 px-6 py-1.5 text-left text-body text-smoke hover:bg-hover hover:text-bone">
             Load older hits <span className="text-ash">({ownCount} of {p ? p.hits : s.untagged?.hits} shown)</span>
           </button>
         )}
-        <div className="flex items-center gap-2.5 px-6 py-1.5 text-[11px] text-ash">
+        <div className="flex items-center gap-2.5 px-6 py-1.5 text-label text-ash">
           <hr className="flex-1 border-0 border-t border-rule-2" />
           {p ? `Planted ${dayOrTime(p.plantedAt)} UTC · first hit ${hmsms(firstHit.timestamp)}` : `First hit ${dayOrTime(firstHit.timestamp)} UTC · ${plural(hits.length, "hit")}`}
           <hr className="flex-1 border-0 border-t border-rule-2" />
