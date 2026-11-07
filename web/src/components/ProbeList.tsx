@@ -233,7 +233,7 @@ export function ProbeList() {
       </div>
       <div className="flex h-10 flex-none items-center gap-2.5 border-t border-rule pr-4 pl-5 text-smoke">
         <Bell className="size-3.5" strokeWidth={1.5} /><span>Discord alerts</span>
-        {d && !d.available && <span className="text-ash" title="Set DISCORD_WEBHOOK_URL in the service's environment file to enable.">Not configured</span>}
+        {d && !d.available && <a href="#settings" className="text-ash underline decoration-rule underline-offset-2 hover:text-bone">Set up in Settings</a>}
         {d?.available && (
           <>
             <Switch checked={d.enabled} aria-label="Discord alerts" onCheckedChange={(v) => setDiscord(v).catch((e) => toast((e as Error).message, true))} />

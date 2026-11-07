@@ -1,9 +1,11 @@
 import { useSyncExternalStore } from "react";
-import type { CheckResult, Counts, Enrich, HttpRule, Interaction, InteractionDetail, Probe, RuleState, StateResponse, Status } from "@/lib/types";
+import type { AlertKind, CheckResult, Counts, Enrich, HttpRule, Interaction, InteractionDetail, Probe, RuleState, StateResponse, Status } from "@/lib/types";
 import { UNTAGGED } from "@/lib/types";
 import { dnsSteps } from "@/lib/dns";
 import { toast } from "@/lib/toast";
 import { isoMs, plural } from "@/lib/format";
+import { getDisplay } from "@/lib/display";
+import { chime } from "@/lib/chime";
 
 export type StreamState = "connecting" | "connected" | "reconnecting";
 export type ProbeTab = "hits" | "http";
@@ -273,6 +275,14 @@ export function setRuleDraft(tag: string, draft: HttpRule | null) {
 // drafts live in memory only: ask before a reload or close throws them away
 addEventListener("beforeunload", (e) => { if (Object.keys(state.ruleDrafts).length) e.preventDefault(); });
 export const setDiscord = (on: boolean) => api("/api/settings", { method: "POST", body: { discord: on } });
+// Settings that live on the server (lib/settings.mjs); the answer is the new status
+export type ServerSettings = { webhookUrl?: string | null; discordKinds?: Partial<Record<AlertKind, boolean>>; checkMinutes?: number; payloadDomain?: string };
+export async function saveSettings(b: ServerSettings) {
+  const st = await api<Status>("/api/settings", { method: "POST", body: b });
+  set({ status: st });
+  return st;
+}
+export const testDiscord = () => api<{ ok: true }>("/api/discord/test", { method: "POST", body: {} });
 // the outside check, now rather than at its next turn; the result also arrives as a status event
 export const runCheck = () => api<CheckResult>("/api/check", { method: "POST", body: {} });
 export const clearAll = () => api("/api/clear", { method: "POST", body: {} });
@@ -315,10 +325,24 @@ export function connect() {
   });
 }
 
+// the chime counts firings like unread does: resolver chatter, steps toward a longer name, and your own
+// sources (this box, sources marked yours) don't ring; hits less than EVENT_GAP_MS apart ring once
+let lastWorthyAt = 0;
+function maybeChime(row: Interaction, list: Interaction[]) {
+  const d = getDisplay();
+  if (d.chime === "off" || (d.chime === "hidden" && !document.hidden)) return;
+  if ((state.status?.selfIps ?? []).includes(row.remoteAddress) || (state.status?.mineIps ?? []).includes(row.remoteAddress)) return;
+  if ((!row.tag && chatterOf(list).has(row.id)) || dnsSteps(list).has(row.id)) return;
+  const now = Date.now(), quiet = now - lastWorthyAt > EVENT_GAP_MS;
+  lastWorthyAt = now;
+  if (quiet) chime();
+}
+
 function onInteraction(row: Interaction) {
   if (state.list.some((i) => i.id === row.id)) return;
   const list = [row, ...state.list].slice(0, 5000);
   set({ list, arrived: row.id, lit: keyOf(row), pulse: state.pulse + 1 });
+  maybeChime(row, list);
   if (keyOf(row) === state.sel && !document.hidden && location.hash.startsWith("#probes") && viewingHits()) markSeen(keyOf(row), false);
 }
 

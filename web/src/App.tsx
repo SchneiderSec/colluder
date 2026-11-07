@@ -10,6 +10,7 @@ import { Settings } from "@/components/Pages";
 import { PayloadKit } from "@/components/PayloadKit";
 import { MarkSvg, setFavicon } from "@/components/Mark";
 import { Toaster } from "@/components/bits";
+import { nightNow, useDisplay } from "@/lib/display";
 import { cn } from "@/lib/utils";
 
 // tools that became probe tabs: old links land on the tab instead
@@ -34,7 +35,7 @@ export default function App() {
   const route = useRoute();
   const loaded = useApp((s) => s.loaded);
   const unread = useApp(totalUnread);
-  const night = new Date().getHours() < 5;
+  const night = nightNow(useDisplay());
   const favSrc = useRef<HTMLDivElement>(null);
 
   useEffect(() => { loadState(); connect(); }, []);
@@ -72,7 +73,7 @@ export default function App() {
 
   return (
     <TooltipProvider delayDuration={300}>
-      <div className={cn("grid h-full grid-cols-[76px_minmax(0,1fr)] grid-rows-[minmax(0,1fr)_auto] max-[820px]:block max-[820px]:h-auto max-[820px]:min-h-full", night && "[--bone:#e6dccb]")}>
+      <div className={cn("grid h-full grid-cols-[76px_minmax(0,1fr)] grid-rows-[minmax(0,1fr)_auto] max-[820px]:block max-[820px]:h-auto max-[820px]:min-h-full", night && "[--bone:var(--bone-night)]")}>
         <Rail view={route.view} />
         <main className="flex min-h-0 min-w-0 flex-col max-[820px]:block">
           <Banners />

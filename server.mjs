@@ -19,6 +19,8 @@ import { probeReport } from "./lib/report.mjs";
 import { edgeCodeHash } from "./lib/codehash.mjs";
 import { validateHttpRule, respond, serialize, describeRule } from "./lib/rules.mjs";
 import { OutsideCheck, CHECK_TAG, checkAlert } from "./lib/selfcheck.mjs";
+import { WEBHOOK_RE, ALERT_KINDS, CHECK_MINUTES, webhookHint, alertKinds, writeEnv, writeEngineServer, nucleiServer } from "./lib/settings.mjs";
+import { execFile } from "node:child_process";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const env = process.env;
@@ -37,6 +39,9 @@ const CFG = {
   db: env.COLLUDER_DB || join(DATA, "colluder.db"),
   unit: env.COLLUDER_ENGINE_UNIT || "colluder-engine.service",
   clientBin: env.COLLUDER_CLIENT_BIN || join(homedir(), "go/bin/interactsh-client"),
+  envFile: env.COLLUDER_ENV_FILE || join(homedir(), ".config/colluder/colluder.env"),
+  engineConfig: env.COLLUDER_ENGINE_CONFIG || join(homedir(), ".config/colluder/engine.yaml"),
+  nucleiConfig: env.COLLUDER_NUCLEI_CONFIG || join(homedir(), ".config/user/config.yaml"),
   extraHosts: (env.COLLUDER_ALLOWED_HOSTS || "box.tailnet.ts.net,user").split(",").map((s) => s.trim()).filter(Boolean),
 };
 const DOMAINS = [...new Set([CFG.domain, ...CFG.extraDomains])];
@@ -64,6 +69,7 @@ if (!/^[a-z][a-z0-9]{5}$/.test(store.meta("short_id") || "")) {
 const SHORT_ID = store.meta("short_id");
 const engine = new Engine({ unit: CFG.unit, payloadFile: CFG.payloadFile, clientBin: CFG.clientBin, domain: CFG.domain });
 const discord = new Discord({ url: env.DISCORD_WEBHOOK_URL, dashboardUrl: PUBLIC_URL, log });
+discord.kinds = alertKinds(store.meta("discord_kinds"));
 const clients = new Set();
 let live = false; // false while backfilling, so old lines never trigger alerts
 const tailStatus = () => tail.status;
@@ -142,7 +148,8 @@ const tagged = (tag, host) => `${tag}-${host}`;
 
 // ---------- the outside check (lib/selfcheck.mjs) ----------
 // One per served domain: a new domain is proven before payloads move to it, an old one until it lapses.
-const CHECK_EVERY = Number(env.COLLUDER_CHECK_MINUTES || 10) * 60e3;
+const CHECK_MIN = Number([undefined, ""].includes(env.COLLUDER_CHECK_MINUTES) ? 10 : env.COLLUDER_CHECK_MINUTES);
+let CHECK_EVERY = (Number.isFinite(CHECK_MIN) && CHECK_MIN >= 0 ? CHECK_MIN : 10) * 60e3; // 0: off (Settings can change it)
 let lastCheckAt = 0;
 const savedChecks = (() => {
   try {
@@ -161,7 +168,7 @@ const checks = DOMAINS.map((domain) => new OutsideCheck({
     const bad = r.steps.filter((s) => !s.ok).map((s) => `${s.label}: ${s.detail}`);
     log(`outside check ${domain} ${r.state}${bad.length ? `: ${bad.join("; ")}` : ""}${r.warnings.length ? ` (${r.warnings.join(" ")})` : ""}`);
     const msg = checkAlert(r, before);
-    if (msg && discordEnabled()) discord.post(DOMAINS.length > 1 ? `[${domain}] ${msg}` : msg);
+    if (msg && discordEnabled() && discord.kinds.check) discord.post(DOMAINS.length > 1 ? `[${domain}] ${msg}` : msg);
     broadcast("status", statusPayload());
   },
 }));
@@ -188,7 +195,7 @@ function combinedCheck() {
 }
 function checkStatus() {
   return {
-    active: checkActive(), running: checks.some((c) => c.running), everyMinutes: CHECK_EVERY / 60e3, last: combinedCheck(),
+    active: checkActive(), running: checks.some((c) => c.running), everyMinutes: CHECK_EVERY / 60e3, off: CHECK_EVERY === 0, last: combinedCheck(),
     domains: checks.map((c, i) => ({ domain: c.domain, primary: i === 0, last: c.last })),
   };
 }
@@ -196,6 +203,64 @@ async function runCheck() {
   lastCheckAt = Date.now();
   await Promise.all(checks.map((c) => c.run().catch((e) => { log(`outside check ${c.domain} error:`, e.message); return null; })));
   return combinedCheck();
+}
+
+// ---------- settings (lib/settings.mjs) ----------
+// Saved where each setting already lives (colluder.env, engine.yaml), applied without a restart where
+// it can be. The payload domain needs one: the engine re-registers on it, and the collector restarts
+// so every part (payloads, the check, the edge's rules) starts from the same domain.
+let nucleiNow = await nucleiServer(CFG.nucleiConfig);
+setInterval(async () => { nucleiNow = await nucleiServer(CFG.nucleiConfig); }, 60_000).unref();
+let switching = "";
+const systemctl = (...a) => new Promise((ok) => execFile("systemctl", ["--user", ...a], { timeout: 30_000 }, (e, _o, err) => ok(e ? (err || e.message).trim() : null)));
+async function saveSettings(b) {
+  const envUpdates = {};
+  if (typeof b.discord === "boolean") store.meta("discord", b.discord ? "on" : "off");
+  if ("webhookUrl" in b) {
+    const u = typeof b.webhookUrl === "string" ? b.webhookUrl.trim() : null;
+    if (u && !WEBHOOK_RE.test(u)) return [400, { error: "That isn't a Discord webhook URL (https://discord.com/api/webhooks/…)." }];
+    envUpdates.DISCORD_WEBHOOK_URL = u || null;
+  }
+  if (b.discordKinds && typeof b.discordKinds === "object") {
+    const k = Object.fromEntries(ALERT_KINDS.map((x) => [x, typeof b.discordKinds[x] === "boolean" ? b.discordKinds[x] : discord.kinds[x]]));
+    store.meta("discord_kinds", JSON.stringify(k));
+    discord.kinds = k;
+  }
+  if ("checkMinutes" in b) {
+    const n = Number(b.checkMinutes);
+    if (!Number.isInteger(n) || (n !== 0 && (n < CHECK_MINUTES.min || n > CHECK_MINUTES.max))) return [400, { error: `Every ${CHECK_MINUTES.min} to ${CHECK_MINUTES.max} minutes, or 0 for off.` }];
+    envUpdates.COLLUDER_CHECK_MINUTES = String(n);
+  }
+  let domain = null;
+  if ("payloadDomain" in b && b.payloadDomain !== CFG.domain) {
+    if (!DOMAINS.includes(b.payloadDomain)) return [400, { error: `Only a domain this box serves: ${DOMAINS.join(", ")}.` }];
+    if (switching) return [409, { error: "A domain switch is already under way." }];
+    domain = b.payloadDomain;
+    envUpdates.COLLUDER_DOMAIN = domain;
+    envUpdates.COLLUDER_EXTRA_DOMAINS = DOMAINS.filter((d) => d !== domain).join(",") || null;
+  }
+  if (Object.keys(envUpdates).length) {
+    try { await writeEnv(CFG.envFile, envUpdates); } catch (e) { log("settings: colluder.env:", e.message); return [500, { error: `Couldn't save ${CFG.envFile}: ${e.code || e.message}` }]; }
+  }
+  // applied now; the file keeps them for the next start
+  if ("webhookUrl" in b) { discord.url = envUpdates.DISCORD_WEBHOOK_URL || ""; log(`settings: Discord webhook ${discord.url ? "saved" : "removed"}`); }
+  if ("checkMinutes" in b) { CHECK_EVERY = Number(envUpdates.COLLUDER_CHECK_MINUTES) * 60e3; log(`settings: outside check ${CHECK_EVERY ? `every ${CHECK_EVERY / 60e3} min` : "off"}`); }
+  if (domain) {
+    try { await writeEngineServer(CFG.engineConfig, domain); } catch (e) {
+      await writeEnv(CFG.envFile, { COLLUDER_DOMAIN: CFG.domain, COLLUDER_EXTRA_DOMAINS: CFG.extraDomains.join(",") || null }).catch(() => {});
+      return [500, { error: `Couldn't save the engine's server line (${e.code || e.message}); nothing changed.` }];
+    }
+    switching = domain;
+    log(`settings: payload domain ${CFG.domain} -> ${domain}: restarting the engine, then Colluder`);
+    broadcast("status", statusPayload());
+    setTimeout(async () => {
+      const err = await systemctl("restart", CFG.unit);
+      if (err) log(`settings: engine restart: ${err}`);
+      shutdown(); // systemd (Restart=always) starts Colluder again on the new domain in about 5 s
+    }, 300);
+  }
+  broadcast("status", statusPayload());
+  return [domain ? 202 : 200, statusPayload()];
 }
 
 // ---------- status ----------
@@ -225,7 +290,8 @@ function statusPayload() {
     lastHitAt: store.lastHitAt(),
     serverTime: nowIso(),
     log: { path: CFG.jsonl, ...tailStatus() },
-    discord: { available: discord.available, enabled: discordEnabled() },
+    discord: { available: discord.available, enabled: discordEnabled(), hint: webhookHint(discord.url), kinds: discord.kinds },
+    domains: { payload: CFG.domain, served: DOMAINS, nuclei: nucleiNow, switching: switching || null },
     lastClear: store.lastClear(),
     edge: edgeStatus,
     selfIps: SELF_IPS, // B5: hits from the OOB box itself read "this box"
@@ -579,11 +645,11 @@ const server = http.createServer(async (req, res) => {
       broadcast("reload", { reason: "restored", count: n });
       return json(res, 200, { restored: n });
     }
-    if (req.method === "POST" && p === "/api/settings") {
-      const b = await body(req);
-      if (typeof b.discord === "boolean") store.meta("discord", b.discord ? "on" : "off");
-      broadcast("status", statusPayload());
-      return json(res, 200, statusPayload().discord);
+    if (req.method === "POST" && p === "/api/settings") return json(res, ...(await saveSettings(await body(req))));
+    if (req.method === "POST" && p === "/api/discord/test") {
+      if (!discord.available) return json(res, 409, { error: "No webhook saved yet." });
+      const r = await discord.post("Test from Colluder Settings: alerts reach this channel.");
+      return r.ok ? json(res, 200, { ok: true }) : json(res, 502, { error: `Discord refused it: ${r.error}` });
     }
     json(res, 404, { error: "not found" });
   } catch (e) {
@@ -617,7 +683,7 @@ live = true;
 await statusTick();
 setInterval(statusTick, 5000).unref();
 // first run soon after a start, then every CHECK_EVERY; a run in progress is never doubled
-setInterval(() => { if (checkActive() && !checks.some((c) => c.running) && Date.now() - lastCheckAt >= CHECK_EVERY) runCheck(); }, 20_000).unref();
+setInterval(() => { if (CHECK_EVERY > 0 && checkActive() && !checks.some((c) => c.running) && Date.now() - lastCheckAt >= CHECK_EVERY) runCheck(); }, 20_000).unref();
 lastCheckAt = Date.now() - CHECK_EVERY + 30_000;
 setInterval(() => { for (const res of clients) res.write(": keep-alive\n\n"); }, 15000).unref();
 

@@ -41,6 +41,10 @@
      values in sage. Kept off amber and off the four protocol inks. */
   --syn-name: oklch(0.76 0.055 235);
   --syn-value: oklch(0.83 0.075 135);
+  --selection: #5b4a33;
+  --bone-night: #e6dccb; /* night shift (DESIGN.md) */
+  --lit-flash: #3a2c17;
+  color-scheme: dark;
 
   /* shadcn/ui semantic variables mapped onto the Colluder palette */
   --radius: 0.25rem;
@@ -63,6 +67,42 @@
   --input: var(--rule);
   --ring: var(--bone);
 }
+
+/* Themes (Settings > Display, lib/display.ts sets data-theme on <html>). Every pair holds 4.5:1 for
+   text on every ground it sits on (checked with a script, not by eye). */
+/* High contrast: the same room with the lights up. Secondary text and rules brighter, inks lifted. */
+:root[data-theme="contrast"] {
+  --soot: #120f0b; --soot-1: #1a1611; --soot-2: #2c241c; --well: #0c0a08;
+  --rule: #6a5b4b; --rule-2: #4a3e33;
+  --bone: #f8f1e3; --smoke: #d6ccbc; --ash: #c2b7a6; --amber: #f7c25a; --fur: #b8ad9e; --bad: #f48a72;
+  --ink-dns: #dcaad9; --ink-http: #f2865f; --ink-https: #a9bdf6; --ink-smtp: #7fcca8; --ink-other: #cfc5b5;
+  --hover: #221c16; --child: #17130f; --mark: #4a3b27;
+  --alarm-ground: #2e1a14; --alarm-ink: #f8c7b9; --alarm-banner-ink: #fad3c8; --alarm-border: #a24d38;
+  --caution-ground: #2f2414; --caution-ink: #f8e3b8; --caution-border: #8f6c33;
+  --syn-name: oklch(0.84 0.06 235); --syn-value: oklch(0.88 0.08 135);
+  --accent: #382d23; --destructive: #d9604a;
+  --bone-night: #ece4d4;
+}
+/* Light: daytime, a bright room. Warm paper ground with soot ink; the inks darkened to read on it.
+   Amber stays the colour of new things, deepened to a burnt ochre so it reads as text. */
+:root[data-theme="light"] {
+  --soot: #f3eee3; --soot-1: #faf7f0; --soot-2: #e6ddcd; --well: #ebe4d6;
+  --rule: #c9bda9; --rule-2: #ddd4c4;
+  --bone: #1d1813; --bone-glow: #3b3229; --smoke: #554c40; --ash: #665c4f; --amber: #7f5300; --fur: #7a7064; --bad: #a8381f;
+  --ink-dns: #8a3f86; --ink-http: #a93a17; --ink-https: #3450ad; --ink-smtp: #1f6f48; --ink-other: #615849;
+  --hover: #ece5d8; --child: #efe9de; --mark: #f1dfb4;
+  --alarm-ground: #f7e1d9; --alarm-ink: #862712; --alarm-banner-ink: #7a2410; --alarm-border: #dc9f8c;
+  --caution-ground: #f5e9cf; --caution-ink: #5f420a; --caution-border: #d6b878;
+  --syn-name: oklch(0.42 0.08 235); --syn-value: oklch(0.42 0.09 135);
+  --accent: #e3dacb; --destructive: #b8452e;
+  --selection: #ecd7a8; --lit-flash: #f4e0b3;
+  color-scheme: light;
+}
+/* Protocol inks, colour-blind safe (Okabe-Ito hues, tuned per ground): DNS, HTTP, HTTPS and SMTP stay
+   apart under the common colour-vision deficiencies. The type is always written next to its colour too. */
+:root[data-inks="safe"] { --ink-dns: #d98cb8; --ink-http: #e69f00; --ink-https: #56b4e9; --ink-smtp: #2fbf91; }
+:root[data-inks="safe"][data-theme="contrast"] { --ink-dns: #e8a6cb; --ink-http: #f2b23a; --ink-https: #7cc6ef; --ink-smtp: #52d3a8; }
+:root[data-inks="safe"][data-theme="light"] { --ink-dns: #933d70; --ink-http: #7c4f00; --ink-https: #195f8f; --ink-smtp: #00704f; }
 
 @theme inline {
   /* The four sizes (DESIGN.md), in rem so a browser's default font size carries through, times
@@ -138,7 +178,7 @@
   --animate-lit: lit 1.4s cubic-bezier(0.16, 1, 0.3, 1);
   @keyframes blink { 0%, 86%, 100% { transform: scaleY(1); } 92% { transform: scaleY(0.08); } }
   @keyframes pop { from { transform: scale(0.55); } to { transform: scale(1); } }
-  @keyframes lit { from { background-color: #3a2c17; } }
+  @keyframes lit { from { background-color: var(--lit-flash); } }
 }
 
 @layer base {
@@ -159,7 +199,7 @@
     html, body, #root { height: auto; min-height: 100%; }
     body { overflow: visible; }
   }
-  ::selection { background: #5b4a33; color: var(--bone); }
+  ::selection { background: var(--selection); color: var(--bone); }
   input, textarea { caret-color: var(--amber); }
   :focus-visible { outline: 1.5px solid var(--bone); outline-offset: 2px; border-radius: 3px; }
   ::-webkit-scrollbar { width: 9px; height: 9px; }
@@ -180,6 +220,8 @@
 .peek { position: absolute; bottom: -90px; right: 48px; width: 120px; height: 90px; transition: transform 0.7s var(--ease-out-expo); pointer-events: none; z-index: 5; }
 .peek.up { transform: translateY(-62px); }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+/* Settings > Display > Motion: "none" is reduced motion whatever the system says */
+:root[data-motion="none"] *, :root[data-motion="none"] *::before, :root[data-motion="none"] *::after { animation: none !important; transition: none !important; }
 
 /* Segmented toggles and select triggers are built with outline-none and a ring that this theme
    doesn't show; keyboard focus gets the same Bone outline as everything else (unlayered, so it wins). */
@@ -225,3 +267,6 @@
   .live-base, .live-base-quiet { opacity: 1; }
   .live-pulse { display: none; }
 }
+/* "still": the lines stop moving (a solid wire, as with reduced motion); arrivals still pop and flash */
+:root:is([data-motion="still"], [data-motion="none"]) :is(.live-base, .live-base-quiet) { opacity: 1; }
+:root:is([data-motion="still"], [data-motion="none"]) .live-pulse { display: none; }

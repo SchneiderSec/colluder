@@ -621,3 +621,13 @@ A Bone pill (Alarm Ink when something failed) that rises 44px above the bottom e
 - **Text size setting:** Settings → Display → Compact | Comfortable. Comfortable multiplies the four sizes by 1.08 (12.5 → 13.5), per browser (`colluder.textSize`). The status bar drops the payload host below 1640px and the last-hit clock below 1520px in Comfortable mode so nothing overlaps.
 - **Disabled buttons** are 60% opacity (was 45%). A disabled primary drops to the secondary look (Soot 2, Smoke text, Rule border) instead of fading the bone fill, which read as broken at 2.9:1.
 - The hover glow on the primary button is the `--bone-glow` token.
+
+## Themes and display settings (2026-11-07)
+
+- **Dark stays the default and the reference.** Every other look overrides the same custom properties on `<html>` (`data-theme`, `data-inks`, `data-motion`, set by `lib/display.ts`); no component carries its own colours. Each text colour holds 4.5:1 on every ground it sits on (Soot, Soot 1, Soot 2, Well, Hover), checked with a script.
+- **High contrast** is the same room with the lights up: Smoke `#d6ccbc`, Ash `#c2b7a6`, Rule `#6a5b4b` (2.9:1 against Soot, so dividers read), inks lifted.
+- **Light** is warm paper (`#f3eee3`, raised `#faf7f0`, Well `#ebe4d6`) with Soot ink (`#1d1813`). Amber deepens to burnt ochre `#7f5300` so it still reads as text; the four inks deepen (DNS `#8a3f86`, HTTP `#a93a17`, HTTPS `#3450ad`, SMTP `#1f6f48`). The primary button inverts (dark fill, paper text). Night shift never applies to it. The raccoon mark keeps its own palette: a dark mask reads on paper.
+- **Colour-blind-safe inks** use Okabe-Ito hues (reddish purple, orange, sky blue, bluish green), tuned per ground. The protocol name is always written beside its colour, so colour is never the only cue.
+- **Motion:** Moving (default), Still lines (the live-line pulse is removed, as with reduced motion; arrival pops and flashes stay), None (reduced motion whatever the system says). The system's reduce-motion setting always wins.
+- **Display settings are per browser** (localStorage `colluder.display`), like the text size: the desk monitor and the phone differ, and other people on the tailnet see the same dashboard.
+- **The arrival chime** is two soft sine notes (E5 then B5, 0.3 s), made with Web Audio, off by default. It follows the unread rules: resolver chatter, DNS steps and your own sources don't ring, and a burst rings once.

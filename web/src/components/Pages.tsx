@@ -1,13 +1,10 @@
 import { useState, type ReactNode } from "react";
-import { Bell, Copy, RotateCcw, Trash2 } from "lucide-react";
-import { useApp, clearAll, restoreClear, setDiscord, runCheck } from "@/store";
-import { LineForm } from "./bits";
+import { Copy, RotateCcw, Trash2 } from "lucide-react";
+import { useApp, clearAll, restoreClear, runCheck } from "@/store";
+import { CheckInterval, DiscordSection, DisplaySection, DomainSection } from "./SettingsParts";
 import { ago, isoMs, plural } from "@/lib/format";
 import { copy, toast } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { applyTypeScale, readTypeScale, type TypeScale } from "@/lib/typeScale";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import type { Status } from "@/lib/types";
 
@@ -52,7 +49,6 @@ function checkRows(c: Status["check"]): [string, ReactNode][] {
 export function Settings() {
   const s = useApp((x) => x);
   const [confirm, setConfirm] = useState(false);
-  const [scale, setScale] = useState<TypeScale>(readTypeScale);
   const st = s.status;
   const e = st?.engine;
   const rows: [string, ReactNode][] = e ? [
@@ -85,39 +81,27 @@ export function Settings() {
         {edgeRows(st?.edge).map(([k, v]) => <div key={k} className="contents"><dt className="text-smoke">{k}</dt><dd>{v}</dd></div>)}
       </dl>
 
+      <H>Domains</H>
+      <DomainSection st={st} />
+
       <H>Outside check</H>
       <p className="mb-2 max-w-[68ch] text-smoke">The edge's heartbeat says it's running, not that callbacks get through. Every few minutes Colluder asks Cloudflare and Google to resolve a fresh name on your short host and requests it over HTTP and HTTPS, then confirms the edge recorded each one. Its traffic never shows up as hits. The web steps run from this box, so they cover the edge and the certificate, not the firewall in front of them.</p>
       <dl className="grid grid-cols-[200px_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-body max-[820px]:grid-cols-1">
         {checkRows(st?.check).map(([k, v]) => <div key={k} className="contents"><dt className="text-smoke">{k}</dt><dd>{v}</dd></div>)}
       </dl>
+      <CheckInterval st={st} />
       {st?.check?.active && (
         <Button variant="quiet" className="mt-3" disabled={st.check.running} onClick={() => runCheck().then((r) => toast(r.state === "failing" ? "Check failed: see the rows above" : "Check passed")).catch((x) => toast((x as Error).message, true))}>
           {st.check.running ? "Checking…" : "Check now"}
         </Button>
       )}
 
-      <H>Display</H>
-      <div className="flex flex-wrap items-center gap-2.5 border-t border-rule py-3 text-smoke">
-        Text size
-        <ToggleGroup type="single" value={scale} onValueChange={(v) => { if (!v) return; setScale(v as TypeScale); applyTypeScale(v as TypeScale); }} aria-label="Text size" className="overflow-hidden rounded-[3px] border border-rule">
-          {([["compact", "Compact"], ["comfortable", "Comfortable"]] as [TypeScale, string][]).map(([v, l]) => (
-            <ToggleGroupItem key={v} value={v} className="h-7 rounded-none border-l border-rule px-3 text-body text-smoke first:border-l-0 data-[state=on]:bg-soot-2 data-[state=on]:font-semibold data-[state=on]:text-bone">{l}</ToggleGroupItem>
-          ))}
-        </ToggleGroup>
-        <span className="text-ash">Comfortable sets everything one step larger (12.5px text becomes 13.5px). This browser only.</span>
-      </div>
-
       <H>Alerts</H>
-      <div className="flex items-center gap-2.5 border-t border-rule py-3 text-smoke">
-        <Bell className="size-3.5" strokeWidth={1.5} />Discord alerts
-        {!st?.discord.available ? <span className="text-ash">Not configured: set DISCORD_WEBHOOK_URL in ~/.config/colluder/colluder.env and restart colluder.service.</span> : (
-          <>
-            <Switch checked={st.discord.enabled} aria-label="Discord alerts" onCheckedChange={(v) => setDiscord(v).catch((x) => toast((x as Error).message, true))} />
-            <LineForm kind={st.discord.enabled ? "live" : "off"} signal="sparse" className={st.discord.enabled ? "w-4 text-bone" : "w-4 text-ash"} />
-            <b className="font-semibold text-bone">{st.discord.enabled ? "On" : "Off"}</b><span className="text-ash">per probe: the first hit, the first web hit, new sources and late hits; the rest in a roll-up each minute. Mute a probe with the bell in its header.</span>
-          </>
-        )}
-      </div>
+      <p className="mb-2 max-w-[68ch] text-smoke">Discord gets a post when something new happens on a probe; repeats are rolled up once a minute.</p>
+      <DiscordSection st={st} />
+
+      <H>Display</H>
+      <DisplaySection />
 
       <H>Data</H>
       <p className="text-body text-smoke">{plural(s.list.length, "interaction")} shown. Clearing hides them without deleting anything.</p>

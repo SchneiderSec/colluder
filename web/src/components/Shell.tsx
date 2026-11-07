@@ -10,6 +10,7 @@ import { LineForm, useTick, type Signal } from "./bits";
 import { Mark } from "./Mark";
 import { cn } from "@/lib/utils";
 import { shownId } from "@/lib/kit";
+import { nightNow, useDisplay } from "@/lib/display";
 
 // The rail holds tools that work across probes. What a single probe answers (HTTP response,
 // hosted files, DNS and rebinding) lives in tabs on the probe itself.
@@ -75,7 +76,7 @@ export function StatusBar() {
   const chatter = chatterOf(s.list);
   const lastHit = s.list.filter((i) => !chatter.has(i.id)).reduce<typeof s.list[number] | undefined>((m, i) => (!m || newestFirst(i, m) < 0 ? i : m), undefined);
   const now = new Date();
-  const night = now.getHours() < 5;
+  const night = nightNow(useDisplay(), now);
   // on a phone each state keeps a short label, so "capturing connected answering" says what is which
   // shortWide: the short label from 1280px down (phones get short anyway), for items that crowd the bar
   const Item = ({ kind, signal, label, short, shortWide, word, sub, subHide = "max-[1280px]:hidden", bad, title }: { kind?: "live" | "dash" | "down"; signal?: Signal; label: string; short?: string; shortWide?: boolean; word: string; sub?: string; subHide?: string; bad?: boolean; title?: string }) => (

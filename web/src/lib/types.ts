@@ -140,7 +140,9 @@ export interface Status {
   lastHitAt: string | null;
   serverTime: string;
   log: { path: string; exists: boolean; size: number; error: string | null };
-  discord: { available: boolean; enabled: boolean };
+  discord: { available: boolean; enabled: boolean; hint?: string | null; kinds?: Record<AlertKind, boolean> };
+  // the served domains, the one payloads use, and nuclei's interactsh_server as user's config has it
+  domains?: { payload: string; served: string[]; nuclei: string | null; switching: string | null };
   lastClear: { at: string; count: number } | null;
   edge?: EdgeStatus;
   selfIps?: string[];
@@ -157,10 +159,10 @@ export interface CheckResult {
   host: string;
   steps: CheckStep[];
   cert: { validTo: string; days: number } | null;
-  domain: { expiresAt?: string; days?: number; error?: string; checkedAt: string } | null;
+  domain: { expiresAt?: string; registeredAt?: string | null; days?: number; error?: string; checkedAt: string } | null;
   warnings: string[];
 }
-export interface CheckStatus { active: boolean; running: boolean; everyMinutes: number; last: CheckResult | null; domains?: { domain: string; primary: boolean; last: CheckResult | null }[] }
+export interface CheckStatus { active: boolean; running: boolean; everyMinutes: number; off?: boolean; last: CheckResult | null; domains?: { domain: string; primary: boolean; last: CheckResult | null }[] }
 
 export interface StateResponse {
   status: Status;
@@ -173,3 +175,6 @@ export const UNTAGGED = "__untagged";
 export const TAG_RE = /^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$/;
 export const PROTOS = ["dns", "http", "https", "smtp"] as const;
 export const protoKey = (p: string) => ((PROTOS as readonly string[]).includes(p) ? p : "other");
+
+// Discord alert kinds (lib/settings.mjs ALERT_KINDS)
+export type AlertKind = "first" | "escalation" | "source" | "late" | "rollup" | "check";

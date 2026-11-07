@@ -134,8 +134,24 @@ After changing server code: `systemctl --user restart colluder`. After changing 
 
 Discord alerts (per probe: the first hit of an episode, the first HTTP hit after DNS-only traffic,
 an HTTP hit from a new source, late hits on retired probes; never resolver chatter; everything else
-in a once-a-minute count, never dropped. See PLAN-REVIEW3.md A1): put `DISCORD_WEBHOOK_URL=...` in
-`~/.config/colluder/colluder.env`, restart `colluder`, then switch alerts on in the UI.
+in a once-a-minute count. See PLAN-REVIEW3.md A1): paste the webhook URL in Settings > Alerts. Each
+kind of alert can be switched off there; one switched off is counted in the roll-up instead.
+
+## Settings
+Settings saves what it changes where it already lives, so a restart, a deploy script and a hand
+edit agree with it (lib/settings.mjs). Claude can't change any of it.
+- **Domains:** which served domain new payloads use. Switching writes `COLLUDER_DOMAIN` and
+  `COLLUDER_EXTRA_DOMAINS` to `colluder.env` and the `server:` line of `engine.yaml` (nothing else
+  in it), restarts the engine (new long payload; the short id stays) and Colluder. Nuclei's
+  `interactsh_server` in user's config is shown, not changed. RDAP's registration date warns about
+  a domain under 32 days old, which some corporate web filters block.
+- **Outside check:** how often it runs (`COLLUDER_CHECK_MINUTES`, 0 is off). Applied at once.
+- **Alerts:** the Discord webhook (`DISCORD_WEBHOOK_URL`, only Discord's own webhook URLs; the
+  browser only ever sees its last four characters), a test message, and which alerts post (kept in
+  the database). Applied at once.
+- **Display**, per browser: theme (dark, high contrast, light, match system), colour-blind-safe
+  protocol colours, text size, hits list height, motion (moving, still lines, none), night shift,
+  and an optional arrival chime.
 
 ## Claude (MCP)
 `mcp.mjs` lets a Claude Code session plant probes, set what they answer, wait for callbacks, read
@@ -162,7 +178,8 @@ carries comes back under an `untrusted` key: Claude is told it is evidence, neve
 | `COLLUDER_PUBLIC_IP` | the first of `COLLUDER_SELF_IPS` (the address payload names must resolve to; the outside check expects it) |
 | `COLLUDER_EXTRA_DOMAINS` | unset (other domains served besides `COLLUDER_DOMAIN`; see Two domains) |
 | `COLLUDER_EDGE_CERT_DIR` (edge) | `~/caido-cert/domains` (one `<domain>/` per extra certificate) |
-| `COLLUDER_CHECK_MINUTES` | `10` (how often the outside check runs) |
+| `COLLUDER_CHECK_MINUTES` | `10` (how often the outside check runs; 0 is off; Settings changes it) |
+| `COLLUDER_ENV_FILE`, `COLLUDER_ENGINE_CONFIG`, `COLLUDER_NUCLEI_CONFIG` | `~/.config/colluder/colluder.env`, `~/.config/colluder/engine.yaml`, `~/.config/user/config.yaml` (what Settings writes, and the nuclei line it reads) |
 | `COLLUDER_EDGE_HTTP` / `COLLUDER_EDGE_HTTPS` (edge) | `203.0.113.10:80` / `:443` (`off` disables HTTPS) |
 | `COLLUDER_UPSTREAM_HTTP` / `COLLUDER_UPSTREAM_HTTPS` (edge) | `127.0.0.1:8081` / `127.0.0.1:8444` (cutover writes the real ones to `~/.config/colluder/edge.env`) |
 | `COLLUDER_EDGE_CERT` / `COLLUDER_EDGE_KEY` (edge) | `~/caido-cert/fullchain.pem` / `privkey.pem` (kept fresh by `colluder-cert-sync.timer`) |

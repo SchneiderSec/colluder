@@ -34,7 +34,7 @@ export function MarkSvg({ state = "wink", size = 36, badge = false }: { state?: 
       {size > 20 && (
         <g className="paws"><circle cx="24" cy="52" r="5" fill={C.fur} stroke={C.mask} strokeWidth="2" /><circle cx="40" cy="52" r="5" fill={C.fur} stroke={C.mask} strokeWidth="2" /></g>
       )}
-      {badge && <circle cx="54" cy="10" r="10" fill={C.shine} stroke="#16120e" strokeWidth="3" />}
+      {badge && <circle cx="54" cy="10" r="10" fill={C.shine} stroke="var(--soot)" strokeWidth="3" />}
     </svg>
   );
 }

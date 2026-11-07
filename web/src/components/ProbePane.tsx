@@ -19,6 +19,15 @@ import { HitDetail } from "./HitDetail";
 import { HttpRuleTab } from "./HttpRule";
 import { cn } from "@/lib/utils";
 import { shownId } from "@/lib/kit";
+import { useDisplay, type HitsHeight } from "@/lib/display";
+
+// Settings > Display > Hits list. Short keeps the open hit's detail in view on a laptop (DESIGN.md);
+// taller sizes are for reviewing a session's hits later.
+const HITS_HEIGHT: Record<HitsHeight, string> = {
+  short: "max-h-[min(28vh,212px)] [@media(max-height:900px)]:max-h-[min(22vh,160px)]",
+  tall: "max-h-[min(46vh,420px)] [@media(max-height:900px)]:max-h-[min(38vh,300px)]",
+  half: "max-h-[58vh] [@media(max-height:900px)]:max-h-[50vh]",
+};
 
 function EditDialog({ p, open, onOpenChange }: { p: Probe; open: boolean; onOpenChange: (v: boolean) => void }) {
   const [target, setTarget] = useState(p.target);
@@ -278,6 +287,7 @@ function autoHit(hits: Interaction[]) {
 export function ProbePane() {
   const s = useApp((x) => x);
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  const hitsHeight = useDisplay().hits;
   const [q, setQ] = useState("");
   const [kinds, setKinds] = useState<string[]>([]);
   const [results, setResults] = useState<Interaction[] | null>(null);
@@ -472,7 +482,7 @@ export function ProbePane() {
       <div id={p ? "probe-panel" : undefined} role={p ? "tabpanel" : undefined} aria-labelledby={p ? "probe-tab-hits" : undefined} className="flex min-h-0 flex-col">
       {/* the filters sit in the tab strip when the pane is wide; below it otherwise (and on Unregistered) */}
       <div className={cn("flex flex-none flex-wrap items-center gap-x-2.5 gap-y-1.5 border-b border-rule-2 py-1.5 pr-5 pl-6 max-[820px]:px-3.5", p && "@min-[900px]/probe:hidden")}>{filterBar("bar")}</div>
-      <div className="max-h-[min(28vh,212px)] min-h-0 overflow-auto max-[820px]:max-h-none [@media(max-height:900px)]:max-h-[min(22vh,160px)]">
+      <div className={cn("min-h-0 overflow-auto max-[820px]:max-h-none", HITS_HEIGHT[hitsHeight])}>
         <table className="w-full table-fixed border-collapse">
           <colgroup><col className="w-[112px] max-[820px]:w-[84px]" /><col className="w-[116px] max-[820px]:w-[96px]" /><col className="w-[106px] max-[820px]:w-[96px]" /><col className="w-[218px] max-[820px]:w-auto" /><col className="max-[820px]:w-0" /></colgroup>
           <thead>
