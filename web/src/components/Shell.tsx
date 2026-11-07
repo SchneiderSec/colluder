@@ -1,10 +1,10 @@
 import { Fragment, useState } from "react";
 import { ArrowDownToLine, Copy, Settings2, Briefcase } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { useApp, totalUnread, chatterOf, keyOf, select, selectHit } from "@/store";
+import { useApp, totalUnread, chatterOf, keyOf, select, selectHit, runCheck } from "@/store";
 import { UNTAGGED } from "@/lib/types";
 import { ago, dur, hms, isoMs, newestFirst } from "@/lib/format";
-import { copy } from "@/lib/toast";
+import { copy, toast } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
 import { LineForm, useTick, type Signal } from "./bits";
 import { Mark } from "./Mark";
@@ -67,19 +67,24 @@ export function StatusBar() {
   const clearAt = s.status?.lastClear?.at;
   const host = s.status?.payload?.host;
   const edgeSt = s.status?.edge;
+  const ck = s.status?.check;
+  const cl = ck?.last;
+  const checkTip = !ck?.active ? "" : !cl ? "Outside check: the first run is about 30 s after Colluder starts." :
+    `Outside check, every ${ck.everyMinutes} min (Settings has the details):\n${cl.steps.map((x) => `${x.ok ? "ok  " : "FAIL"}  ${x.label}: ${x.detail}`).join("\n")}${cl.warnings.length ? "\n" + cl.warnings.join("\n") : ""}`;
   // the newest hit that carries signal (resolver chatter skipped)
   const chatter = chatterOf(s.list);
   const lastHit = s.list.filter((i) => !chatter.has(i.id)).reduce<typeof s.list[number] | undefined>((m, i) => (!m || newestFirst(i, m) < 0 ? i : m), undefined);
   const now = new Date();
   const night = now.getHours() < 5;
   // on a phone each state keeps a short label, so "capturing connected answering" says what is which
-  const Item = ({ kind, signal, label, short, word, sub, bad, title }: { kind?: "live" | "dash" | "down"; signal?: Signal; label: string; short?: string; word: string; sub?: string; bad?: boolean; title?: string }) => (
+  // shortWide: the short label from 1280px down (phones get short anyway), for items that crowd the bar
+  const Item = ({ kind, signal, label, short, shortWide, word, sub, subHide = "max-[1280px]:hidden", bad, title }: { kind?: "live" | "dash" | "down"; signal?: Signal; label: string; short?: string; shortWide?: boolean; word: string; sub?: string; subHide?: string; bad?: boolean; title?: string }) => (
     <div className="flex items-center gap-[7px]" title={title}>
       {kind && <LineForm kind={kind} signal={signal} className={bad ? "text-bad" : "text-bone"} />}
-      <span className={cn("text-smoke", short && "max-[820px]:hidden")}>{label}</span>
-      {short && <span className="hidden text-smoke max-[820px]:inline">{short}</span>}
+      <span className={cn("text-smoke", short && (shortWide ? "max-[1280px]:hidden" : "max-[820px]:hidden"))}>{label}</span>
+      {short && <span className={cn("hidden text-smoke", shortWide ? "max-[1280px]:inline" : "max-[820px]:inline")}>{short}</span>}
       <b className={cn("font-[650]", bad && "text-bad")}>{word}</b>
-      {sub && <span className="text-ash max-[1280px]:hidden">{sub}</span>}
+      {sub && <span className={cn("text-ash", subHide)}>{sub}</span>}
     </div>
   );
   return (
@@ -92,7 +97,14 @@ export function StatusBar() {
       {edgeSt && edgeSt.state !== "absent" && (
         <Item kind={edgeSt.state === "running" ? "live" : "down"} signal="echo" label="Edge" short="Edge" bad={edgeSt.state !== "running"}
           word={edgeSt.state === "running" ? "answering" : edgeSt.state === "stale" ? "silent" : "down"}
-          title={edgeSt.state === "running" ? `Colluder's edge answers your probes on ${[edgeSt.listen?.http, edgeSt.listen?.https].filter(Boolean).join(" and ")}` : "The edge isn't answering: HTTP rules are not being served"} />
+          // a passing outside check rides on the edge's item; only a failing one takes room of its own
+          sub={edgeSt.state === "running" && cl && cl.state !== "failing" ? `checked ${ago(Date.now() - isoMs(cl.finishedAt))}` : ""} subHide="max-[1680px]:hidden"
+          title={[edgeSt.state === "running" ? `Colluder's edge answers your probes on ${[edgeSt.listen?.http, edgeSt.listen?.https, edgeSt.listen?.dns].filter(Boolean).join(", ")}` : "The edge isn't answering: HTTP rules are not being served", checkTip].filter(Boolean).join("\n\n")} />
+      )}
+      {ck?.active && cl?.state === "failing" && (
+        <a href="#settings" className="flex items-center rounded-[3px] no-underline hover:text-bone">
+          <Item kind="down" signal="listen" label="Outside check" short="Check" shortWide word="failing" bad title={checkTip} />
+        </a>
       )}
       {lastHit ? (
         <button type="button" title={`Open hit #${lastHit.id}`} onClick={() => {
@@ -112,7 +124,7 @@ export function StatusBar() {
           title={last && clearAt && isoMs(clearAt) >= isoMs(last) ? "Hits were cleared after this one arrived, so no probe shows it. Settings → Restore last clear brings them back." : undefined} />}
       <div className="ml-auto flex flex-none items-center gap-[18px] max-[820px]:hidden">
         {night && <span className="text-label text-ash">Night shift</span>}
-        {host && <span className="font-mono text-label text-smoke max-[1380px]:hidden in-[.type-comfortable]:max-[1640px]:hidden">{shownId(host.split(".")[0])}.{s.status!.payload!.domain}</span>}
+        {host && <span className="font-mono text-label text-smoke max-[1560px]:hidden in-[.type-comfortable]:max-[1800px]:hidden">{shownId(host.split(".")[0])}.{s.status!.payload!.domain}</span>}
         <span className="font-semibold tracking-[.02em]">{now.toISOString().slice(11, 19)}<span className="ml-[3px] text-label font-medium text-smoke">UTC</span></span>
       </div>
     </footer>
@@ -149,7 +161,7 @@ export function Banners() {
     out.push(
       <div key="edge" className="flex flex-wrap items-center gap-3 border-b border-rule bg-alarm-ground px-6 py-[9px] text-body text-alarm-banner-ink max-[820px]:px-3.5">
         <LineForm kind="down" />
-        <span><b>Colluder's edge isn't answering. </b>HTTP and HTTPS hits on your probes are not being captured{ed.heartbeatAt ? ` (last heartbeat ${ago(Date.now() - isoMs(ed.heartbeatAt))})` : ""}. DNS still is.</span>
+        <span><b>Colluder's edge isn't answering. </b>HTTP and HTTPS hits on your probes are not being captured{ed.heartbeatAt ? ` (last heartbeat ${ago(Date.now() - isoMs(ed.heartbeatAt))})` : ""}. {ed.listen?.dns ? "Nor is DNS: the edge answers it, so payload names don't resolve at all." : "DNS still is."}</span>
         <Button variant="quiet" className="ml-auto max-w-full overflow-hidden" onClick={() => copy(fix, "fix command")}><Copy /><span className="truncate font-mono text-bone">{fix}</span></Button>
       </div>,
     );
@@ -161,6 +173,29 @@ export function Banners() {
       <div key="edge-code" className="flex flex-wrap items-center gap-3 border-b border-rule bg-caution-ground px-6 py-[9px] text-body text-caution-ink max-[820px]:px-3.5">
         <span><b className="font-semibold">The edge is running older code than what's installed.</b> Rules still answer, but features added since it started aren't served yet. A restart takes about a second.</span>
         <Button variant="quiet" className="ml-auto max-w-full overflow-hidden" onClick={() => copy(fix, "restart command")}><Copy /><span className="truncate font-mono text-bone">{fix}</span></Button>
+      </div>,
+    );
+  }
+  // the outside check: failing means a quiet probe proves nothing; warnings are dismissed one by one
+  const ck = s.status?.check;
+  if (ck?.active && ck.last?.state === "failing") {
+    const bad = ck.last.steps.filter((x) => !x.ok);
+    out.push(
+      <div key="check" className="flex flex-wrap items-center gap-3 border-b border-rule bg-alarm-ground px-6 py-[9px] text-body text-alarm-banner-ink max-[820px]:px-3.5">
+        <LineForm kind="down" />
+        <span><b>Callbacks may not be reaching Colluder. </b>{bad.map((x) => `${x.label}: ${x.detail}.`).join(" ")} Until this clears, a quiet probe proves nothing.</span>
+        <Button variant="quiet" className="ml-auto" disabled={ck.running} onClick={() => runCheck().catch((x) => toast((x as Error).message, true))}>{ck.running ? "Checking…" : "Check again"}</Button>
+      </div>,
+    );
+  }
+  let seenWarn = "";
+  try { seenWarn = localStorage.getItem("colluder.ackCheckWarn") ?? ""; } catch { /* */ }
+  const warnKey = ck?.last?.warnings.join("|") ?? "";
+  if (ck?.active && warnKey && warnKey !== seenWarn) { // shown when failing too: a lapsing cert matters either way
+    out.push(
+      <div key="check-warn" className="flex items-center gap-3 border-b border-rule bg-caution-ground px-6 py-[9px] max-[820px]:px-3.5 text-body text-caution-ink">
+        <span>{ck.last?.warnings.join(" ")}</span>
+        <Button variant="ghost" className="ml-auto" onClick={() => { try { localStorage.setItem("colluder.ackCheckWarn", warnKey); } catch { /* */ } bump((n) => n + 1); }}>Got it</Button>
       </div>,
     );
   }

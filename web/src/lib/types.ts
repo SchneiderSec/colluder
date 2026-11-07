@@ -91,7 +91,7 @@ export interface RuleState { active: RuleVersion | null; history: RuleVersion[];
 
 export interface EdgeStatus {
   state: "running" | "stale" | "stopped" | "absent" | "unreadable";
-  listen?: { http: string; https: string | null };
+  listen?: { http: string; https: string | null; dns?: string | null };
   cert?: { notAfter: string } | null;
   heartbeatAt?: string;
   startedAt?: string;
@@ -145,7 +145,22 @@ export interface Status {
   edge?: EdgeStatus;
   selfIps?: string[];
   mineIps?: string[]; // sources you marked as yours
+  check?: CheckStatus;
 }
+
+// the outside check (lib/selfcheck.mjs): a callback sent the way a target would, confirmed recorded
+export interface CheckStep { key: string; label: string; ok: boolean; detail: string; retried?: boolean }
+export interface CheckResult {
+  state: "ok" | "warn" | "failing";
+  startedAt: string;
+  finishedAt: string;
+  host: string;
+  steps: CheckStep[];
+  cert: { validTo: string; days: number } | null;
+  domain: { expiresAt?: string; days?: number; error?: string; checkedAt: string } | null;
+  warnings: string[];
+}
+export interface CheckStatus { active: boolean; running: boolean; everyMinutes: number; last: CheckResult | null }
 
 export interface StateResponse {
   status: Status;

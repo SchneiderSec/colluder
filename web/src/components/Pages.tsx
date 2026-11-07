@@ -1,8 +1,8 @@
 import { useState, type ReactNode } from "react";
 import { Bell, Copy, RotateCcw, Trash2 } from "lucide-react";
-import { useApp, clearAll, restoreClear, setDiscord } from "@/store";
+import { useApp, clearAll, restoreClear, setDiscord, runCheck } from "@/store";
 import { LineForm } from "./bits";
-import { plural } from "@/lib/format";
+import { ago, isoMs, plural } from "@/lib/format";
 import { copy, toast } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -18,9 +18,25 @@ function edgeRows(e: Status["edge"]): [string, ReactNode][] {
   if (!e || e.state === "absent") return [["State", <span className="text-smoke">Not installed yet (before the cutover). HTTP rules are saved, but interactsh still answers the internet. To go live: <code className="font-mono">sudo ~/work/tools/oob-dashboard/deploy/cutover-phase2.sh</code> (see PHASE2.md).</span>]];
   const word = { running: "answering", stale: "silent (no heartbeat for 20 s)", stopped: "stopped", unreadable: `status unreadable: ${e.detail ?? ""}`, absent: "" }[e.state];
   const rows: [string, ReactNode][] = [["State", <span className={e.state === "running" ? "" : "text-bad"}>{word}</span>]];
-  if (e.listen) rows.push(["Listening", <code className="font-mono">{[e.listen.http, e.listen.https].filter(Boolean).join(" · ")}</code>]);
+  if (e.listen) rows.push(["Listening", <code className="font-mono">{[e.listen.http, e.listen.https, e.listen.dns && `${e.listen.dns} (DNS)`].filter(Boolean).join(" · ")}</code>]);
   if (e.cert?.notAfter) rows.push(["Certificate valid until", e.cert.notAfter]);
   if (e.startedAt) rows.push(["Since start", `${e.own ?? 0} answered for your probes · ${e.relayed ?? 0} passed to interactsh · ${e.errors ?? 0} refused or broken connections (scanners, mostly; details in journalctl -u colluder-edge)`]);
+  return rows;
+}
+
+// the outside check (lib/selfcheck.mjs), one row per step of the path it proved or didn't
+function checkRows(c: Status["check"]): [string, ReactNode][] {
+  if (!c?.active) return [["State", <span className="text-smoke">Off until the edge fronts DNS (deploy/dns-front.sh): it checks the short payload host.</span>]];
+  const l = c.last;
+  if (!l) return [["State", <span className="text-smoke">{c.running ? "Running…" : "Not run yet: the first check runs about 30 s after Colluder starts."}</span>]];
+  const rows: [string, ReactNode][] = [
+    ["Last run", <span>{l.finishedAt.replace("T", " ").slice(0, 19)} UTC <span className="text-smoke">· {ago(Date.now() - isoMs(l.finishedAt))} · every {c.everyMinutes} min, on <code className="font-mono">{l.host}</code></span></span>],
+    ...l.steps.map((x): [string, ReactNode] => [x.label, <span><b className={x.ok ? "font-[650]" : "font-[650] text-bad"}>{x.ok ? "Passed" : "Failed"}</b> <span className={x.ok ? "text-smoke" : ""}>· {x.detail}{x.retried ? " (on the retry a minute later)" : ""}</span></span>]),
+  ];
+  if (l.cert) rows.push(["Certificate", <span className={l.cert.days < 21 ? "text-bad" : ""}>{l.cert.days < 0 ? "expired" : `${l.cert.days} days left`} <span className="text-smoke">· until {l.cert.validTo.slice(0, 10)}</span></span>]);
+  if (l.domain) rows.push(["Domain registration", l.domain.expiresAt
+    ? <span className={(l.domain.days ?? 99) < 30 ? "text-bad" : ""}>{(l.domain.days ?? 0) < 0 ? "expired" : `${l.domain.days} days left`} <span className="text-smoke">· until {l.domain.expiresAt.slice(0, 10)}, from RDAP once a day</span></span>
+    : <span className="text-smoke">Couldn't read it from RDAP ({l.domain.error}); tried again next run</span>]);
   return rows;
 }
 
@@ -59,6 +75,17 @@ export function Settings() {
       <dl className="grid grid-cols-[200px_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-body max-[820px]:grid-cols-1">
         {edgeRows(st?.edge).map(([k, v]) => <div key={k} className="contents"><dt className="text-smoke">{k}</dt><dd>{v}</dd></div>)}
       </dl>
+
+      <H>Outside check</H>
+      <p className="mb-2 max-w-[68ch] text-smoke">The edge's heartbeat says it's running, not that callbacks get through. Every few minutes Colluder asks Cloudflare and Google to resolve a fresh name on your short host and requests it over HTTP and HTTPS, then confirms the edge recorded each one. Its traffic never shows up as hits. The web steps run from this box, so they cover the edge and the certificate, not the firewall in front of them.</p>
+      <dl className="grid grid-cols-[200px_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-body max-[820px]:grid-cols-1">
+        {checkRows(st?.check).map(([k, v]) => <div key={k} className="contents"><dt className="text-smoke">{k}</dt><dd>{v}</dd></div>)}
+      </dl>
+      {st?.check?.active && (
+        <Button variant="quiet" className="mt-3" disabled={st.check.running} onClick={() => runCheck().then((r) => toast(r.state === "failing" ? "Check failed: see the rows above" : "Check passed")).catch((x) => toast((x as Error).message, true))}>
+          {st.check.running ? "Checking…" : "Check now"}
+        </Button>
+      )}
 
       <H>Display</H>
       <div className="flex flex-wrap items-center gap-2.5 border-t border-rule py-3 text-smoke">

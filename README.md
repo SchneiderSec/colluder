@@ -65,6 +65,29 @@ HTTP payloads from before an id change work again once the edge is live.
 and the server routes on the correlation id alone. systemd stops the engine with SIGINT because the
 client saves its session only from its interrupt handler.
 
+## Outside check
+
+The edge's heartbeat only says the edge process is running. Behind it, interactsh can stop answering DNS
+(the edge then drops the query and counts no error), and the delegation, the certificate or the domain
+can lapse. Any of these turns every payload dark while the dashboard looks healthy, and a quiet probe
+then reads as "not vulnerable". So every 10 minutes (`lib/selfcheck.mjs`) the collector:
+
+- asks Cloudflare (1.1.1.1) and Google (8.8.8.8) to resolve a fresh, never-cached name on the short host
+  (`<nonce>.colluder-check-<short>.<domain>`) and expects the box's IP back *and* the edge's record of
+  the lookup: the real internet path, end to end;
+- requests `colluder-check-<short>.<domain>/<nonce>` over HTTP and HTTPS (certificate verified) and
+  expects the edge's record. These run from the box itself, so they cover the edge and the certificate,
+  not the firewall in front of it;
+- reads the certificate's end date from that HTTPS answer, and the domain's registration end date from
+  RDAP once a day. It warns under 21 days for the certificate (interactsh's certmagic renews it at about
+  30, so this fires only if that renewal failed) and under 30 days for the domain.
+
+A failed step is retried once a minute later before it counts. A failing check shows a red banner and
+status item, changes the empty probe's "a callback will show up within seconds" line, and posts to
+Discord on the change (and again when it passes). The tag `colluder-check` is reserved: its traffic is
+never stored as hits. Settings → Outside check shows every step and has **Check now**; Claude sees the
+result in its `status` tool. It runs only once the edge fronts DNS (the short host is the payload).
+
 ## Phase 2 cutover (operator, once)
 
 ```sh
@@ -114,6 +137,8 @@ carries comes back under an `untrusted` key: Claude is told it is evidence, neve
 | `COLLUDER_DOMAIN` | `oob.example` |
 | `DISCORD_WEBHOOK_URL` | unset (alerts off) |
 | `COLLUDER_SELF_IPS` | `203.0.113.10` (comma-separated; hits from these read "this box") |
+| `COLLUDER_PUBLIC_IP` | the first of `COLLUDER_SELF_IPS` (the address payload names must resolve to; the outside check expects it) |
+| `COLLUDER_CHECK_MINUTES` | `10` (how often the outside check runs) |
 | `COLLUDER_EDGE_HTTP` / `COLLUDER_EDGE_HTTPS` (edge) | `203.0.113.10:80` / `:443` (`off` disables HTTPS) |
 | `COLLUDER_UPSTREAM_HTTP` / `COLLUDER_UPSTREAM_HTTPS` (edge) | `127.0.0.1:8081` / `127.0.0.1:8444` (cutover writes the real ones to `~/.config/colluder/edge.env`) |
 | `COLLUDER_EDGE_CERT` / `COLLUDER_EDGE_KEY` (edge) | `~/caido-cert/fullchain.pem` / `privkey.pem` (kept fresh by `colluder-cert-sync.timer`) |

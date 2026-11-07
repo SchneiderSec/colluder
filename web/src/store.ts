@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import type { Counts, Enrich, HttpRule, Interaction, InteractionDetail, Probe, RuleState, StateResponse, Status } from "@/lib/types";
+import type { CheckResult, Counts, Enrich, HttpRule, Interaction, InteractionDetail, Probe, RuleState, StateResponse, Status } from "@/lib/types";
 import { UNTAGGED } from "@/lib/types";
 import { dnsSteps } from "@/lib/dns";
 import { toast } from "@/lib/toast";
@@ -273,6 +273,8 @@ export function setRuleDraft(tag: string, draft: HttpRule | null) {
 // drafts live in memory only: ask before a reload or close throws them away
 addEventListener("beforeunload", (e) => { if (Object.keys(state.ruleDrafts).length) e.preventDefault(); });
 export const setDiscord = (on: boolean) => api("/api/settings", { method: "POST", body: { discord: on } });
+// the outside check, now rather than at its next turn; the result also arrives as a status event
+export const runCheck = () => api<CheckResult>("/api/check", { method: "POST", body: {} });
 export const clearAll = () => api("/api/clear", { method: "POST", body: {} });
 export const restoreClear = () => api("/api/restore", { method: "POST", body: {} });
 // one probe's hits (null: the hits with no tag)

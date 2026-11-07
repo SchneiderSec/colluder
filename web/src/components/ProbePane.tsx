@@ -6,7 +6,7 @@ import { dnsSteps, mostSpecific } from "@/lib/dns";
 import { stageOf } from "@/lib/stage";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { UNTAGGED, type Interaction, type Probe } from "@/lib/types";
-import { dayOrTime, hmsms, isoMs, newestFirst, plural, settled } from "@/lib/format";
+import { ago, dayOrTime, hmsms, isoMs, newestFirst, plural, settled } from "@/lib/format";
 import { groupHits } from "@/lib/raw";
 import { copy, toast } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
@@ -353,6 +353,9 @@ export function ProbePane() {
   }
   if (!all.length) {
     const capturing = s.status?.engine?.state === "capturing";
+    const chk = s.status?.check;
+    const pathBroken = !!(chk?.active && chk.last?.state === "failing");
+    const pathOk = !!(chk?.active && chk.last && chk.last.state !== "failing");
     const st = p ? probeState(p) : "armed";
     const cleared = p ? lastClearFor(p, s.status?.lastClear?.at) : null;
     const own = p ?? s.untagged;
@@ -370,7 +373,11 @@ export function ProbePane() {
           <>
           <p>
             <b className="font-semibold text-bone">Armed since {dayOrTime(p?.plantedAt)} UTC · {cleared ? `no hits since the clear at ${dayOrTime(cleared)}` : "no hits yet"}.</b> Waiting for the target to reach any payload above.{" "}
-            {capturing ? "The engine is capturing, so a callback will show up here within seconds."
+            {!capturing ? null : pathBroken
+              ? <b className="font-semibold text-bone">But the outside check is failing (see the banner above): callbacks may not be reaching Colluder, so this silence proves nothing yet.</b>
+              : pathOk ? `The engine is capturing and the outside check passed ${ago(Date.now() - isoMs(chk!.last!.finishedAt))}, so a callback will show up here within seconds.`
+              : "The engine is capturing, so a callback will show up here within seconds."}
+            {capturing ? null
               : <b className="font-semibold text-bone">The engine is not capturing right now (see the banner above), so callbacks are not being recorded until it is back.</b>}
           </p>
           <ul className="mt-2 ml-[18px] list-disc space-y-1">

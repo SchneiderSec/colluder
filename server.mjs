@@ -18,6 +18,7 @@ import { Discord } from "./lib/discord.mjs";
 import { probeReport } from "./lib/report.mjs";
 import { edgeCodeHash } from "./lib/codehash.mjs";
 import { validateHttpRule, respond, serialize, describeRule } from "./lib/rules.mjs";
+import { OutsideCheck, CHECK_TAG, checkAlert } from "./lib/selfcheck.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const env = process.env;
@@ -37,6 +38,8 @@ const CFG = {
   extraHosts: (env.COLLUDER_ALLOWED_HOSTS || "box.tailnet.ts.net,user").split(",").map((s) => s.trim()).filter(Boolean),
 };
 const SELF_IPS = (env.COLLUDER_SELF_IPS || "203.0.113.10").split(",").map((s) => s.trim()).filter(Boolean);
+// the address targets reach (the A record every payload name resolves to)
+const PUBLIC_IP = env.COLLUDER_PUBLIC_IP || SELF_IPS[0];
 const PUBLIC_URL = env.COLLUDER_PUBLIC_URL || `http://${CFG.host}:${CFG.port}/`;
 const ALLOWED_HOSTS = new Set([CFG.host, ...CFG.extraHosts, "127.0.0.1", "localhost"].map((h) => `${h}:${CFG.port}`.toLowerCase()));
 
@@ -78,6 +81,8 @@ function ingest(line, source = "engine") {
   // the edge has recorded them with the real resolver: the engine's copy is a duplicate.
   if (source === "engine" && obj.protocol === "dns" && /^(127\.|::1$|::ffff:127\.)/.test(String(obj["remote-address"] || ""))) return;
   const it = parseInteraction(obj, CFG.domain, { trusted: source === "edge" });
+  // the outside check's own traffic (lib/selfcheck.mjs): it proves the path works, it isn't a hit
+  if (it.tag === CHECK_TAG && it.uniqueId === SHORT_ID) { outside.saw(it); return; }
   const receivedAt = nowIso();
   const res = store.insert(line, it, receivedAt);
   if (!res) return;
@@ -132,6 +137,31 @@ function payloadOut() {
 }
 const tagged = (tag, host) => `${tag}-${host}`;
 
+// ---------- the outside check (lib/selfcheck.mjs) ----------
+const CHECK_EVERY = Number(env.COLLUDER_CHECK_MINUTES || 10) * 60e3;
+let lastCheckAt = 0;
+const outside = new OutsideCheck({
+  domain: CFG.domain, shortId: SHORT_ID, publicIp: PUBLIC_IP, log,
+  last: (() => { try { return JSON.parse(store.meta("outside_check") || "null"); } catch { return null; } })(),
+  onResult: (r, before) => {
+    store.meta("outside_check", JSON.stringify(r));
+    const bad = r.steps.filter((s) => !s.ok).map((s) => `${s.label}: ${s.detail}`);
+    log(`outside check ${r.state}${bad.length ? `: ${bad.join("; ")}` : ""}${r.warnings.length ? ` (${r.warnings.join(" ")})` : ""}`);
+    const msg = checkAlert(r, before);
+    if (msg && discordEnabled()) discord.post(msg);
+    broadcast("status", statusPayload());
+  },
+});
+// it only means something once the short host is the payload (the edge fronts DNS and records it)
+const checkActive = () => !!payloadOut()?.short;
+function checkStatus() {
+  return { active: checkActive(), running: !!outside.running, everyMinutes: CHECK_EVERY / 60e3, last: outside.last };
+}
+function runCheck() {
+  lastCheckAt = Date.now();
+  return outside.run().catch((e) => { log("outside check error:", e.message); return null; });
+}
+
 // ---------- status ----------
 let lastPayloadCid = store.meta("correlation_id");
 async function statusTick() {
@@ -164,6 +194,7 @@ function statusPayload() {
     edge: edgeStatus,
     selfIps: SELF_IPS, // B5: hits from the OOB box itself read "this box"
     mineIps: store.mine(), // sources you marked as yours: "yours", left out like self-tests
+    check: checkStatus(),
   };
 }
 
@@ -384,6 +415,7 @@ const server = http.createServer(async (req, res) => {
       const b = await body(req);
       const tag = String(b.tag || "").trim().toLowerCase();
       if (!TAG_RE.test(tag)) return json(res, 400, { error: "Tag must be 1–32 letters, digits or hyphens, not starting or ending with a hyphen." });
+      if (tag === CHECK_TAG) return json(res, 400, { error: `"${CHECK_TAG}" is reserved for Colluder's outside check. Pick another tag.` });
       const technique = TECHNIQUES.includes(b.technique) ? b.technique : "callback";
       // a tag is planted once: re-planting would pin its old hits (and an old rule) on a new target
       const had = store.probe(tag);
@@ -417,6 +449,11 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, probe);
     }
     // Delete: only a retired probe, or a tag nobody planted, so a live probe is never lost by a slip
+    if (req.method === "POST" && p === "/api/check") {
+      if (!checkActive()) return json(res, 409, { error: "The outside check runs once the edge fronts DNS (deploy/dns-front.sh)." });
+      const r = await runCheck();
+      return r ? json(res, 200, r) : json(res, 500, { error: "The check itself broke: see journalctl --user -u colluder" });
+    }
     if (req.method === "DELETE" && (m = /^\/api\/probes\/([a-z0-9-]+)$/.exec(p))) {
       const probe = store.probe(m[1]);
       if (!probe) return json(res, 404, { error: "no such probe" });
@@ -543,6 +580,9 @@ await publishRules();
 live = true;
 await statusTick();
 setInterval(statusTick, 5000).unref();
+// first run soon after a start, then every CHECK_EVERY; a run in progress is never doubled
+setInterval(() => { if (checkActive() && !outside.running && Date.now() - lastCheckAt >= CHECK_EVERY) runCheck(); }, 20_000).unref();
+lastCheckAt = Date.now() - CHECK_EVERY + 30_000;
 setInterval(() => { for (const res of clients) res.write(": keep-alive\n\n"); }, 15000).unref();
 
 server.listen(CFG.port, CFG.host, () => log(`colluder listening on http://${CFG.host}:${CFG.port} (log ${CFG.jsonl})`));
