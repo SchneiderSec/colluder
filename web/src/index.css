@@ -141,12 +141,42 @@
   --accent: #292e42; --destructive: #db4b4b;
   --selection: #33467c; --lit-flash: #3a3324;
 }
+/* Catppuccin Mocha (catppuccin.com, MIT): soft pastels on a blue-violet base. Mauve DNS, peach HTTP,
+   blue HTTPS, green SMTP, yellow for new. All of its text colours already hold 4.5:1. */
+:root[data-theme="mocha"] {
+  --soot: #1e1e2e; --soot-1: #252536; --soot-2: #313244; --well: #181825;
+  --rule: #45475a; --rule-2: #2a2b3c;
+  --bone: #cdd6f4; --bone-glow: #e6ebff; --bone-night: #c3cbea; --smoke: #bac2de; --ash: #a6adc8; --amber: #f9e2af; --fur: #9399b2; --bad: #f38ba8;
+  --ink-dns: #cba6f7; --ink-http: #fab387; --ink-https: #89b4fa; --ink-smtp: #a6e3a1; --ink-other: #bac2de;
+  --hover: #282839; --child: #1b1b29; --mark: #4a4238;
+  --alarm-ground: #3a2433; --alarm-ink: #f8c3d2; --alarm-banner-ink: #fad0dc; --alarm-border: #9c4a63;
+  --caution-ground: #3a3428; --caution-ink: #f9e2af; --caution-border: #8a7a55;
+  --syn-name: #94e2d5; --syn-value: #f5e0dc;
+  --accent: #313244; --destructive: #d2557a;
+  --selection: #45475a; --lit-flash: #45392e;
+}
+/* Gruvbox Dark (morhetz/gruvbox, MIT): warm retro browns. Purple DNS, orange HTTP, blue HTTPS, aqua
+   SMTP (its olive green sits too near the yellow that marks new). The selected-row fill is a step
+   deeper than bg1, and red, purple and blue are lifted a little so they read on it. */
+:root[data-theme="gruvbox"] {
+  --soot: #282828; --soot-1: #32302f; --soot-2: #373331; --well: #1d2021;
+  --rule: #5a514b; --rule-2: #3a3634;
+  --bone: #ebdbb2; --bone-glow: #fbf1c7; --bone-night: #e0d0a8; --smoke: #d5c4a1; --ash: #bdae93; --amber: #fabd2f; --fur: #a89984; --bad: #fd7f70;
+  --ink-dns: #dc95a8; --ink-http: #fe8019; --ink-https: #8fb2a5; --ink-smtp: #8ec07c; --ink-other: #d5c4a1;
+  --hover: #302e2c; --child: #252423; --mark: #4a3f22;
+  --alarm-ground: #3c2421; --alarm-ink: #fbb5a8; --alarm-banner-ink: #fcc7bc; --alarm-border: #9d3a2e;
+  --caution-ground: #3c3420; --caution-ink: #fadf9a; --caution-border: #8f7432;
+  --syn-name: #a8b7c0; --syn-value: #c9d3a0;
+  --accent: #3c3836; --destructive: #cc241d;
+  --selection: #504945; --lit-flash: #4a3e22;
+}
 /* Protocol inks, colour-blind safe (Okabe-Ito hues, tuned per ground): DNS, HTTP, HTTPS and SMTP stay
    apart under the common colour-vision deficiencies. The type is always written next to its colour too. */
 :root[data-inks="safe"] { --ink-dns: #d98cb8; --ink-http: #e69f00; --ink-https: #56b4e9; --ink-smtp: #2fbf91; }
 :root[data-inks="safe"][data-theme="contrast"] { --ink-dns: #e8a6cb; --ink-http: #f2b23a; --ink-https: #7cc6ef; --ink-smtp: #52d3a8; }
 :root[data-inks="safe"][data-theme="dracula"] { --ink-dns: #e6a3cb; --ink-http: #eaa52a; --ink-https: #6cc0ef; --ink-smtp: #3dcb9c; }
 :root[data-inks="safe"][data-theme="nord"] { --ink-dns: #eab0d2; --ink-http: #f2b445; --ink-https: #86ccf2; --ink-smtp: #55d6a9; }
+:root[data-inks="safe"]:is([data-theme="mocha"], [data-theme="gruvbox"]) { --ink-dns: #e6a3cb; --ink-http: #eaa52a; --ink-https: #6cc0ef; --ink-smtp: #3dcb9c; }
 :root[data-inks="safe"][data-theme="light"] { --ink-dns: #933d70; --ink-http: #7c4f00; --ink-https: #195f8f; --ink-smtp: #00704f; }
 
 @theme inline {

@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { parseInteraction, correlationIdOf } from "../lib/tag.mjs";
 import { Tail } from "../lib/tail.mjs";
 import { Store } from "../lib/store.mjs";
-import { neutral, Discord } from "../lib/discord.mjs";
+import { neutral, Discord, code as inlineCode, checkMessage, testMessage } from "../lib/discord.mjs";
 
 const ID = "cv7k2m9qx4hb8tn1wr6pe3yd0zfa5glsu";
 const D = "oob.example";
@@ -68,7 +68,9 @@ function fakeDiscord() {
   let t = Date.parse("2026-11-05T10:00:00Z");
   const posts = [], timers = [];
   const d = new Discord({ url: "x", dashboardUrl: "http://dash/", log: () => {}, now: () => t, later: (fn) => timers.push(fn) });
-  d.post = (c) => posts.push(c);
+  d.post = (c) => posts.push(typeof c === "string" ? c : c.text);
+  d.sent = [];
+  const keep = d.post; d.post = (c) => { d.sent.push(c); keep(c); };
   return { d, posts, tick: (ms) => { t += ms; }, fire: () => { const f = timers.splice(0); for (const fn of f) fn(); } };
 }
 let hid = 0;
@@ -384,4 +386,40 @@ test("clear one probe: hides only its hits, restores on its own, and a delete dr
   s.clearProbe("other", "2026-11-06T13:00:01Z");
   s.deleteProbe("other");
   assert.equal(s.restoreProbe("other"), 0, "nothing left to bring back");
+});
+
+test("discord: hits post as embeds, protocol colour, request in inline code that can't break out", () => {
+  const { d } = fakeDiscord();
+  d.onHit({ id: 899, protocol: "https", tag: "signup7", remoteAddress: "198.51.100.7", summary: "GET /a`b HTTP/1.1 · Mozilla/5.0 @everyone", timestamp: "2026-11-07T15:38:00.000Z", fullId: "signup7-x", uniqueId: "x" }, { rdns: "host-7.isp.example" });
+  const m = d.sent[0];
+  assert.equal(m.content, "**HTTPS** hit on **signup7**");
+  const e = m.embeds[0];
+  assert.equal(e.color, 0x8aa2ea);
+  assert.equal(e.title, "signup7 · hit #899");
+  assert.match(e.url, /#probes\/signup7\/hits$/);
+  assert.equal(e.timestamp, "2026-11-07T15:38:00.000Z");
+  assert.deepEqual(e.fields.map((f) => f.name), ["Source", "Reverse DNS", "Request", "User-Agent"]);
+  assert.equal(e.fields[2].value, "`GET /a\u02cbb HTTP/1.1`", "a backtick can't close the span");
+  assert.equal(e.fields[3].value, "`Mozilla/5.0 @everyone`", "inside code: no mention renders");
+  d.onHit({ id: 900, protocol: "dns", tag: "dnsonly", remoteAddress: "1.1.1.1", qType: "AAAA", summary: "AAAA dnsonly-k7wq2x.example", fullId: "dnsonly-x", uniqueId: "x" }, {});
+  assert.equal(d.sent[1].embeds[0].color, 0xc793c4);
+  assert.deepEqual(d.sent[1].embeds[0].fields.map((f) => [f.name, f.value]), [["Source", "`1.1.1.1`"], ["Lookup", "`AAAA dnsonly-k7wq2x.example`"]]);
+});
+
+test("discord: code() strips control characters, trims, and caps the length", () => {
+  assert.equal(inlineCode("a\nb\u0000c"), "`a b c`");
+  assert.equal(inlineCode(""), "`(empty)`");
+  assert.equal(inlineCode("x".repeat(10), 5), "`xxxx\u2026`");
+});
+
+test("discord: the outside check and the test message are embeds too", () => {
+  const failing = { state: "failing", steps: [{ ok: false, label: "DNS via Google (8.8.8.8)", detail: "no answer (ETIMEOUT)" }, { ok: true, label: "HTTP", detail: "ok" }], warnings: [] };
+  const m = checkMessage(failing, "Outside check failing. …", "alt.example", "http://dash/");
+  assert.equal(m.content, "**Outside check failing** on alt.example");
+  assert.equal(m.embeds[0].color, 0xe8735a);
+  assert.deepEqual(m.embeds[0].fields.map((f) => f.name), ["DNS via Google \\(8.8.8.8\\)"]);
+  const back = checkMessage({ state: "ok", steps: [], warnings: [] }, "Outside check passing again.", "", "http://dash/");
+  assert.equal(back.content, "**Outside check passing again**");
+  const t = testMessage("http://dash/");
+  assert.equal(t.embeds[0].url, "http://dash/#settings");
 });

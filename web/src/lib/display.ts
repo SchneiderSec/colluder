@@ -3,7 +3,7 @@
 // choices never change another's. Applied as attributes on <html>, which index.css themes from.
 import { useSyncExternalStore } from "react";
 
-export const DARK_THEMES = ["dark", "contrast", "dracula", "nord", "tokyo"] as const;
+export const DARK_THEMES = ["dark", "contrast", "dracula", "nord", "tokyo", "mocha", "gruvbox"] as const;
 export type DarkTheme = (typeof DARK_THEMES)[number];
 export type Theme = DarkTheme | "light" | "system";
 export type Inks = "colluder" | "safe";

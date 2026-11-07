@@ -135,7 +135,10 @@ After changing server code: `systemctl --user restart colluder`. After changing 
 Discord alerts (per probe: the first hit of an episode, the first HTTP hit after DNS-only traffic,
 an HTTP hit from a new source, late hits on retired probes; never resolver chatter; everything else
 in a once-a-minute count. See PLAN-REVIEW3.md A1): paste the webhook URL in Settings > Alerts. Each
-kind of alert can be switched off there; one switched off is counted in the roll-up instead.
+kind of alert can be switched off there; one switched off is counted in the roll-up instead. Posts are
+embeds coloured by protocol. Colluder sets the webhook's name and raccoon avatar itself, once per
+webhook (`assets/discord-avatar.png`, via the webhook's own token, since Discord can't fetch an image
+from this tailnet-only box).
 
 ## Settings
 Settings saves what it changes where it already lives, so a restart, a deploy script and a hand

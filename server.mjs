@@ -7,14 +7,14 @@ import net from "node:net";
 import { readFile, mkdir, writeFile, rename } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { randomBytes } from "node:crypto";
+import { randomBytes, createHash } from "node:crypto";
 import { homedir } from "node:os";
 import { Store } from "./lib/store.mjs";
 import { Tail } from "./lib/tail.mjs";
 import { Engine } from "./lib/engine.mjs";
 import { parseInteraction, summarize, TAG_RE } from "./lib/tag.mjs";
 import { reverseDns, asnLookup } from "./lib/enrich.mjs";
-import { Discord } from "./lib/discord.mjs";
+import { Discord, checkMessage, testMessage } from "./lib/discord.mjs";
 import { probeReport } from "./lib/report.mjs";
 import { edgeCodeHash } from "./lib/codehash.mjs";
 import { validateHttpRule, respond, serialize, describeRule } from "./lib/rules.mjs";
@@ -168,7 +168,7 @@ const checks = DOMAINS.map((domain) => new OutsideCheck({
     const bad = r.steps.filter((s) => !s.ok).map((s) => `${s.label}: ${s.detail}`);
     log(`outside check ${domain} ${r.state}${bad.length ? `: ${bad.join("; ")}` : ""}${r.warnings.length ? ` (${r.warnings.join(" ")})` : ""}`);
     const msg = checkAlert(r, before);
-    if (msg && discordEnabled() && discord.kinds.check) discord.post(DOMAINS.length > 1 ? `[${domain}] ${msg}` : msg);
+    if (msg && discordEnabled() && discord.kinds.check) discord.post(checkMessage(r, msg, DOMAINS.length > 1 ? domain : "", PUBLIC_URL));
     broadcast("status", statusPayload());
   },
 }));
@@ -203,6 +203,19 @@ async function runCheck() {
   lastCheckAt = Date.now();
   await Promise.all(checks.map((c) => c.run().catch((e) => { log(`outside check ${c.domain} error:`, e.message); return null; })));
   return combinedCheck();
+}
+
+// ---------- the webhook's name and avatar ----------
+// Set once per webhook and avatar (a key of their hashes is kept, never the URL), at start and when a
+// webhook is saved, so a new channel gets the raccoon without anyone doing anything.
+const AVATAR = await readFile(join(HERE, "assets/discord-avatar.png")).catch(() => null);
+async function discordIdentity() {
+  if (!discord.url || !AVATAR) return;
+  const key = createHash("sha256").update(discord.url).digest("hex").slice(0, 16) + ":" + createHash("sha256").update(AVATAR).digest("hex").slice(0, 12);
+  if (store.meta("discord_identity") === key) return;
+  const r = await discord.setIdentity(AVATAR);
+  if (r.ok) { store.meta("discord_identity", key); log("discord: webhook name and avatar set"); }
+  else log(`discord: couldn't set the webhook's avatar: ${r.error}`);
 }
 
 // ---------- settings (lib/settings.mjs) ----------
@@ -243,7 +256,7 @@ async function saveSettings(b) {
     try { await writeEnv(CFG.envFile, envUpdates); } catch (e) { log("settings: colluder.env:", e.message); return [500, { error: `Couldn't save ${CFG.envFile}: ${e.code || e.message}` }]; }
   }
   // applied now; the file keeps them for the next start
-  if ("webhookUrl" in b) { discord.url = envUpdates.DISCORD_WEBHOOK_URL || ""; log(`settings: Discord webhook ${discord.url ? "saved" : "removed"}`); }
+  if ("webhookUrl" in b) { discord.url = envUpdates.DISCORD_WEBHOOK_URL || ""; log(`settings: Discord webhook ${discord.url ? "saved" : "removed"}`); discordIdentity(); }
   if ("checkMinutes" in b) { CHECK_EVERY = Number(envUpdates.COLLUDER_CHECK_MINUTES) * 60e3; log(`settings: outside check ${CHECK_EVERY ? `every ${CHECK_EVERY / 60e3} min` : "off"}`); }
   if (domain) {
     try { await writeEngineServer(CFG.engineConfig, domain); } catch (e) {
@@ -648,7 +661,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && p === "/api/settings") return json(res, ...(await saveSettings(await body(req))));
     if (req.method === "POST" && p === "/api/discord/test") {
       if (!discord.available) return json(res, 409, { error: "No webhook saved yet." });
-      const r = await discord.post("Test from Colluder Settings: alerts reach this channel.");
+      const r = await discord.post(testMessage(PUBLIC_URL));
       return r.ok ? json(res, 200, { ok: true }) : json(res, 502, { error: `Discord refused it: ${r.error}` });
     }
     json(res, 404, { error: "not found" });
@@ -676,6 +689,7 @@ const edgeTail = new Tail(CFG.edgeJsonl, {
 });
 
 await engine.init();
+discordIdentity();
 await tail.start();           // backfill whatever the engine wrote while we were down
 await edgeTail.start();
 await publishRules();

@@ -59,7 +59,7 @@ test("settings: an alert kind turned off falls into the roll-up; the roll-up off
   assert.equal(alertKinds("not json").first, true);
   const posts = [], timers = [];
   const d = new Discord({ url: "x", dashboardUrl: "http://dash/", log: () => {}, now: () => 1e9, later: (fn) => timers.push(fn) });
-  d.post = (c) => posts.push(c);
+  d.post = (c) => posts.push(typeof c === "string" ? c : c.text);
   d.kinds = alertKinds('{"first":false}');
   d.onHit({ id: 1, protocol: "dns", tag: "t", remoteAddress: "1.2.3.4", qType: "A", fullId: "t-x", uniqueId: "x" }, {});
   assert.equal(posts.length, 0);

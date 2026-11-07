@@ -358,13 +358,17 @@ export function CheckSection({ st }: { st: Status | null }) {
 }
 
 // ---------- display (this browser) ----------
-export const THEME_NAMES: Record<Theme, string> = { dark: "Colluder", contrast: "High contrast", dracula: "Dracula", nord: "Nord", tokyo: "Tokyo Night", light: "Light", system: "Match system" };
+export const THEME_NAMES: Record<Theme, string> = { dark: "Colluder", contrast: "High contrast", dracula: "Dracula", nord: "Nord", tokyo: "Tokyo Night", mocha: "Catppuccin Mocha", gruvbox: "Gruvbox Dark", light: "Light", system: "Match system" };
+// tiles are narrow: the long names shorten there (the hint and the index say them in full)
+const TILE_NAMES: Partial<Record<Theme, string>> = { mocha: "Catppuccin", gruvbox: "Gruvbox" };
 const THEME_HINTS: Record<Exclude<Theme, "system">, string> = {
   dark: "Colluder's own: warm soot with bone ink and amber for anything new.",
   contrast: "Brighter secondary text and rules, for reading from across a desk or on a dim second monitor.",
   dracula: "Dracula's purple-grey night: purple DNS, pink HTTP, cyan HTTPS, green SMTP, orange for new.",
   nord: "Nord's arctic grey-blue, cooler and quieter, with frost and aurora accents.",
   tokyo: "Tokyo Night's deep indigo with neon accents, the darkest of the set.",
+  mocha: "Catppuccin Mocha's soft pastels on blue-violet: mauve DNS, peach HTTP, blue HTTPS, green SMTP.",
+  gruvbox: "Gruvbox's warm retro browns: purple DNS, orange HTTP, blue HTTPS, aqua SMTP, yellow for new.",
   light: "For a bright room. The protocol colours deepen to read on paper.",
 };
 // each tile is painted in its own theme's colours (the page around it stays in the current one)
@@ -374,6 +378,8 @@ const SWATCH: Record<Exclude<Theme, "system">, Swatch> = {
   contrast: { ground: "#120f0b", rail: "#0c0a08", ink: "#f8f1e3", dim: "#d6ccbc", fresh: "#f7c25a", inks: ["#dcaad9", "#f2865f", "#a9bdf6", "#7fcca8"] },
   dracula: { ground: "#282a36", rail: "#21222c", ink: "#f8f8f2", dim: "#d0d3e3", fresh: "#ffb86c", inks: ["#bd93f9", "#ff79c6", "#8be9fd", "#50fa7b"] },
   nord: { ground: "#2e3440", rail: "#272c36", ink: "#eceff4", dim: "#d3d9e4", fresh: "#ebcb8b", inks: ["#d0aeca", "#e3a58e", "#8ec6d5", "#a3be8c"] },
+  mocha: { ground: "#1e1e2e", rail: "#181825", ink: "#cdd6f4", dim: "#bac2de", fresh: "#f9e2af", inks: ["#cba6f7", "#fab387", "#89b4fa", "#a6e3a1"] },
+  gruvbox: { ground: "#282828", rail: "#1d2021", ink: "#ebdbb2", dim: "#d5c4a1", fresh: "#fabd2f", inks: ["#dc95a8", "#fe8019", "#8fb2a5", "#8ec07c"] },
   tokyo: { ground: "#1a1b26", rail: "#16161e", ink: "#c0caf5", dim: "#a9b1d6", fresh: "#e0af68", inks: ["#bb9af7", "#ff9e64", "#7aa2f7", "#9ece6a"] },
   light: { ground: "#f3eee3", rail: "#ebe4d6", ink: "#1d1813", dim: "#554c40", fresh: "#7f5300", inks: ["#8a3f86", "#a93a17", "#3450ad", "#1f6f48"] },
 };
@@ -396,7 +402,7 @@ function Miniature({ w, className }: { w: Swatch; className?: string }) {
 }
 
 function ThemePicker({ d }: { d: Display }) {
-  const order: Theme[] = ["dark", "contrast", "dracula", "nord", "tokyo", "light", "system"];
+  const order: Theme[] = ["dark", "contrast", "dracula", "nord", "tokyo", "mocha", "gruvbox", "light", "system"];
   return (
     <ToggleGroup type="single" value={d.theme} onValueChange={(v) => { if (v) setDisplay("theme", v as Theme); }} aria-label="Theme" className="grid w-full grid-cols-[repeat(auto-fill,minmax(104px,1fr))] gap-2.5">
       {order.map((t) => {
@@ -410,7 +416,7 @@ function ThemePicker({ d }: { d: Display }) {
                 : <Miniature w={SWATCH[t]} />}
             </span>
             <span className={cn("flex items-center gap-1 px-0.5 text-body", on ? "font-semibold text-bone" : "text-smoke group-hover:text-bone")}>
-              <span className="truncate">{THEME_NAMES[t]}</span>
+              <span className="truncate">{TILE_NAMES[t] ?? THEME_NAMES[t]}</span>
               {on && <Check className="ml-auto size-3.5 flex-none" strokeWidth={2.25} />}
             </span>
           </ToggleGroupItem>
