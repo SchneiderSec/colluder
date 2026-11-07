@@ -19,7 +19,9 @@ function edgeRows(e: Status["edge"]): [string, ReactNode][] {
   const word = { running: "answering", stale: "silent (no heartbeat for 20 s)", stopped: "stopped", unreadable: `status unreadable: ${e.detail ?? ""}`, absent: "" }[e.state];
   const rows: [string, ReactNode][] = [["State", <span className={e.state === "running" ? "" : "text-bad"}>{word}</span>]];
   if (e.listen) rows.push(["Listening", <code className="font-mono">{[e.listen.http, e.listen.https, e.listen.dns && `${e.listen.dns} (DNS)`].filter(Boolean).join(" · ")}</code>]);
-  if (e.cert?.all && e.cert.all.length > 1) for (const c of e.cert.all) rows.push([`Certificate ${c.names[0] ?? ""}`, `valid until ${c.notAfter}`]);
+  // the default certificate is usually also in its domain's folder: list each one once
+  const certs = [...new Map((e.cert?.all ?? []).map((c) => [`${c.names.join(" ")}|${c.notAfter}`, c])).values()];
+  if (certs.length > 1) for (const c of certs) rows.push([`Certificate ${c.names[0] ?? ""}`, `valid until ${c.notAfter}`]);
   else if (e.cert?.notAfter) rows.push(["Certificate valid until", e.cert.notAfter]);
   if (e.startedAt) rows.push(["Since start", `${e.own ?? 0} answered for your probes · ${e.relayed ?? 0} passed to interactsh · ${e.errors ?? 0} refused or broken connections (scanners, mostly; details in journalctl -u colluder-edge)`]);
   return rows;
