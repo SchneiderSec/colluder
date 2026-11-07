@@ -631,3 +631,11 @@ A Bone pill (Alarm Ink when something failed) that rises 44px above the bottom e
 - **Motion:** Moving (default), Still lines (the live-line pulse is removed, as with reduced motion; arrival pops and flashes stay), None (reduced motion whatever the system says). The system's reduce-motion setting always wins.
 - **Display settings are per browser** (localStorage `colluder.display`), like the text size: the desk monitor and the phone differ, and other people on the tailnet see the same dashboard.
 - **The arrival chime** is two soft sine notes (E5 then B5, 0.3 s), made with Web Audio, off by default. It follows the unread rules: resolver chatter, DNS steps and your own sources don't ring, and a burst rings once.
+
+## Settings page (2026-11-07, restructured)
+
+- **Two columns:** a sticky section index (176px) beside the sections (720px max). Below 1000px the index becomes a wrapped row of jump links above the sections. The index doubles as a health summary: each entry carries its state in the line grammar (Outside check passing or failing, System capturing, Alerts on or off) or its current value (payload domain, theme). The highlight follows the scroll; a clicked entry holds while its scroll settles.
+- **Order, by why you came:** Payloads (what to paste, which domain), Alerts, Outside check, Display, System (engine and edge facts), Data, Keyboard.
+- **One row grammar:** grouped panels (Soot 1, Rule border, 4px radius, Rule 2 hairlines between rows) of label | value rows, with a 168px label column and labels top-aligned with the first line. Editable rows are 28px lines; read-only facts use the dense row. A group may have a small title above it (label size, Smoke) and a note under it (Ash). There's no nesting, and no shadows.
+- **Rhythm:** 44px between sections, 20px between groups, 12px from a section's heading to its first group.
+- **The outside check** is a status line (line form, state word, last run) over a domain × step matrix (Passed with a check mark, Failed in Bad with a cross; the step's detail is in the cell's title). Failures are spelled out on an Alarm ground under the matrix, warnings on Caution. On phones the matrix becomes one line per domain naming the failed steps. Certificate and registration dates live on each domain's row under Payloads, not here.
