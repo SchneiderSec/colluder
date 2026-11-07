@@ -423,3 +423,23 @@ test("discord: the outside check and the test message are embeds too", () => {
   const t = testMessage("http://dash/");
   assert.equal(t.embeds[0].url, "http://dash/#settings");
 });
+
+test("discord: every post carries the avatar, and every card signs off with it", async (t) => {
+  const sent = [];
+  const real = globalThis.fetch;
+  t.after(() => { globalThis.fetch = real; });
+  globalThis.fetch = async (url, opts = {}) => {
+    if (!opts.method) return { ok: true, json: async () => ({ id: "123456789012345678", avatar: "0123456789abcdef0123456789abcdef" }) };
+    sent.push({ url, body: JSON.parse(opts.body) });
+    return { ok: true, json: async () => ({ author: { avatar: "0123456789abcdef0123456789abcdef" } }) };
+  };
+  const d = new Discord({ url: "https://discord.com/api/webhooks/1/x", dashboardUrl: "http://dash/", log: () => {} });
+  assert.equal(await d.loadAvatar(), "https://cdn.discordapp.com/avatars/123456789012345678/0123456789abcdef0123456789abcdef.png?size=128");
+  const r = await d.post({ content: "hi", embeds: [{ title: "x" }] }, { wait: true });
+  assert.deepEqual(r, { ok: true, avatar: true, id: null });
+  assert.match(sent[0].url, /\?wait=true$/);
+  assert.equal(sent[0].body.avatar_url, d.avatarUrl);
+  assert.deepEqual(sent[0].body.embeds[0].footer, { text: "Colluder", icon_url: d.avatarUrl });
+  globalThis.fetch = async () => ({ ok: true, json: async () => ({ id: "1", avatar: "../evil" }) });
+  assert.equal(await d.loadAvatar(), null, "only a well-formed hash builds a URL");
+});

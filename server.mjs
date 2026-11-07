@@ -210,12 +210,15 @@ async function runCheck() {
 // webhook is saved, so a new channel gets the raccoon without anyone doing anything.
 const AVATAR = await readFile(join(HERE, "assets/discord-avatar.png")).catch(() => null);
 async function discordIdentity() {
-  if (!discord.url || !AVATAR) return;
+  if (!discord.url) { discord.avatarUrl = null; return; }
+  if (!AVATAR) return;
   const key = createHash("sha256").update(discord.url).digest("hex").slice(0, 16) + ":" + createHash("sha256").update(AVATAR).digest("hex").slice(0, 12);
-  if (store.meta("discord_identity") === key) return;
-  const r = await discord.setIdentity(AVATAR);
-  if (r.ok) { store.meta("discord_identity", key); log("discord: webhook name and avatar set"); }
-  else log(`discord: couldn't set the webhook's avatar: ${r.error}`);
+  if (store.meta("discord_identity") !== key) {
+    const r = await discord.setIdentity(AVATAR);
+    if (r.ok) { store.meta("discord_identity", key); log("discord: webhook name and avatar set"); }
+    else log(`discord: couldn't set the webhook's avatar: ${r.error}`);
+  }
+  log(`discord: avatar ${await discord.loadAvatar() ? "found on Discord's CDN; every post carries it" : "not found; posts use the webhook's default"}`);
 }
 
 // ---------- settings (lib/settings.mjs) ----------
@@ -661,8 +664,8 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && p === "/api/settings") return json(res, ...(await saveSettings(await body(req))));
     if (req.method === "POST" && p === "/api/discord/test") {
       if (!discord.available) return json(res, 409, { error: "No webhook saved yet." });
-      const r = await discord.post(testMessage(PUBLIC_URL));
-      return r.ok ? json(res, 200, { ok: true }) : json(res, 502, { error: `Discord refused it: ${r.error}` });
+      const r = await discord.post(testMessage(PUBLIC_URL), { wait: true });
+      return r.ok ? json(res, 200, { ok: true, avatar: r.avatar }) : json(res, 502, { error: `Discord refused it: ${r.error}` });
     }
     json(res, 404, { error: "not found" });
   } catch (e) {
