@@ -1,7 +1,9 @@
-# Copies the renewed wildcard certificate to ~/caido-cert for colluder-edge (see cert-sync.sh).
+# Copies the renewed wildcard certificates to ~/caido-cert for colluder-edge (see cert-sync.sh).
 [Unit]
-Description=Colluder: copy the oob.example wildcard certificate for the edge
+Description=Colluder: copy interactsh's wildcard certificates for the edge
 
 [Service]
 Type=oneshot
+# ROOT_DOMAIN=<domain>: whose certificate is the edge's default (deploy/add-domain.sh writes it)
+EnvironmentFile=-/etc/default/colluder-cert-sync
 ExecStart=/usr/local/libexec/colluder-cert-sync

@@ -1,9 +1,10 @@
-# interactsh-server for oob.example, run by systemd instead of by hand in a terminal.
+# interactsh-server for Colluder's domains, run by systemd instead of by hand in a terminal.
+# Domains live in /etc/interactsh/domains.env (INTERACTSH_DOMAINS=a,b: deploy/add-domain.sh writes it).
 # The token lives in /etc/interactsh/server.yaml (root, 600), never on the command line.
 # Port flags live in /etc/interactsh/ports.env: the cutover moves HTTP/HTTPS to internal ports behind
 # colluder-edge; the rollback empties them (back to :80/:443). Installed by deploy/cutover-phase2.sh.
 [Unit]
-Description=interactsh-server (oob.example)
+Description=interactsh-server (Colluder's domains)
 After=network-online.target
 Wants=network-online.target
 
@@ -12,7 +13,9 @@ Type=simple
 # certmagic keeps the Let's Encrypt certificates under $HOME
 Environment=HOME=/root
 EnvironmentFile=/etc/interactsh/ports.env
-ExecStart=/home/user/go/bin/interactsh-server -config /etc/interactsh/server.yaml -d oob.example $INTERACTSH_PORT_FLAGS
+Environment=INTERACTSH_DOMAINS=oob.example
+EnvironmentFile=-/etc/interactsh/domains.env
+ExecStart=/home/user/go/bin/interactsh-server -config /etc/interactsh/server.yaml -d ${INTERACTSH_DOMAINS} $INTERACTSH_PORT_FLAGS
 KillSignal=SIGINT
 TimeoutStopSec=10
 Restart=always

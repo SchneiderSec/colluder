@@ -92,7 +92,7 @@ export interface RuleState { active: RuleVersion | null; history: RuleVersion[];
 export interface EdgeStatus {
   state: "running" | "stale" | "stopped" | "absent" | "unreadable";
   listen?: { http: string; https: string | null; dns?: string | null };
-  cert?: { notAfter: string } | null;
+  cert?: { notAfter: string; all?: { names: string[]; notAfter: string }[] } | null;
   heartbeatAt?: string;
   startedAt?: string;
   own?: number;
@@ -160,7 +160,7 @@ export interface CheckResult {
   domain: { expiresAt?: string; days?: number; error?: string; checkedAt: string } | null;
   warnings: string[];
 }
-export interface CheckStatus { active: boolean; running: boolean; everyMinutes: number; last: CheckResult | null }
+export interface CheckStatus { active: boolean; running: boolean; everyMinutes: number; last: CheckResult | null; domains?: { domain: string; primary: boolean; last: CheckResult | null }[] }
 
 export interface StateResponse {
   status: Status;

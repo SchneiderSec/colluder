@@ -26,7 +26,9 @@ const DATA = env.COLLUDER_DATA || join(homedir(), ".local/share/colluder");
 const CFG = {
   host: env.COLLUDER_HOST || "100.64.0.10",
   port: Number(env.COLLUDER_PORT || 8090),
+  // the payload domain; COLLUDER_EXTRA_DOMAINS: others still served (an old one, until it lapses)
   domain: env.COLLUDER_DOMAIN || "oob.example",
+  extraDomains: (env.COLLUDER_EXTRA_DOMAINS || "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean),
   jsonl: env.COLLUDER_JSONL || join(DATA, "interactions.jsonl"),
   edgeJsonl: env.COLLUDER_EDGE_LOG || join(DATA, "edge.jsonl"),
   rulesFile: env.COLLUDER_RULES || join(DATA, "rules.json"),
@@ -37,6 +39,7 @@ const CFG = {
   clientBin: env.COLLUDER_CLIENT_BIN || join(homedir(), "go/bin/interactsh-client"),
   extraHosts: (env.COLLUDER_ALLOWED_HOSTS || "box.tailnet.ts.net,user").split(",").map((s) => s.trim()).filter(Boolean),
 };
+const DOMAINS = [...new Set([CFG.domain, ...CFG.extraDomains])];
 const SELF_IPS = (env.COLLUDER_SELF_IPS || "203.0.113.10").split(",").map((s) => s.trim()).filter(Boolean);
 // the address targets reach (the A record every payload name resolves to)
 const PUBLIC_IP = env.COLLUDER_PUBLIC_IP || SELF_IPS[0];
@@ -80,9 +83,9 @@ function ingest(line, source = "engine") {
   // With the edge's DNS front, interactsh hears Colluder's DNS queries from the edge (loopback) after
   // the edge has recorded them with the real resolver: the engine's copy is a duplicate.
   if (source === "engine" && obj.protocol === "dns" && /^(127\.|::1$|::ffff:127\.)/.test(String(obj["remote-address"] || ""))) return;
-  const it = parseInteraction(obj, CFG.domain, { trusted: source === "edge" });
+  const it = parseInteraction(obj, DOMAINS, { trusted: source === "edge" });
   // the outside check's own traffic (lib/selfcheck.mjs): it proves the path works, it isn't a hit
-  if (it.tag === CHECK_TAG && it.uniqueId === SHORT_ID) { outside.saw(it); return; }
+  if (it.tag === CHECK_TAG && it.uniqueId === SHORT_ID) { for (const c of checks) if (c.saw(it)) break; return; }
   const receivedAt = nowIso();
   const res = store.insert(line, it, receivedAt);
   if (!res) return;
@@ -138,28 +141,61 @@ function payloadOut() {
 const tagged = (tag, host) => `${tag}-${host}`;
 
 // ---------- the outside check (lib/selfcheck.mjs) ----------
+// One per served domain: a new domain is proven before payloads move to it, an old one until it lapses.
 const CHECK_EVERY = Number(env.COLLUDER_CHECK_MINUTES || 10) * 60e3;
 let lastCheckAt = 0;
-const outside = new OutsideCheck({
-  domain: CFG.domain, shortId: SHORT_ID, publicIp: PUBLIC_IP, log,
-  last: (() => { try { return JSON.parse(store.meta("outside_check") || "null"); } catch { return null; } })(),
+const savedChecks = (() => {
+  try {
+    const m = JSON.parse(store.meta("outside_checks") || "null") || {};
+    if (!m[CFG.domain] && store.meta("outside_check")) m[CFG.domain] = JSON.parse(store.meta("outside_check")); // before multi-domain
+    return m;
+  } catch { return {}; }
+})();
+const checks = DOMAINS.map((domain) => new OutsideCheck({
+  domain, shortId: SHORT_ID, publicIp: PUBLIC_IP, log, last: savedChecks[domain] ?? null,
   onResult: (r, before) => {
-    store.meta("outside_check", JSON.stringify(r));
+    const all = (() => { try { return JSON.parse(store.meta("outside_checks") || "null") || {}; } catch { return {}; } })();
+    all[domain] = r;
+    for (const d of Object.keys(all)) if (!DOMAINS.includes(d)) delete all[d];
+    store.meta("outside_checks", JSON.stringify(all));
     const bad = r.steps.filter((s) => !s.ok).map((s) => `${s.label}: ${s.detail}`);
-    log(`outside check ${r.state}${bad.length ? `: ${bad.join("; ")}` : ""}${r.warnings.length ? ` (${r.warnings.join(" ")})` : ""}`);
+    log(`outside check ${domain} ${r.state}${bad.length ? `: ${bad.join("; ")}` : ""}${r.warnings.length ? ` (${r.warnings.join(" ")})` : ""}`);
     const msg = checkAlert(r, before);
-    if (msg && discordEnabled()) discord.post(msg);
+    if (msg && discordEnabled()) discord.post(DOMAINS.length > 1 ? `[${domain}] ${msg}` : msg);
     broadcast("status", statusPayload());
   },
-});
+}));
 // it only means something once the short host is the payload (the edge fronts DNS and records it)
 const checkActive = () => !!payloadOut()?.short;
-function checkStatus() {
-  return { active: checkActive(), running: !!outside.running, everyMinutes: CHECK_EVERY / 60e3, last: outside.last };
+// every domain's result folded into one: the worst state, each step named for its domain when there
+// are several (what the banner, the status bar, an empty probe and Claude read)
+function combinedCheck() {
+  const ran = checks.filter((c) => c.last);
+  if (!ran.length) return null;
+  const many = checks.length > 1;
+  const rank = { failing: 2, warn: 1, ok: 0 };
+  const primary = checks[0].last;
+  return {
+    state: ran.map((c) => c.last.state).reduce((a, b) => (rank[b] > rank[a] ? b : a), "ok"),
+    startedAt: ran.map((c) => c.last.startedAt).sort()[0],
+    finishedAt: ran.map((c) => c.last.finishedAt).sort().at(-1),
+    host: primary?.host ?? ran[0].last.host,
+    steps: ran.flatMap((c) => c.last.steps.map((x) => (many ? { ...x, key: `${c.domain}:${x.key}`, label: `${c.domain} · ${x.label}` } : x))),
+    cert: primary?.cert ?? null,
+    domain: primary?.domain ?? null,
+    warnings: ran.flatMap((c) => c.last.warnings),
+  };
 }
-function runCheck() {
+function checkStatus() {
+  return {
+    active: checkActive(), running: checks.some((c) => c.running), everyMinutes: CHECK_EVERY / 60e3, last: combinedCheck(),
+    domains: checks.map((c, i) => ({ domain: c.domain, primary: i === 0, last: c.last })),
+  };
+}
+async function runCheck() {
   lastCheckAt = Date.now();
-  return outside.run().catch((e) => { log("outside check error:", e.message); return null; });
+  await Promise.all(checks.map((c) => c.run().catch((e) => { log(`outside check ${c.domain} error:`, e.message); return null; })));
+  return combinedCheck();
 }
 
 // ---------- status ----------
@@ -209,7 +245,7 @@ function knownCids() {
 async function publishRules() {
   const rules = {};
   for (const [tag, r] of Object.entries(store.activeRules())) if (r.rule.mode !== "default") rules[tag] = { version: r.version, rule: r.rule };
-  const body = JSON.stringify({ generatedAt: nowIso(), domain: CFG.domain, cids: knownCids(), shortIds: [SHORT_ID], rules }, null, 1);
+  const body = JSON.stringify({ generatedAt: nowIso(), domain: CFG.domain, domains: DOMAINS, cids: knownCids(), shortIds: [SHORT_ID], rules }, null, 1);
   const tmp = CFG.rulesFile + ".tmp";
   await writeFile(tmp, body, { mode: 0o600 });
   await rename(tmp, CFG.rulesFile); // atomic: the edge never reads half a file
@@ -581,7 +617,7 @@ live = true;
 await statusTick();
 setInterval(statusTick, 5000).unref();
 // first run soon after a start, then every CHECK_EVERY; a run in progress is never doubled
-setInterval(() => { if (checkActive() && !outside.running && Date.now() - lastCheckAt >= CHECK_EVERY) runCheck(); }, 20_000).unref();
+setInterval(() => { if (checkActive() && !checks.some((c) => c.running) && Date.now() - lastCheckAt >= CHECK_EVERY) runCheck(); }, 20_000).unref();
 lastCheckAt = Date.now() - CHECK_EVERY + 30_000;
 setInterval(() => { for (const res of clients) res.write(": keep-alive\n\n"); }, 15000).unref();
 

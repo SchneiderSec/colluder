@@ -19,7 +19,8 @@ function edgeRows(e: Status["edge"]): [string, ReactNode][] {
   const word = { running: "answering", stale: "silent (no heartbeat for 20 s)", stopped: "stopped", unreadable: `status unreadable: ${e.detail ?? ""}`, absent: "" }[e.state];
   const rows: [string, ReactNode][] = [["State", <span className={e.state === "running" ? "" : "text-bad"}>{word}</span>]];
   if (e.listen) rows.push(["Listening", <code className="font-mono">{[e.listen.http, e.listen.https, e.listen.dns && `${e.listen.dns} (DNS)`].filter(Boolean).join(" · ")}</code>]);
-  if (e.cert?.notAfter) rows.push(["Certificate valid until", e.cert.notAfter]);
+  if (e.cert?.all && e.cert.all.length > 1) for (const c of e.cert.all) rows.push([`Certificate ${c.names[0] ?? ""}`, `valid until ${c.notAfter}`]);
+  else if (e.cert?.notAfter) rows.push(["Certificate valid until", e.cert.notAfter]);
   if (e.startedAt) rows.push(["Since start", `${e.own ?? 0} answered for your probes · ${e.relayed ?? 0} passed to interactsh · ${e.errors ?? 0} refused or broken connections (scanners, mostly; details in journalctl -u colluder-edge)`]);
   return rows;
 }
@@ -33,10 +34,16 @@ function checkRows(c: Status["check"]): [string, ReactNode][] {
     ["Last run", <span>{l.finishedAt.replace("T", " ").slice(0, 19)} UTC <span className="text-smoke">· {ago(Date.now() - isoMs(l.finishedAt))} · every {c.everyMinutes} min, on <code className="font-mono">{l.host}</code></span></span>],
     ...l.steps.map((x): [string, ReactNode] => [x.label, <span><b className={x.ok ? "font-[650]" : "font-[650] text-bad"}>{x.ok ? "Passed" : "Failed"}</b> <span className={x.ok ? "text-smoke" : ""}>· {x.detail}{x.retried ? " (on the retry a minute later)" : ""}</span></span>]),
   ];
-  if (l.cert) rows.push(["Certificate", <span className={l.cert.days < 21 ? "text-bad" : ""}>{l.cert.days < 0 ? "expired" : `${l.cert.days} days left`} <span className="text-smoke">· until {l.cert.validTo.slice(0, 10)}</span></span>]);
-  if (l.domain) rows.push(["Domain registration", l.domain.expiresAt
-    ? <span className={(l.domain.days ?? 99) < 30 ? "text-bad" : ""}>{(l.domain.days ?? 0) < 0 ? "expired" : `${l.domain.days} days left`} <span className="text-smoke">· until {l.domain.expiresAt.slice(0, 10)}, from RDAP once a day</span></span>
-    : <span className="text-smoke">Couldn't read it from RDAP ({l.domain.error}); tried again next run</span>]);
+  // each served domain's certificate and registration (one domain: no name needed)
+  const per = c.domains?.length ? c.domains : [{ domain: "", primary: true, last: l }];
+  for (const d of per) {
+    const r = d.last, at = per.length > 1 ? ` · ${d.domain}${d.primary ? " (payloads)" : ""}` : "";
+    if (!r) { rows.push([`Certificate${at}`, <span className="text-smoke">Not checked yet</span>]); continue; }
+    if (r.cert) rows.push([`Certificate${at}`, <span className={r.cert.days < 21 ? "text-bad" : ""}>{r.cert.days < 0 ? "expired" : `${r.cert.days} days left`} <span className="text-smoke">· until {r.cert.validTo.slice(0, 10)}</span></span>]);
+    if (r.domain) rows.push([`Registration${at}`, r.domain.expiresAt
+      ? <span className={(r.domain.days ?? 99) < 30 ? "text-bad" : ""}>{(r.domain.days ?? 0) < 0 ? "expired" : `${r.domain.days} days left`} <span className="text-smoke">· until {r.domain.expiresAt.slice(0, 10)}, from RDAP once a day</span></span>
+      : <span className="text-smoke">Couldn't read it from RDAP ({r.domain.error}); tried again next run</span>]);
+  }
   return rows;
 }
 

@@ -8,7 +8,7 @@
 import net from "node:net";
 import tls from "node:tls";
 import { isUtf8 } from "node:buffer";
-import { readFileSync, openSync, writeSync, writeFileSync, renameSync, watchFile, existsSync, mkdirSync } from "node:fs";
+import { readFileSync, openSync, writeSync, writeFileSync, renameSync, watchFile, existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import { X509Certificate } from "node:crypto";
 import { join } from "node:path";
 import { homedir } from "node:os";
@@ -34,6 +34,9 @@ const CFG = {
   upDns: addr(env.COLLUDER_UPSTREAM_DNS || "127.0.0.1:8053"),
   cert: env.COLLUDER_EDGE_CERT || join(homedir(), "caido-cert/fullchain.pem"),
   key: env.COLLUDER_EDGE_KEY || join(homedir(), "caido-cert/privkey.pem"),
+  // one wildcard per extra domain, <dir>/<domain>/{fullchain,privkey}.pem (deploy/cert-sync.sh);
+  // a client's server name picks among them and the default above
+  certDir: env.COLLUDER_EDGE_CERT_DIR || join(homedir(), "caido-cert/domains"),
   rules: env.COLLUDER_RULES || join(DATA, "rules.json"),
   payloadFile: env.COLLUDER_PAYLOAD_FILE || join(DATA, "payload.txt"),
   log: env.COLLUDER_EDGE_LOG || join(DATA, "edge.jsonl"),
@@ -49,9 +52,10 @@ const stats = { own: 0, relayed: 0, errors: 0, tlsErrors: 0, startedAt: new Date
 let delayed = 0;
 
 // ---------- rules ----------
-let state = { cids: [], shortIds: [], rules: {}, generatedAt: null };
+const DOMAIN_RE = /^(?=.{4,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
+let state = { cids: [], shortIds: [], domains: [CFG.domain], rules: {}, generatedAt: null };
 function loadRules() {
-  let next = { cids: [], shortIds: [], rules: {}, generatedAt: null };
+  let next = { cids: [], shortIds: [], domains: [], rules: {}, generatedAt: null };
   try { next = { ...next, ...JSON.parse(readFileSync(CFG.rules, "utf8")) }; } catch (e) {
     if (e.code !== "ENOENT") log("rules.json unreadable, keeping previous rules:", e.message);
     else next.cids = cidFromPayload();
@@ -60,8 +64,12 @@ function loadRules() {
   if (!next.cids?.length) next.cids = cidFromPayload();
   next.cids = next.cids.filter((c) => /^[a-z0-9]{20}$/.test(c));
   next.shortIds = (Array.isArray(next.shortIds) ? next.shortIds : []).filter((c) => /^[a-z][a-z0-9]{5}$/.test(c));
+  // every domain Colluder serves (the payload domain first; an old one stays until it lapses)
+  next.domains = [...new Set([...(Array.isArray(next.domains) ? next.domains : []), next.domain, CFG.domain]
+    .map((d) => String(d || "").toLowerCase()).filter((d) => DOMAIN_RE.test(d)))];
+  const before = state.domains.join(",");
   state = next;
-  log(`rules loaded: ${Object.keys(state.rules).length} rule(s), ${state.cids.length} correlation id(s)`);
+  log(`rules loaded: ${Object.keys(state.rules).length} rule(s), ${state.cids.length} correlation id(s)${state.domains.join(",") !== before ? `, domains ${state.domains.join(", ")}` : ""}`);
 }
 function cidFromPayload() {
   try { const id = readFileSync(CFG.payloadFile, "utf8").trim().split(".")[0].toLowerCase(); return id.length >= 20 ? [id.slice(0, 20)] : []; } catch { return []; }
@@ -71,10 +79,12 @@ function cidFromPayload() {
 // correlation ids (anywhere in the name, as interactsh reads it), or our short id in the label right
 // under the domain. Either stands alone (<id>) or has the tag joined by a dash (<tag>-<id>): one
 // label, so the *.domain certificate covers it over HTTPS.
+// domain: one name or a list (the first that the host ends with decides where "right under" is).
 export function ownership(hostHeader, cids, shorts = [], domain = CFG.domain) {
   const host = String(hostHeader || "").toLowerCase().replace(/:\d+$/, "").replace(/\.$/, "");
   const labels = host.split(".");
-  const top = domain && host.endsWith("." + domain) ? labels.length - domain.split(".").length - 1 : -1;
+  const d = domainOf(host, domain);
+  const top = d ? labels.length - d.split(".").length - 1 : -1;
   for (let i = 0; i < labels.length; i++) {
     const l = labels[i], dash = l.lastIndexOf("-");
     if (dash === 0 || (dash > 0 && !/^[a-z0-9][a-z0-9-]*$/.test(l.slice(0, dash)))) continue;
@@ -85,14 +95,22 @@ export function ownership(hostHeader, cids, shorts = [], domain = CFG.domain) {
   return null;
 }
 
+// which of our domains a host is under (the longest match), or null
+export function domainOf(hostHeader, domains = CFG.domain) {
+  const host = String(hostHeader || "").toLowerCase().replace(/:\d+$/, "").replace(/\.$/, "");
+  let best = null;
+  for (const d of [].concat(domains)) if (d && host.endsWith("." + d) && (!best || d.length > best.length)) best = d;
+  return best;
+}
+
 // The host a request is for: the Host header, or the authority of an absolute-form target
 // (GET http://x/ HTTP/1.1, which proxies and some HTTP/1.0 clients send with a foreign or no Host).
 export function routeOf(hostHeader, target, cids) {
-  const byHost = ownership(hostHeader, cids, state.shortIds);
+  const byHost = ownership(hostHeader, cids, state.shortIds, state.domains);
   if (byHost) return { own: byHost, host: hostHeader };
   const a = /^[a-z][a-z0-9+.-]*:\/\/([^/?#\s]*)/i.exec(String(target || ""));
   const auth = a ? a[1].replace(/^.*@/, "") : "";
-  const byTarget = auth ? ownership(auth, cids, state.shortIds) : null;
+  const byTarget = auth ? ownership(auth, cids, state.shortIds, state.domains) : null;
   return byTarget ? { own: byTarget, host: auth } : null;
 }
 
@@ -221,7 +239,7 @@ async function handle(sock, scheme) {
   } else {
     const key = `${tag}\0${entry?.version}`;
     const seen = answered.get(key) ?? 0;
-    const res = respond(entry?.rule || null, entry?.version ?? null, { scheme, method: head.method, target: head.target, host, uniqueId: own.uniqueId, domain: CFG.domain, ua: head.get("user-agent")?.[0] ?? "", ip, seen });
+    const res = respond(entry?.rule || null, entry?.version ?? null, { scheme, method: head.method, target: head.target, host, uniqueId: own.uniqueId, domain: domainOf(host, state.domains) || state.domains[0], ua: head.get("user-agent")?.[0] ?? "", ip, seen });
     if (entry?.rule?.decoy && res.answer.version != null) { answered.delete(key); answered.set(key, seen + 1); if (answered.size > 5000) answered.delete(answered.keys().next().value); }
     wire = serialize(res, head.method);
     answer = malformed ? { ...res.answer, malformed } : res.answer;
@@ -295,7 +313,7 @@ function relay(sock, r, head, scheme) {
 const pendingTls = new Map();
 const connKey = (s) => `${s.remoteAddress}|${s.remotePort}`;
 function tlsFailed(p) {
-  const own = ownership(p.sni, state.cids, state.shortIds);
+  const own = ownership(p.sni, state.cids, state.shortIds, state.domains);
   if (!own) return;
   const tag = parseInteraction({ protocol: "https", "unique-id": own.uniqueId, "full-id": own.fullId }, CFG.domain).tag;
   stats.own++;
@@ -307,11 +325,47 @@ function tlsFailed(p) {
   });
 }
 
-function loadCtx() {
-  const cert = readFileSync(CFG.cert), key = readFileSync(CFG.key);
-  const notAfter = new X509Certificate(cert).validTo;
-  return { ctx: { cert, key }, notAfter };
+// ---------- certificates ----------
+// The default pair, plus one per domain directory; each is matched by the names it covers.
+function certNames(x509) {
+  const san = (x509.subjectAltName || "").split(/,\s*/).filter((e) => e.startsWith("DNS:")).map((e) => e.slice(4).toLowerCase());
+  return san.length ? san : [/CN=([^\n,]+)/.exec(x509.subject)?.[1]?.toLowerCase()].filter(Boolean);
 }
+function loadPair(certPath, keyPath) {
+  const cert = readFileSync(certPath), key = readFileSync(keyPath);
+  const x = new X509Certificate(cert);
+  return { cert, key, names: certNames(x), notAfter: x.validTo, path: certPath };
+}
+export function loadCerts(cfg = CFG) {
+  const def = loadPair(cfg.cert, cfg.key);
+  const extra = [];
+  let dirs = [];
+  try { dirs = readdirSync(cfg.certDir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name).sort(); } catch { /* none yet */ }
+  for (const d of dirs) {
+    try { extra.push(loadPair(join(cfg.certDir, d, "fullchain.pem"), join(cfg.certDir, d, "privkey.pem"))); }
+    catch (e) { log(`certificate in ${d} unreadable, skipped:`, e.message); }
+  }
+  return { def, extra };
+}
+// the most specific certificate that covers a server name (exact beats wildcard; a wildcard covers
+// one label), else null for the default
+export function pickCert(servername, pairs) {
+  const n = String(servername || "").toLowerCase().replace(/\.$/, "");
+  let best = null, score = 0;
+  for (const p of pairs) for (const name of p.names) {
+    const s = name === n ? 1000 + name.length
+      : name.startsWith("*.") && n.endsWith(name.slice(1)) && !n.slice(0, -(name.length - 1)).includes(".") ? name.length : 0;
+    if (s > score) { score = s; best = p; }
+  }
+  return best;
+}
+// what changes when cert-sync copies a renewal or a new domain in
+function certSignature(cfg = CFG) {
+  const files = [cfg.cert, cfg.key];
+  try { for (const e of readdirSync(cfg.certDir, { withFileTypes: true })) if (e.isDirectory()) files.push(join(cfg.certDir, e.name, "fullchain.pem"), join(cfg.certDir, e.name, "privkey.pem")); } catch { /* none */ }
+  return files.map((f) => { try { return `${f}:${statSync(f).mtimeMs}`; } catch { return `${f}:-`; } }).join("|");
+}
+const certSummary = (c) => ({ notAfter: c.def.notAfter, all: [c.def, ...c.extra].map((p) => ({ names: p.names, notAfter: p.notAfter })) });
 let certInfo = null;
 const servers = [];
 function start() {
@@ -327,11 +381,16 @@ function start() {
   servers.push(h);
 
   if (CFG.https) {
-    const c = loadCtx();
-    certInfo = { notAfter: c.notAfter };
+    let c = loadCerts();
+    let ctxs = c.extra.map((p) => ({ ...p, ctx: tls.createSecureContext({ cert: p.cert, key: p.key }) }));
+    certInfo = certSummary(c);
     // TLS is terminated only after reading the server name: the apex (interactsh's polling API, which
     // the wildcard certificate doesn't cover) goes through untouched; everything else is ours to read.
-    const s = tls.createServer({ ...c.ctx, ALPNProtocols: ["http/1.1"] }, (sock) => {
+    const s = tls.createServer({
+      cert: c.def.cert, key: c.def.key, ALPNProtocols: ["http/1.1"],
+      // the default answers unless another domain's certificate covers the name better
+      SNICallback: (name, done) => { const p = pickCert(name, [c.def, ...ctxs]); done(null, p && p !== c.def ? p.ctx : undefined); },
+    }, (sock) => {
       const key = connKey(sock), p = pendingTls.get(key);
       if (p) { p.handshook = true; sock.once("data", () => pendingTls.delete(key)); }
       handle(sock, "https");
@@ -351,8 +410,8 @@ function start() {
         clearTimeout(t);
         sock.off("data", onData);
         sock.pause();
-        if (!h.tls || h.sni === CFG.domain) return passthrough(sock, buf, CFG.upHttps);
-        if (h.sni && ownership(h.sni, state.cids, state.shortIds) && pendingTls.size < 1000) {
+        if (!h.tls || state.domains.includes(String(h.sni).toLowerCase())) return passthrough(sock, buf, CFG.upHttps);
+        if (h.sni && ownership(h.sni, state.cids, state.shortIds, state.domains) && pendingTls.size < 1000) {
           const key = connKey(sock), p = { sni: h.sni, alpn: h.alpn, hello: buf.subarray(0, 16 * 1024), ip: ipOf(sock), at: new Date().toISOString() };
           pendingTls.set(key, p);
           sock.once("close", () => { if (pendingTls.get(key) === p) { pendingTls.delete(key); tlsFailed(p); } });
@@ -363,18 +422,27 @@ function start() {
       sock.on("data", onData);
     });
     front.maxConnections = CFG.maxConns;
-    front.listen(CFG.https.port, CFG.https.host, () => log(`edge https on ${CFG.https.host}:${CFG.https.port}, cert valid until ${c.notAfter}`));
+    front.listen(CFG.https.port, CFG.https.host, () => log(`edge https on ${CFG.https.host}:${CFG.https.port}, certificates: ${[c.def, ...c.extra].map((p) => `${p.names.join(" ")} until ${p.notAfter}`).join("; ")}`));
     servers.push(front);
-    watchFile(CFG.cert, { interval: 60_000 }, () => {
-      try { const n = loadCtx(); s.setSecureContext(n.ctx); certInfo = { notAfter: n.notAfter }; log(`certificate reloaded, valid until ${n.notAfter}`); }
-      catch (e) { log("certificate reload failed, keeping the old one:", e.message); }
-    });
+    let sig = certSignature();
+    setInterval(() => {
+      const now = certSignature();
+      if (now === sig) return;
+      sig = now;
+      try {
+        const n = loadCerts();
+        const nCtxs = n.extra.map((p) => ({ ...p, ctx: tls.createSecureContext({ cert: p.cert, key: p.key }) }));
+        s.setSecureContext({ cert: n.def.cert, key: n.def.key });
+        c = n; ctxs = nCtxs; certInfo = certSummary(n);
+        log(`certificates reloaded: ${[n.def, ...n.extra].map((p) => `${p.names.join(" ")} until ${p.notAfter}`).join("; ")}`);
+      } catch (e) { log("certificate reload failed, keeping the old ones:", e.message); }
+    }, 60_000).unref();
   }
   for (const s of servers) s.on("error", (e) => { log("listener error:", e.message); process.exit(1); });
 
   let dns = null;
   if (CFG.dns) {
-    dns = dnsFront({ listen: CFG.dns, upstream: CFG.upDns, owns: (name) => ownership(name, state.cids, state.shortIds), record, log, stats });
+    dns = dnsFront({ listen: CFG.dns, upstream: CFG.upDns, owns: (name) => ownership(name, state.cids, state.shortIds, state.domains), record, log, stats });
     dns.listen().then(() => log(`edge dns on ${CFG.dns.host}:${CFG.dns.port} (udp, tcp), relaying to ${CFG.upDns.host}:${CFG.upDns.port}`))
       .catch((e) => { log("dns listener error:", e.message); process.exit(1); });
   }

@@ -88,6 +88,28 @@ Discord on the change (and again when it passes). The tag `colluder-check` is re
 never stored as hits. Settings → Outside check shows every step and has **Check now**; Claude sees the
 result in its `status` tool. It runs only once the edge fronts DNS (the short host is the payload).
 
+## Two domains (moving to a new one)
+
+Colluder can serve a second domain next to the payload domain, so a new domain is answering, has its
+own certificate and passes the outside check before any payload uses it, and the old one keeps working
+until it lapses. `COLLUDER_DOMAIN` is the payload domain; `COLLUDER_EXTRA_DOMAINS` (colluder.env) lists
+the others. The dashboard publishes the list in `rules.json`; the edge owns our names under any of them,
+passes each apex through to interactsh, and picks each domain's certificate by server name
+(`~/caido-cert/domains/<domain>/`, copied there by `cert-sync.sh`; `~/caido-cert/fullchain.pem` stays the
+default). interactsh reads its domains from `/etc/interactsh/domains.env`.
+
+```sh
+# 1. at the registrar: glue records ns1/ns2.<new> -> 203.0.113.10, then nameservers ns1/ns2.<new>
+# 2. operator:
+sudo tools/oob-dashboard/deploy/add-domain.sh alt.example     # checks the delegation first
+sudo tools/oob-dashboard/deploy/add-domain.sh --rollback       # undo
+```
+
+The script stops unless the registry already delegates the domain here (interactsh asks Let's Encrypt
+for the wildcard once, at start), restarts interactsh with both domains, waits for the certificate,
+installs the multi-domain `cert-sync`, restarts the edge and the dashboard, and verifies DNS (direct and
+through Cloudflare), HTTPS on both domains and the outside check. Payloads keep using the old domain.
+
 ## Phase 2 cutover (operator, once)
 
 ```sh
@@ -138,6 +160,8 @@ carries comes back under an `untrusted` key: Claude is told it is evidence, neve
 | `DISCORD_WEBHOOK_URL` | unset (alerts off) |
 | `COLLUDER_SELF_IPS` | `203.0.113.10` (comma-separated; hits from these read "this box") |
 | `COLLUDER_PUBLIC_IP` | the first of `COLLUDER_SELF_IPS` (the address payload names must resolve to; the outside check expects it) |
+| `COLLUDER_EXTRA_DOMAINS` | unset (other domains served besides `COLLUDER_DOMAIN`; see Two domains) |
+| `COLLUDER_EDGE_CERT_DIR` (edge) | `~/caido-cert/domains` (one `<domain>/` per extra certificate) |
 | `COLLUDER_CHECK_MINUTES` | `10` (how often the outside check runs) |
 | `COLLUDER_EDGE_HTTP` / `COLLUDER_EDGE_HTTPS` (edge) | `203.0.113.10:80` / `:443` (`off` disables HTTPS) |
 | `COLLUDER_UPSTREAM_HTTP` / `COLLUDER_UPSTREAM_HTTPS` (edge) | `127.0.0.1:8081` / `127.0.0.1:8444` (cutover writes the real ones to `~/.config/colluder/edge.env`) |
