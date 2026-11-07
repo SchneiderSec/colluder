@@ -3,17 +3,19 @@
 // choices never change another's. Applied as attributes on <html>, which index.css themes from.
 import { useSyncExternalStore } from "react";
 
-export type Theme = "dark" | "contrast" | "light" | "system";
+export const DARK_THEMES = ["dark", "contrast", "dracula", "nord", "tokyo"] as const;
+export type DarkTheme = (typeof DARK_THEMES)[number];
+export type Theme = DarkTheme | "light" | "system";
 export type Inks = "colluder" | "safe";
 export type Motion = "full" | "still" | "none";
 export type Night = "auto" | "off";
 export type Chime = "off" | "firings" | "hidden";
 export type HitsHeight = "short" | "tall" | "half";
-export type Display = { theme: Theme; inks: Inks; motion: Motion; night: Night; chime: Chime; hits: HitsHeight };
+export type Display = { theme: Theme; dark: DarkTheme; inks: Inks; motion: Motion; night: Night; chime: Chime; hits: HitsHeight };
 
-const DEFAULTS: Display = { theme: "dark", inks: "colluder", motion: "full", night: "auto", chime: "off", hits: "short" };
+const DEFAULTS: Display = { theme: "dark", dark: "dark", inks: "colluder", motion: "full", night: "auto", chime: "off", hits: "short" };
 const ALLOWED: { [K in keyof Display]: readonly Display[K][] } = {
-  theme: ["dark", "contrast", "light", "system"], inks: ["colluder", "safe"], motion: ["full", "still", "none"],
+  theme: [...DARK_THEMES, "light", "system"], dark: DARK_THEMES, inks: ["colluder", "safe"], motion: ["full", "still", "none"],
   night: ["auto", "off"], chime: ["off", "firings", "hidden"], hits: ["short", "tall", "half"],
 };
 const KEY = "colluder.display";
@@ -31,8 +33,9 @@ let current = read();
 const subs = new Set<() => void>();
 const light = typeof matchMedia === "function" ? matchMedia("(prefers-color-scheme: light)") : null;
 
-// the theme actually drawn: "system" follows the OS (light, or the default dark)
-export const shownTheme = (d: Display = current): Exclude<Theme, "system"> => (d.theme === "system" ? (light?.matches ? "light" : "dark") : d.theme);
+// the theme actually drawn: "system" follows the OS, light or the dark theme picked last
+export const shownTheme = (d: Display = current): Exclude<Theme, "system"> => (d.theme === "system" ? (light?.matches ? "light" : d.dark) : d.theme);
+export const isDark = (t: Theme): t is DarkTheme => (DARK_THEMES as readonly string[]).includes(t);
 
 function apply() {
   const el = document.documentElement;
@@ -46,6 +49,7 @@ function apply() {
 
 export function setDisplay<K extends keyof Display>(k: K, v: Display[K]) {
   current = { ...current, [k]: v };
+  if (k === "theme" && isDark(v as Theme)) current.dark = v as DarkTheme; // what "Match system" uses at night
   try { localStorage.setItem(KEY, JSON.stringify(current)); } catch { /* private mode: this load only */ }
   apply();
   subs.forEach((f) => f());

@@ -15,7 +15,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { LineForm, TypeChip } from "./bits";
 import { applyTypeScale, readTypeScale, type TypeScale } from "@/lib/typeScale";
-import { setDisplay, useDisplay, type Display } from "@/lib/display";
+import { setDisplay, shownTheme, useDisplay, type Display, type Theme } from "@/lib/display";
 import { chime } from "@/lib/chime";
 import type { AlertKind, CheckResult, Status } from "@/lib/types";
 
@@ -358,7 +358,67 @@ export function CheckSection({ st }: { st: Status | null }) {
 }
 
 // ---------- display (this browser) ----------
-export const THEME_NAMES = { dark: "Dark", contrast: "High contrast", light: "Light", system: "Match system" } as const;
+export const THEME_NAMES: Record<Theme, string> = { dark: "Colluder", contrast: "High contrast", dracula: "Dracula", nord: "Nord", tokyo: "Tokyo Night", light: "Light", system: "Match system" };
+const THEME_HINTS: Record<Exclude<Theme, "system">, string> = {
+  dark: "Colluder's own: warm soot with bone ink and amber for anything new.",
+  contrast: "Brighter secondary text and rules, for reading from across a desk or on a dim second monitor.",
+  dracula: "Dracula's purple-grey night: purple DNS, pink HTTP, cyan HTTPS, green SMTP, orange for new.",
+  nord: "Nord's arctic grey-blue, cooler and quieter, with frost and aurora accents.",
+  tokyo: "Tokyo Night's deep indigo with neon accents, the darkest of the set.",
+  light: "For a bright room. The protocol colours deepen to read on paper.",
+};
+// each tile is painted in its own theme's colours (the page around it stays in the current one)
+type Swatch = { ground: string; rail: string; ink: string; dim: string; fresh: string; inks: [string, string, string, string] };
+const SWATCH: Record<Exclude<Theme, "system">, Swatch> = {
+  dark: { ground: "#16120e", rail: "#110e0b", ink: "#ece3d1", dim: "#b3a99a", fresh: "#f2b33d", inks: ["#c793c4", "#e2643f", "#8aa2ea", "#62b08f"] },
+  contrast: { ground: "#120f0b", rail: "#0c0a08", ink: "#f8f1e3", dim: "#d6ccbc", fresh: "#f7c25a", inks: ["#dcaad9", "#f2865f", "#a9bdf6", "#7fcca8"] },
+  dracula: { ground: "#282a36", rail: "#21222c", ink: "#f8f8f2", dim: "#d0d3e3", fresh: "#ffb86c", inks: ["#bd93f9", "#ff79c6", "#8be9fd", "#50fa7b"] },
+  nord: { ground: "#2e3440", rail: "#272c36", ink: "#eceff4", dim: "#d3d9e4", fresh: "#ebcb8b", inks: ["#d0aeca", "#e3a58e", "#8ec6d5", "#a3be8c"] },
+  tokyo: { ground: "#1a1b26", rail: "#16161e", ink: "#c0caf5", dim: "#a9b1d6", fresh: "#e0af68", inks: ["#bb9af7", "#ff9e64", "#7aa2f7", "#9ece6a"] },
+  light: { ground: "#f3eee3", rail: "#ebe4d6", ink: "#1d1813", dim: "#554c40", fresh: "#7f5300", inks: ["#8a3f86", "#a93a17", "#3450ad", "#1f6f48"] },
+};
+
+// a miniature of the dashboard: the rail, two lines of text, the four protocol inks and a new-hit dot
+function Miniature({ w, className }: { w: Swatch; className?: string }) {
+  return (
+    <span className={cn("absolute inset-0 flex", className)} style={{ backgroundColor: w.ground }}>
+      <span className="w-2.5 flex-none" style={{ backgroundColor: w.rail }} />
+      <span className="flex flex-1 flex-col justify-center gap-[5px] px-2.5">
+        <span className="h-[3px] w-[62%] rounded-full" style={{ backgroundColor: w.ink }} />
+        <span className="h-[3px] w-[40%] rounded-full opacity-80" style={{ backgroundColor: w.dim }} />
+        <span className="mt-0.5 flex items-center gap-[5px]">
+          {w.inks.map((c) => <span key={c} className="size-[7px] rounded-[2px]" style={{ backgroundColor: c }} />)}
+          <span className="ml-auto size-[7px] rounded-full" style={{ backgroundColor: w.fresh }} />
+        </span>
+      </span>
+    </span>
+  );
+}
+
+function ThemePicker({ d }: { d: Display }) {
+  const order: Theme[] = ["dark", "contrast", "dracula", "nord", "tokyo", "light", "system"];
+  return (
+    <ToggleGroup type="single" value={d.theme} onValueChange={(v) => { if (v) setDisplay("theme", v as Theme); }} aria-label="Theme" className="grid w-full grid-cols-[repeat(auto-fill,minmax(104px,1fr))] gap-2.5">
+      {order.map((t) => {
+        const on = d.theme === t;
+        return (
+          <ToggleGroupItem key={t} value={t} aria-label={THEME_NAMES[t]}
+            className="group h-auto min-w-0 flex-col items-stretch gap-1.5 rounded-[4px] border border-rule bg-transparent p-1.5 text-left shadow-none hover:border-ash hover:bg-transparent data-[state=on]:border-bone data-[state=on]:bg-soot-2">
+            <span className="relative block h-12 overflow-hidden rounded-[3px] outline outline-1 -outline-offset-1 outline-rule/70" aria-hidden>
+              {t === "system"
+                ? <><Miniature w={SWATCH.light} className="[clip-path:polygon(0_0,100%_0,0_100%)]" /><Miniature w={SWATCH[d.dark]} className="[clip-path:polygon(100%_0,100%_100%,0_100%)]" /></>
+                : <Miniature w={SWATCH[t]} />}
+            </span>
+            <span className={cn("flex items-center gap-1 px-0.5 text-body", on ? "font-semibold text-bone" : "text-smoke group-hover:text-bone")}>
+              <span className="truncate">{THEME_NAMES[t]}</span>
+              {on && <Check className="ml-auto size-3.5 flex-none" strokeWidth={2.25} />}
+            </span>
+          </ToggleGroupItem>
+        );
+      })}
+    </ToggleGroup>
+  );
+}
 
 export function DisplaySection() {
   const d = useDisplay();
@@ -367,8 +427,8 @@ export function DisplaySection() {
   return (
     <Section id="display" title="Display" desc="Saved in this browser only, so the desk monitor and the phone can each have their own.">
       <Group title="Look">
-        <Row label="Theme" hint={{ dark: undefined, light: "For a bright room. The protocol colours deepen to read on paper.", contrast: "Brighter secondary text and rules, for reading from across a desk or on a dim second monitor.", system: "Light when the system is set to light, dark otherwise." }[d.theme]}>
-          <Seg label="Theme" value={d.theme} onChange={set("theme")} options={Object.entries(THEME_NAMES) as [Display["theme"], string][]} />
+        <Row label="Theme" hint={d.theme === "system" ? `Light when the system is set to light; otherwise ${THEME_NAMES[d.dark]}, the dark theme you picked last.` : THEME_HINTS[d.theme]}>
+          <ThemePicker d={d} />
         </Row>
         <Row label="Protocol colours" hint={d.inks === "safe" ? "Okabe-Ito hues: DNS, HTTP, HTTPS and SMTP stay apart with red-green and blue-yellow colour blindness." : undefined}>
           <Seg label="Protocol colours" value={d.inks} onChange={set("inks")} options={[["colluder", "Colluder"], ["safe", "Colour-blind safe"]]} />
@@ -380,7 +440,7 @@ export function DisplaySection() {
         <Row label="Motion" hint={{ full: "Live lines carry a moving signal; arrivals pop and flash.", still: "Live lines hold still, a solid wire beside the same word; arrivals still pop and flash.", none: "Nothing moves, whatever the system's reduce-motion setting." }[d.motion]}>
           <Seg label="Motion" value={d.motion} onChange={set("motion")} options={[["full", "Moving"], ["still", "Still lines"], ["none", "None"]]} />
         </Row>
-        <Row label="Night shift" hint={d.theme === "light" ? "Dark themes only: the light theme never dims." : "From midnight to 05:00 local time the text dims a little and the status bar says so."}>
+        <Row label="Night shift" hint={shownTheme(d) === "light" ? "Dark themes only: the light theme never dims." : "From midnight to 05:00 local time the text dims a little and the status bar says so."}>
           <Seg label="Night shift" value={d.night} onChange={set("night")} options={[["auto", "Midnight to 05:00"], ["off", "Off"]]} />
         </Row>
       </Group>

@@ -98,10 +98,55 @@
   --selection: #ecd7a8; --lit-flash: #f4e0b3;
   color-scheme: light;
 }
+/* Named dark themes, after their published palettes. The ground, ink and accents are the originals;
+   where an original misses 4.5:1 for text (comment greys, red on the selection fill) it is lifted just
+   enough, and the selected-row fill is a step deeper than the editor's "current line" colour, which
+   stays as the text selection. Roles: amber = new/unread, the four inks = protocols, kept apart. */
+/* Dracula (draculatheme.com, MIT): purple DNS, pink HTTP, cyan HTTPS, green SMTP, orange for new. */
+:root[data-theme="dracula"] {
+  --soot: #282a36; --soot-1: #2f3242; --soot-2: #393c4e; --well: #21222c;
+  --rule: #55596f; --rule-2: #363949;
+  --bone: #f8f8f2; --bone-glow: #ffffff; --bone-night: #ecece6; --smoke: #d0d3e3; --ash: #b4bad6; --amber: #ffb86c; --fur: #a7accb; --bad: #ff8a8a;
+  --ink-dns: #bd93f9; --ink-http: #ff79c6; --ink-https: #8be9fd; --ink-smtp: #50fa7b; --ink-other: #cfd2e0;
+  --hover: #323546; --child: #252731; --mark: #574a6e;
+  --alarm-ground: #3f2a35; --alarm-ink: #ffc2c2; --alarm-banner-ink: #ffd0d0; --alarm-border: #a3485a;
+  --caution-ground: #3b3a2c; --caution-ink: #f1fa8c; --caution-border: #8a8a4f;
+  --syn-name: #c6d0f5; --syn-value: #f1fa8c;
+  --accent: #3a3d50; --destructive: #ff5555;
+  --selection: #44475a; --lit-flash: #4d4236;
+}
+/* Nord (nordtheme.com, MIT): polar night grounds, snow storm ink, frost and aurora accents. */
+:root[data-theme="nord"] {
+  --soot: #2e3440; --soot-1: #353c4a; --soot-2: #3c4454; --well: #272c36;
+  --rule: #56607a; --rule-2: #3b4252;
+  --bone: #eceff4; --bone-glow: #ffffff; --bone-night: #e5e9f0; --smoke: #d3d9e4; --ash: #b9c2d3; --amber: #ebcb8b; --fur: #a3adbf; --bad: #eb9aa1;
+  --ink-dns: #d0aeca; --ink-http: #e3a58e; --ink-https: #8ec6d5; --ink-smtp: #a3be8c; --ink-other: #cdd3de;
+  --hover: #373e4c; --child: #2b313c; --mark: #50493a;
+  --alarm-ground: #40303a; --alarm-ink: #f2c9cd; --alarm-banner-ink: #f6d5d8; --alarm-border: #94555d;
+  --caution-ground: #3f3b32; --caution-ink: #f2dfb4; --caution-border: #8a7650;
+  --syn-name: #a9bedc; --syn-value: #cfdcbc;
+  --accent: #3b4252; --destructive: #bf616a;
+  --selection: #4c566a; --lit-flash: #4d4836;
+}
+/* Tokyo Night (enkia/tokyo-night, MIT): deep indigo night, periwinkle ink, neon accents. */
+:root[data-theme="tokyo"] {
+  --soot: #1a1b26; --soot-1: #1f2232; --soot-2: #292e42; --well: #16161e;
+  --rule: #3b4261; --rule-2: #262a3b;
+  --bone: #c0caf5; --bone-glow: #e0e6ff; --bone-night: #b8c2ec; --smoke: #a9b1d6; --ash: #9099c4; --amber: #e0af68; --fur: #8890b5; --bad: #f7768e;
+  --ink-dns: #bb9af7; --ink-http: #ff9e64; --ink-https: #7aa2f7; --ink-smtp: #9ece6a; --ink-other: #a9b1d6;
+  --hover: #222537; --child: #181922; --mark: #3d3526;
+  --alarm-ground: #33202a; --alarm-ink: #ffc2cd; --alarm-banner-ink: #ffd0d8; --alarm-border: #8a3d50;
+  --caution-ground: #2f2a1f; --caution-ink: #f0d3a6; --caution-border: #7a6338;
+  --syn-name: #7dcfff; --syn-value: #b4f9f8;
+  --accent: #292e42; --destructive: #db4b4b;
+  --selection: #33467c; --lit-flash: #3a3324;
+}
 /* Protocol inks, colour-blind safe (Okabe-Ito hues, tuned per ground): DNS, HTTP, HTTPS and SMTP stay
    apart under the common colour-vision deficiencies. The type is always written next to its colour too. */
 :root[data-inks="safe"] { --ink-dns: #d98cb8; --ink-http: #e69f00; --ink-https: #56b4e9; --ink-smtp: #2fbf91; }
 :root[data-inks="safe"][data-theme="contrast"] { --ink-dns: #e8a6cb; --ink-http: #f2b23a; --ink-https: #7cc6ef; --ink-smtp: #52d3a8; }
+:root[data-inks="safe"][data-theme="dracula"] { --ink-dns: #e6a3cb; --ink-http: #eaa52a; --ink-https: #6cc0ef; --ink-smtp: #3dcb9c; }
+:root[data-inks="safe"][data-theme="nord"] { --ink-dns: #eab0d2; --ink-http: #f2b445; --ink-https: #86ccf2; --ink-smtp: #55d6a9; }
 :root[data-inks="safe"][data-theme="light"] { --ink-dns: #933d70; --ink-http: #7c4f00; --ink-https: #195f8f; --ink-smtp: #00704f; }
 
 @theme inline {
