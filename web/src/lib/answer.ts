@@ -13,6 +13,7 @@ export function answeredBy(a: A): string {
   if (a.mode === "error") return `refused by Colluder (${a.error ?? "bad request"})`;
   if (a.mode === "tls") return "nothing: the TLS handshake never completed";
   if (a.mode === "relay") return "sent by interactsh-server, relayed by the edge";
+  if (a.mode === "mail") return "sent by Colluder's edge: the message was accepted";
   const odd = a.malformed ? "; the request was malformed" : "";
   if (a.mode === "default" || a.version == null) return `sent by Colluder (default reply${odd})`;
   const v = `rule v${a.version}, `;

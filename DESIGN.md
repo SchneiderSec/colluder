@@ -18,8 +18,8 @@ colors:
   accent: "#30271f"
   rule: "#3a3129"
   rule-2: "#2a231d"
-  smoke: "#a99f90"
-  ash: "#8f8576"
+  smoke: "#b3a99a"
+  ash: "#9a8f80"
   fur: "#9a9084"
   bad: "#e8735a"
   destructive: "#c4523a"
@@ -652,3 +652,14 @@ A Bone pill (Alarm Ink when something failed) that rises 44px above the bottom e
 - **Catppuccin Mocha** (mauve DNS, peach HTTP, blue HTTPS, green SMTP, yellow for new) and **Gruvbox Dark** (purple DNS, orange HTTP, blue HTTPS, aqua SMTP: its olive green sits too near the yellow that marks new). Mocha's palette holds 4.5:1 unchanged. Gruvbox's selected-row fill is a step deeper than bg1, and its red, purple and blue are lifted a little. Long names shorten on the narrow picker tiles ("Catppuccin", "Gruvbox").
 - **Discord posts are embeds.** The bar is the protocol's ink (the default palette), grey for late hits on retired probes. The title (probe · hit number) opens the probe in Colluder. Source and Reverse DNS are inline fields; Request and User-Agent (or Lookup for DNS) are full-width; Discord shows the timestamp in local time. The headline also goes in the message text, so phone notifications say what happened. Request data sits in inline code, where Discord renders no markdown, mentions or links. Roll-ups stay one plain line. Outside check changes are embeds in Bad, Smtp green or Amber.
 - **The webhook's avatar** is the resting mark (open eye and wink, no paws) on Fur, centred for Discord's circle crop: `assets/discord-avatar.png`, 512px. The collector sets it with the webhook's own token, once per webhook and avatar, at start and when a webhook is saved.
+
+## Readability pass (2026-11-12)
+
+"Everything is so monotone": in the named dark themes the three text inks had drifted together, and labels outweighed the values they name.
+
+- **One contrast floor for Smoke and Ash in every dark theme.** Smoke sits at 6.3:1 and Ash at 4.7:1 on the brightest ground they appear on (the selected row), as in the default theme, and no higher. Dracula, Nord, Tokyo Night, Mocha and Gruvbox had lifted both well above that, so Bone, Smoke and Ash differed by only 1.25× and 1.6× in luminance (the default: 1.9× and 2.8×). Each keeps its hue; only the lightness moved (Mocha: Smoke `#afb7d2`, Ash `#989fb9`). A theme whose Bone is dim still has less room than the default; the weight rules below carry the rest. High contrast and Light are unchanged.
+- **Labels sit behind values.** Hit-detail field labels (Source, Resolver, Forwarded for, rDNS, ASN / owner) are 11px at 550 in Ash, not 650 in Smoke. The probe header's technique is 550; "Planted" is Ash with its time in Smoke, after the target. The sentence under every DNS hit is Ash: it is a footnote, not news.
+- **Probe rows:** a planted probe's tag is Bone whether or not it has hits (weight 550 marks the ones that do); retired and not-planted tags stay Smoke. "Armed · silent 4d" and "No target noted" are Ash.
+- **DNS and mail raw panes are tinted like HTTP** (`web/src/lib/dnsview.ts`, tested to join back to the exact line). DNS: section headings in Smoke 650, `;` comments and their keys in Ash with values in Bone, the status in the value ink (Ember when it failed), names in Bone with the tag marked, TTL and class in Ash, the record type in the name ink at 650, the answer data in the value ink. Mail: header field names in the name ink, in the hit detail and in the Mailbox's Headers and Exact bytes views. Display only; Copy, the download and the evidence block carry the bytes as stored.
+- **Mocha's value ink is Pink** (`#f5c2e7`): Rosewater sat on top of its text ink.
+- **Mail to a probe names its capture:** the edge's mail hits carry an answer record (mode `mail`) and the 250 the edge sent, so the panes read "exact, as received by the edge" and "sent by Colluder's edge: the message was accepted". Hits stored before this read as engine captures.

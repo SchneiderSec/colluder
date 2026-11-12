@@ -133,9 +133,9 @@ export interface Probe extends Counts {
 export type EngineState = "capturing" | "starting" | "degraded" | "down" | "missing" | "unknown";
 
 export interface Status {
-  engine: { state: EngineState; detail: string; fix?: string; since?: string | null; unit: string; restarts: number; version: string | null };
+  engine: { state: EngineState; detail: string; fix?: string; since?: string | null; unit: string; restarts: number; version: string | null; check?: EngineCheck | null };
   // host: what payloads are built on (the short host once the edge records its DNS); longHost: the engine's
-  payload: { host: string; longHost?: string; shortId?: string; shortHost?: string; short?: boolean; correlationId: string; domain: string; writtenAt: string } | null;
+  payload: { host: string; longHost?: string; mailHost?: string; shortId?: string; shortHost?: string; short?: boolean; correlationId: string; domain: string; writtenAt: string } | null;
   correlationChangedAt: string | null;
   lastHitAt: string | null;
   serverTime: string;
@@ -148,7 +148,27 @@ export interface Status {
   selfIps?: string[];
   mineIps?: string[]; // sources you marked as yours
   check?: CheckStatus;
+  mailbox?: Mailbox;
 }
+
+// the engine check (lib/enginecheck.mjs): a lookup of the engine's own id reached its log, or didn't
+export interface EngineCheck { state: "ok" | "failing" | "restarted"; at: string; detail: string | null; tookMs?: number; failures?: number; restartedAt?: string; restartError?: string | null }
+
+// the mailbox (PLAN-MAILBOX.md): mail to <local>@mailbox-<short>.<domain>, kept apart from hits
+export interface Mailbox {
+  tag: string; host: string; hosts: string[]; live: boolean; smtp: string[] | null; retentionDays: number;
+  count: number; lastAt: string | null; lastLookup: { at: string; protocol: string; count: number } | null;
+}
+export interface MailCode { value: string; score: number; context: string }
+export interface MailLink { url: string; label: string | null; score: number }
+export interface MailRow {
+  id: number; receivedAt: string; storedAt: string; rcpt: string; localPart: string; domain: string;
+  mailFrom: string | null; helo: string | null; remoteAddress: string; tls: string | null;
+  subject: string | null; from: string | null; to: string | null; date: string | null; messageId: string | null;
+  attachments: { filename: string | null; contentType: string; size: number }[];
+  code: string | null; link: string | null; size: number; sha256: string;
+}
+export interface MailDetail extends MailRow { headers: [string, string][]; text: string | null; html: string | null; codes: MailCode[]; links: MailLink[] }
 
 // the outside check (lib/selfcheck.mjs): a callback sent the way a target would, confirmed recorded
 export interface CheckStep { key: string; label: string; ok: boolean; detail: string; retried?: boolean }

@@ -8,6 +8,7 @@ import { ProbeList } from "@/components/ProbeList";
 import { ProbePane } from "@/components/ProbePane";
 import { Settings } from "@/components/Pages";
 import { PayloadKit } from "@/components/PayloadKit";
+import { Mailbox } from "@/components/Mailbox";
 import { MarkSvg, setFavicon } from "@/components/Mark";
 import { Toaster } from "@/components/bits";
 import { nightNow, useDisplay } from "@/lib/display";
@@ -21,7 +22,7 @@ function useRoute() {
     const [view, arg, tab] = decodeURIComponent(location.hash.slice(1)).split("/");
     if (view in MOVED) return { view: "probes", arg: null, tab: MOVED[view] };
     return {
-      view: view && (view === "probes" || view === "settings" || view === "kit") ? view : "probes",
+      view: view && (view === "probes" || view === "settings" || view === "kit" || view === "mailbox") ? view : "probes",
       arg: arg || null,
       tab: (PROBE_TABS as string[]).includes(tab) ? (tab as ProbeTab) : "hits" as ProbeTab,
     };
@@ -85,7 +86,7 @@ export default function App() {
                 <ProbePane />
               </div>
             </>
-          ) : route.view === "settings" ? <Settings /> : <PayloadKit section={route.arg} />}
+          ) : route.view === "settings" ? <Settings /> : route.view === "mailbox" ? <Mailbox arg={route.arg} /> : <PayloadKit section={route.arg} />}
         </main>
         <StatusBar />
       </div>

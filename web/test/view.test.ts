@@ -4,6 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { layoutJson } from "../src/lib/jsonview.ts";
 import { showControls, decodedQuery } from "../src/lib/query.ts";
+import { dnsLine, mailLine } from "../src/lib/dnsview.ts";
 
 const text = (segs: ReturnType<typeof layoutJson>) => segs!.map((s) => s.s).join("");
 const tokens = (segs: ReturnType<typeof layoutJson>) => segs!.filter((s) => s.k !== "ws").map((s) => s.s.trim()).join("");
@@ -195,4 +196,47 @@ test("review 4: XXE data takes all after d=, says when empty; DNS exfil skips th
   assert.equal(stageOf({ malformed: "bad request line", answerPart: "x.dtd" }), "malformed request · served x.dtd");
   const hex = Buffer.from("uid=1000(user) gid=1000").toString("hex");
   assert.equal(decodeLabels([hex.slice(0, 30), hex.slice(30), "kc3"])[0].decoded.text, "uid=1000(user) gid=1000");
+});
+
+// DNS and mail raw panes are tinted for reading, but they are evidence: every line must come back whole
+const joined = (segs: { s: string }[]) => segs.map((g) => g.s).join("");
+const kinds = (segs: { s: string; k: string }[]) => Object.fromEntries(segs.filter((g) => g.k !== "plain").map((g) => [g.s.trim(), g.k]));
+
+test("dns lines: tinted segments join back to the exact line", () => {
+  const lines = [
+    ";; opcode: QUERY, status: NOERROR, id: 9692",
+    ";; flags:; QUERY: 1, ANSWER: 0, AUTHORITY: 0, ADDITIONAL: 1",
+    "; EDNS: version 0; flags: do; udp: 1452",
+    ";; QUESTION SECTION:",
+    ";x.orca-k7wq2x.oob.example.\tIN\t MX",
+    "x.orca-k7wq2x.oob.example.\t3600\tIN\tMX\t1 mail.oob.example.",
+    "ORCA.c0ffee12g8.oob.example. 60 IN A 203.0.113.10",
+    ";; opcode: QUERY, status: NXDOMAIN, id: 1",
+    "", "not dns at all \u0000 \r", ";", "x 1 IN TXT \"a b\" \"c\"",
+  ];
+  for (const ln of lines) for (const tag of ["orca", null]) assert.equal(joined(dnsLine(ln, tag)), ln, ln);
+});
+
+test("dns lines: what gets which ink", () => {
+  const q = kinds(dnsLine(";x.orca-k7wq2x.oob.example.\tIN\t MX", "orca"));
+  assert.equal(q.MX, "type");
+  assert.equal(q.orca, "tag", "the tag part of <tag>-<id> is marked");
+  assert.equal(q.IN, "ash");
+  const r = kinds(dnsLine("ORCA.c0ffee12g8.oob.example. 60 IN A 203.0.113.10", "orca"));
+  assert.equal(r.ORCA, "tag", "DNS names are case-insensitive");
+  assert.equal(r["203.0.113.10"], "value");
+  assert.equal(r["60"], "ash");
+  assert.equal(kinds(dnsLine(";; opcode: QUERY, status: NOERROR, id: 9692", null)).NOERROR, "ok");
+  assert.equal(kinds(dnsLine(";; opcode: QUERY, status: SERVFAIL, id: 9692", null)).SERVFAIL, "bad");
+  assert.equal(dnsLine(";; ANSWER SECTION:", null)[0].k, "head");
+  assert.ok(!kinds(dnsLine("x.orca-k7wq2x.oob.example.", "orca")).orca, "a line that isn't a record isn't guessed at");
+});
+
+test("mail lines: field names tinted in the header block only, text kept", () => {
+  for (const [ln, head] of [["Subject: Your code is 123456", true], ["\tby mail.example (Colluder)", true], ["Subject: in the body", false], ["", true], ["X-Weird:", true]] as const) {
+    assert.equal(joined(mailLine(ln, head)), ln);
+  }
+  assert.equal(mailLine("Subject: hi", true)[0].k, "field");
+  assert.equal(mailLine("Subject: hi", false)[0].k, "plain");
+  assert.equal(mailLine("\tfolded: line", true)[0].k, "plain", "a folded continuation isn't a field");
 });

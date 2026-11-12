@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { layoutJson } from "@/lib/jsonview";
 import { decodedQuery, showControls } from "@/lib/query";
 import { decodeExfil } from "@/lib/exfil";
+import { dnsLine, mailLine, type Seg, type SegKind } from "@/lib/dnsview";
 
 export const safeDecode = (s: string) => { try { return decodeURIComponent(s); } catch { return s; } };
 
@@ -204,6 +205,20 @@ export function HttpParsed({ p, tag, domain, capture, clientHttp2 }: { p: Parsed
 }
 
 // one line of the exact view, tinted without changing a character
+// DNS and mail lines, tinted like the HTTP view (lib/dnsview.ts splits them; the segments join back to
+// the line exactly). Section headings in Smoke, comments and keys in Ash, names in Bone with the tag
+// marked, record types and mail field names in the name ink, answer data in the value ink.
+const SEG: Record<SegKind, string> = {
+  plain: "", ash: "text-ash", head: "font-[650] text-smoke", name: "text-bone", tag: "", type: "font-[650] text-syn-name",
+  value: "text-syn-value", ok: "text-syn-value", bad: "text-bad", field: "text-syn-name",
+};
+function Segs({ segs }: { segs: Seg[] }) {
+  if (segs.length === 1 && segs[0].k === "plain") return <>{segs[0].s || "\u200b"}</>;
+  return <>{segs.map((g, n) => (g.k === "tag" ? <Tag key={n}>{g.s}</Tag> : <span key={n} className={SEG[g.k] || undefined}>{g.s}</span>))}</>;
+}
+export const DnsLine = ({ ln, tag }: { ln: string; tag: string | null }) => <Segs segs={dnsLine(ln, tag)} />;
+export const MailLine = ({ ln, inHead }: { ln: string; inHead: boolean }) => <Segs segs={mailLine(ln, inHead)} />;
+
 export function ExactLine({ ln, idx, inHead, tag }: { ln: string; idx: number; inHead: boolean; tag: string | null }) {
   if (idx === 0) {
     const r = REQ.exec(ln);

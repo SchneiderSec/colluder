@@ -110,7 +110,7 @@ export function PayloadKit({ section }: { section: string | null }) {
     );
   }
 
-  const rows: Payload[] = sec === "callbacks" ? callbacks(tag, host, s.status?.payload?.longHost ?? host) : sec === "bypass" ? (expected.trim() ? bypasses(tag, host, expected) : []) : [];
+  const rows: Payload[] = sec === "callbacks" ? callbacks(tag, host, s.status?.payload?.mailHost ?? s.status?.payload?.longHost ?? host) : sec === "bypass" ? (expected.trim() ? bypasses(tag, host, expected) : []) : [];
   const forms = sec === "address" ? addressForms(ip) : null;
 
   return (

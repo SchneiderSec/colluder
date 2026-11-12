@@ -4,7 +4,10 @@
 // No secrets in this file: DISCORD_WEBHOOK_URL is read from the environment at runtime.
 import http from "node:http";
 import net from "node:net";
-import { readFile, mkdir, writeFile, rename } from "node:fs/promises";
+import { readFile, mkdir, writeFile, rename, readdir, stat, unlink } from "node:fs/promises";
+import { readFileSync, unlinkSync } from "node:fs";
+import { EventEmitter } from "node:events";
+import { isUtf8 } from "node:buffer";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomBytes, createHash } from "node:crypto";
@@ -21,6 +24,10 @@ import { validateHttpRule, respond, serialize, describeRule } from "./lib/rules.
 import { OutsideCheck, CHECK_TAG, checkAlert } from "./lib/selfcheck.mjs";
 import { WEBHOOK_RE, ALERT_KINDS, CHECK_MINUTES, webhookHint, alertKinds, writeEnv, writeEngineServer, nucleiServer } from "./lib/settings.mjs";
 import { execFile } from "node:child_process";
+import { readMail, splitAddress } from "./lib/mime.mjs";
+import { MAILBOX_TAG, mailQuery } from "./lib/mailbox.mjs";
+import { EngineCheck } from "./lib/enginecheck.mjs";
+import { Resolver } from "node:dns/promises";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const env = process.env;
@@ -42,6 +49,9 @@ const CFG = {
   envFile: env.COLLUDER_ENV_FILE || join(homedir(), ".config/colluder/colluder.env"),
   engineConfig: env.COLLUDER_ENGINE_CONFIG || join(homedir(), ".config/colluder/engine.yaml"),
   nucleiConfig: env.COLLUDER_NUCLEI_CONFIG || join(homedir(), ".config/user/config.yaml"),
+  spool: env.COLLUDER_MAIL_SPOOL || join(DATA, "mail-spool"),
+  // the mailbox keeps mail this many days (PLAN-MAILBOX.md)
+  mailDays: Math.max(Number(env.COLLUDER_MAIL_DAYS) || 7, 1),
   extraHosts: (env.COLLUDER_ALLOWED_HOSTS || "box.tailnet.ts.net,user").split(",").map((s) => s.trim()).filter(Boolean),
 };
 const DOMAINS = [...new Set([CFG.domain, ...CFG.extraDomains])];
@@ -68,6 +78,11 @@ if (!/^[a-z][a-z0-9]{5}$/.test(store.meta("short_id") || "")) {
 }
 const SHORT_ID = store.meta("short_id");
 const engine = new Engine({ unit: CFG.unit, payloadFile: CFG.payloadFile, clientBin: CFG.clientBin, domain: CFG.domain });
+// the engine check (lib/enginecheck.mjs): a lookup of the engine's own id must reach the engine's log;
+// twice not, and the engine is restarted so it registers its id with interactsh again
+const engineResolver = new Resolver({ timeout: 4000, tries: 1 });
+engineResolver.setServers([PUBLIC_IP]);
+const engineCheck = new EngineCheck({ resolve: (name) => engineResolver.resolve4(name), restart: () => systemctl("restart", CFG.unit), log });
 const discord = new Discord({ url: env.DISCORD_WEBHOOK_URL, dashboardUrl: PUBLIC_URL, log });
 discord.kinds = alertKinds(store.meta("discord_kinds"));
 const clients = new Set();
@@ -86,14 +101,42 @@ function broadcast(event, data) {
 function ingest(line, source = "engine") {
   let obj;
   try { obj = JSON.parse(line); } catch { log("skip: not JSON"); return; }
+  if (source === "engine" && engineCheck.saw(obj)) return; // the engine check's own lookup
   // With the edge's DNS front, interactsh hears Colluder's DNS queries from the edge (loopback) after
   // the edge has recorded them with the real resolver: the engine's copy is a duplicate.
   if (source === "engine" && obj.protocol === "dns" && /^(127\.|::1$|::ffff:127\.)/.test(String(obj["remote-address"] || ""))) return;
   const it = parseInteraction(obj, DOMAINS, { trusted: source === "edge" });
   // the outside check's own traffic (lib/selfcheck.mjs): it proves the path works, it isn't a hit
   if (it.tag === CHECK_TAG && it.uniqueId === SHORT_ID) { for (const c of checks) if (c.saw(it)) break; return; }
+  // the engine check's lookup as the edge recorded it (the long id): not a hit either
+  if (it.tag === CHECK_TAG && knownCids().some((c) => it.uniqueId.startsWith(c))) return;
+  const mail = source === "edge" && it.protocol === "smtp" && obj["colluder-mail"] && typeof obj["colluder-mail"] === "object" ? obj["colluder-mail"] : null;
+  // the mailbox: its mail is stored as mail, and the lookups and requests around it (a sender's MX
+  // lookup) are noted, never hits: no alert, nothing in the probe views
+  if (it.tag === MAILBOX_TAG) {
+    if (mail) return ingestMail(line, obj, it, mail);
+    const was = (() => { try { return JSON.parse(store.meta("mailbox_seen") || "null"); } catch { return null; } })();
+    store.meta("mailbox_seen", JSON.stringify({ at: it.timestamp || nowIso(), protocol: it.protocol, count: (was?.count || 0) + 1 }));
+    return;
+  }
+  // mail to a probe is a hit like any other, with the message (from the spool) as its request
+  if (mail) {
+    if (store.seenLine(line)) return dropSpool(mail.file);
+    const raw = readSpool(mail.file);
+    if (raw) {
+      const text = raw.toString("utf8");
+      it.rawRequest = text;
+      it.rawBytes = isUtf8(raw) ? null : raw;
+      const subj = readMail(raw).subject;
+      it.summary = `MAIL FROM ${it.smtpFrom || "<>"} → ${mail.rcpt}${subj ? ` · ${subj.replace(/\s+/g, " ").slice(0, 120)}` : ""}`;
+    }
+    // who captured it and what went back: the edge, with the 250 it sent (lib/smtp.mjs)
+    it.answer = { by: "colluder", mode: "mail", version: null, port: mail.port ?? null, tls: mail.tls ?? null };
+    if (!it.rawResponse && mail.id) it.rawResponse = `250 2.0.0 Ok: queued as ${mail.id}`;
+  }
   const receivedAt = nowIso();
   const res = store.insert(line, it, receivedAt);
+  if (mail) dropSpool(mail.file); // in the database now (or already was)
   if (!res) return;
   const { row, probeCreated } = res;
   if (!live) return;
@@ -112,6 +155,62 @@ function ingest(line, source = "engine") {
       isChatter: () => store.taggedHitNear(row.timestamp, 10_000),
     });
   });
+}
+
+// ---------- the mailbox (PLAN-MAILBOX.md) ----------
+// The edge leaves each message in the spool, named in its log line; it moves into the database here
+// and the file goes. A file whose line never arrived (the box dropped in between) is swept after
+// MAIL_DAYS like the mail itself.
+const SPOOL_NAME = /^[a-z0-9]{6,40}-\d{1,3}\.eml$/;
+function readSpool(file) {
+  if (!SPOOL_NAME.test(String(file))) { log(`mail: odd spool name refused: ${String(file).slice(0, 60)}`); return null; }
+  try { return readFileSync(join(CFG.spool, file)); } catch (e) { log(`mail: ${file} missing from the spool (${e.code}): kept without its body`); return null; }
+}
+function dropSpool(file) {
+  if (!SPOOL_NAME.test(String(file))) return;
+  try { unlinkSync(join(CFG.spool, file)); } catch (e) { if (e.code !== "ENOENT") log(`mail: couldn't remove ${file}: ${e.code}`); }
+}
+const mailEvents = new EventEmitter();
+mailEvents.setMaxListeners(200);
+function ingestMail(line, obj, it, m) {
+  if (store.seenLine(line)) return dropSpool(m.file);
+  const raw = readSpool(m.file) ?? Buffer.alloc(0);
+  const parsed = readMail(raw);
+  const { local, domain } = splitAddress(m.rcpt);
+  const row = store.insertMail(line, {
+    receivedAt: String(obj.timestamp || nowIso()), rcpt: String(m.rcpt || ""), localPart: local, domain,
+    mailFrom: it.smtpFrom, helo: m.helo ? String(m.helo).slice(0, 255) : null, remoteAddress: it.remoteAddress, tls: m.tls ? String(m.tls) : null,
+    raw, sha256: createHash("sha256").update(raw).digest("hex"),
+    parsed: { ...parsed, text: parsed.text ?? (parsed.textView || null) },
+  }, nowIso());
+  dropSpool(m.file);
+  if (!row) return;
+  log(`mail ${row.id} for ${row.rcpt} from ${row.mailFrom || "<>"} (${row.size} bytes)${row.code ? ", code found" : ""}${row.link ? ", link found" : ""}`);
+  if (!live) return;
+  broadcast("mail", row);
+  mailEvents.emit("mail", row);
+}
+function mailboxOut() {
+  let seen = null;
+  try { seen = JSON.parse(store.meta("mailbox_seen") || "null"); } catch { /* none */ }
+  const smtp = edgeStatus.state === "running" ? edgeStatus.listen?.smtp ?? null : null;
+  return {
+    tag: MAILBOX_TAG, host: `${MAILBOX_TAG}-${SHORT_ID}.${CFG.domain}`, hosts: DOMAINS.map((d) => `${MAILBOX_TAG}-${SHORT_ID}.${d}`),
+    live: Boolean(smtp?.length), smtp, retentionDays: CFG.mailDays, ...store.mailStats(), lastLookup: seen,
+  };
+}
+async function pruneMail() {
+  const cutoff = new Date(Date.now() - CFG.mailDays * 86400e3);
+  const n = store.pruneMail(cutoff.toISOString());
+  let files = 0;
+  try {
+    for (const f of await readdir(CFG.spool)) {
+      if (!SPOOL_NAME.test(f)) continue;
+      const st = await stat(join(CFG.spool, f)).catch(() => null);
+      if (st && st.mtime < cutoff) { await unlink(join(CFG.spool, f)).catch(() => {}); files++; }
+    }
+  } catch { /* no spool yet */ }
+  if (n || files) { log(`mail: ${n} message(s) older than ${CFG.mailDays} days removed${files ? `, ${files} stray spool file(s)` : ""}`); broadcast("mailbox", mailboxOut()); }
 }
 
 const rdnsInflight = new Map();
@@ -142,7 +241,10 @@ function payloadOut() {
   if (!p) return null;
   const shortHost = `${SHORT_ID}.${CFG.domain}`;
   const short = edgeStatus.state === "running" && !!edgeStatus.listen?.dns;
-  return { ...p, host: short ? shortHost : p.host, longHost: p.host, shortId: SHORT_ID, shortHost, short };
+  // mail goes to the edge once it receives SMTP (then a tag-<short> address works); before, interactsh
+  // gets it and only matches a recipient domain whose label is exactly the long id
+  const mailShort = edgeStatus.state === "running" && !!edgeStatus.listen?.smtp?.length;
+  return { ...p, host: short ? shortHost : p.host, longHost: p.host, mailHost: mailShort ? shortHost : p.host, shortId: SHORT_ID, shortHost, short };
 }
 const tagged = (tag, host) => `${tag}-${host}`;
 
@@ -283,6 +385,14 @@ async function saveSettings(b) {
 let lastPayloadCid = store.meta("correlation_id");
 async function statusTick() {
   const s = await engine.check();
+  // the engine runs but doesn't record (lib/enginecheck.mjs): that's what matters, not that it runs
+  s.check = engineCheck.last;
+  if (s.state === "capturing" && engineCheck.last && engineCheck.last.state !== "ok") {
+    s.state = "degraded";
+    s.detail = engineCheck.last.state === "restarted"
+      ? `Restarted at ${engineCheck.last.restartedAt.slice(11, 19)} UTC: ${engineCheck.last.detail}. Checking again.`
+      : `Not recording: ${engineCheck.last.detail}.`;
+  }
   const p = engine.payload;
   if (p && p.correlationId !== lastPayloadCid) {
     if (lastPayloadCid) {
@@ -313,6 +423,7 @@ function statusPayload() {
     selfIps: SELF_IPS, // B5: hits from the OOB box itself read "this box"
     mineIps: store.mine(), // sources you marked as yours: "yours", left out like self-tests
     check: checkStatus(),
+    mailbox: mailboxOut(),
   };
 }
 
@@ -342,7 +453,8 @@ async function readEdgeStatus() {
     // older code: the edge loaded different files than are on disk now (or predates this check)
     let codeStale = false;
     try { codeStale = state === "running" && s.code !== edgeCodeHash(); } catch { /* files mid-write: decide next time */ }
-    edgeStatus = { state, listen: s.listen, cert: s.cert, heartbeatAt: s.heartbeatAt, startedAt: s.startedAt, own: s.own, relayed: s.relayed, errors: s.errors, codeStale };
+    edgeStatus = { state, listen: s.listen, cert: s.cert, heartbeatAt: s.heartbeatAt, startedAt: s.startedAt, own: s.own, relayed: s.relayed, errors: s.errors, codeStale,
+      smtp: s.listen?.smtp ? { messages: s.smtpMessages || 0, recipients: s.smtpOwn || 0, refused: s.smtpRefused || 0, errors: s.smtpErrors || 0 } : null };
   } catch (e) {
     edgeStatus = { state: e.code === "ENOENT" ? "absent" : "unreadable", detail: e.code === "ENOENT" ? undefined : e.message };
   }
@@ -396,7 +508,7 @@ async function sendFile(res, path, type, extra, transform) {
   let buf;
   try { buf = await readFile(path); } catch (e) {
     if (e.code !== "ENOENT") throw e;
-    return json(res, 404, { error: path.endsWith("index.html") ? "UI not built: run npm run build in tools/oob-dashboard" : "not found" });
+    return json(res, 404, { error: path.endsWith("index.html") ? "UI not built: run npm run build in ~/tools/colluder" : "not found" });
   }
   head(res, 200, type, extra);
   res.end(transform ? transform(buf) : buf);
@@ -483,6 +595,45 @@ const server = http.createServer(async (req, res) => {
       else if (!own || req.method === "DELETE") return json(res, 403, { error: "Not available to Claude: this is for you, in the dashboard." });
       else if (store.probe(own[1]) && store.probe(own[1]).plantedBy !== "claude") return json(res, 403, { error: `"${own[1]}" was planted by you: Claude can read it but not change it.` });
     }
+    // ---------- the mailbox ----------
+    if (req.method === "GET" && p === "/api/mailbox") return json(res, 200, mailboxOut());
+    if (req.method === "GET" && (p === "/api/mail" || p === "/api/mail/latest")) {
+      const q = mailQuery(url.searchParams);
+      if (q.error) return json(res, 400, { error: q.error });
+      if (p === "/api/mail") return json(res, 200, { messages: store.mailList(q), mailbox: mailboxOut() });
+      // the newest message to a local part since a time; wait: hold the request up to that many seconds
+      // for one to arrive (a mail sent just now may still be in flight)
+      const found = () => store.latestMail(q.local, q.since);
+      let row = found();
+      if (!row && q.wait > 0) {
+        row = await new Promise((resolve) => {
+          const done = (r) => { clearTimeout(t); mailEvents.off("mail", on); req.off("close", gone); resolve(r); };
+          const on = () => { const r = found(); if (r) done(r); };
+          const gone = () => done(null);
+          const t = setTimeout(() => done(found()), q.wait * 1000);
+          mailEvents.on("mail", on);
+          req.on("close", gone);
+        });
+      }
+      if (res.destroyed) return;
+      return json(res, 200, { message: row ? store.mail(row.id) : null, local: q.local, since: q.since || null, waited: q.wait, mailbox: mailboxOut() });
+    }
+    if ((m = /^\/api\/mail\/(\d+)(\/raw)?$/.exec(p))) {
+      const id = Number(m[1]);
+      if (req.method === "GET" && !m[2]) { const r = store.mail(id); return r ? json(res, 200, r) : json(res, 404, { error: "no such message" }); }
+      if (req.method === "GET" && m[2]) {
+        const bytes = store.mailRaw(id);
+        if (!bytes) return json(res, 404, { error: "no such message" });
+        res.writeHead(200, { "content-type": "message/rfc822", "content-length": bytes.length, "content-disposition": `attachment; filename="colluder-mail-${id}.eml"`,
+          "x-content-type-options": "nosniff", "content-security-policy": "sandbox", "cache-control": "no-store" });
+        return res.end(bytes);
+      }
+      if (req.method === "DELETE" && !m[2]) {
+        if (!store.deleteMail(id)) return json(res, 404, { error: "no such message" });
+        broadcast("mail-deleted", { id });
+        return json(res, 200, { deleted: id });
+      }
+    }
     if (req.method === "GET" && (m = /^\/api\/interactions\/(\d+)$/.exec(p))) {
       const it = store.interaction(Number(m[1]));
       if (!it) return json(res, 404, { error: "no such interaction" });
@@ -534,6 +685,7 @@ const server = http.createServer(async (req, res) => {
       const tag = String(b.tag || "").trim().toLowerCase();
       if (!TAG_RE.test(tag)) return json(res, 400, { error: "Tag must be 1–32 letters, digits or hyphens, not starting or ending with a hyphen." });
       if (tag === CHECK_TAG) return json(res, 400, { error: `"${CHECK_TAG}" is reserved for Colluder's outside check. Pick another tag.` });
+      if (tag === MAILBOX_TAG) return json(res, 400, { error: `"${MAILBOX_TAG}" is reserved for the mailbox (${MAILBOX_TAG}-${SHORT_ID}.${CFG.domain}). Pick another tag.` });
       const technique = TECHNIQUES.includes(b.technique) ? b.technique : "callback";
       // a tag is planted once: re-planting would pin its old hits (and an old rule) on a new target
       const had = store.probe(tag);
@@ -691,6 +843,7 @@ const edgeTail = new Tail(CFG.edgeJsonl, {
   setState: (s) => store.meta("tail_edge", JSON.stringify(s)),
 });
 
+await mkdir(CFG.spool, { recursive: true, mode: 0o700 });
 await engine.init();
 discordIdentity();
 await tail.start();           // backfill whatever the engine wrote while we were down
@@ -703,6 +856,16 @@ setInterval(statusTick, 5000).unref();
 setInterval(() => { if (CHECK_EVERY > 0 && checkActive() && !checks.some((c) => c.running) && Date.now() - lastCheckAt >= CHECK_EVERY) runCheck(); }, 20_000).unref();
 lastCheckAt = Date.now() - CHECK_EVERY + 30_000;
 setInterval(() => { for (const res of clients) res.write(": keep-alive\n\n"); }, 15000).unref();
+await pruneMail();
+setInterval(pruneMail, 3600e3).unref();
+// the engine check: every 3 minutes, sooner again after a failure
+async function runEngineCheck() {
+  if (!engine.payload?.host) return;
+  const r = await engineCheck.run(engine.payload.host).catch((e) => { log("engine check error:", e.message); return null; });
+  await statusTick();
+  if (r && r.state !== "ok") setTimeout(runEngineCheck, 30_000).unref();
+}
+setTimeout(() => { runEngineCheck(); setInterval(runEngineCheck, 3 * 60_000).unref(); }, 45_000).unref();
 
 server.listen(CFG.port, CFG.host, () => log(`colluder listening on http://${CFG.host}:${CFG.port} (log ${CFG.jsonl})`));
 const shutdown = () => { tail.stop(); edgeTail.stop(); for (const r of clients) r.end(); server.close(() => process.exit(0)); setTimeout(() => process.exit(0), 2000).unref(); };

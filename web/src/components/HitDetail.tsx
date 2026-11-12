@@ -9,7 +9,7 @@ import { toCurl } from "@/lib/curl";
 import type { Enrich } from "@/lib/types";
 import { byteCount, lineCount } from "@/lib/format";
 import { answeredBy, decode, evidence } from "@/lib/raw";
-import { ExactLine, HttpParsed, parseHttp, type Parsed } from "./HttpView";
+import { DnsLine, ExactLine, HttpParsed, MailLine, parseHttp, type Parsed } from "./HttpView";
 import { copy, toast } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -35,7 +35,7 @@ function forwardedFor(raw: string): [string, string][] {
 
 const cut = (t: string) => (t.length > MAX ? t.slice(0, MAX) : t);
 
-function RawPane({ title, sub, text, exact, http, p, tag, domain, capture, clientHttp2 }: { title: string; sub: string; text: string; exact: string; http: boolean; p?: Parsed | null; tag: string | null; domain?: string; capture: "edge" | "engine"; clientHttp2?: boolean }) {
+function RawPane({ title, sub, text, exact, http, proto, p, tag, domain, capture, clientHttp2 }: { title: string; sub: string; text: string; exact: string; http: boolean; proto: string; p?: Parsed | null; tag: string | null; domain?: string; capture: "edge" | "engine"; clientHttp2?: boolean }) {
   const shown = cut(text);
   const box = useRef<HTMLDivElement>(null);
   const [below, setBelow] = useState(0); // lines hidden under the fold, so a cut-off pane never looks complete
@@ -49,7 +49,8 @@ function RawPane({ title, sub, text, exact, http, p, tag, domain, capture, clien
     el.addEventListener("scroll", measure, { passive: true });
     return () => { ro.disconnect(); el.removeEventListener("scroll", measure); };
   }, [shown]);
-  let inHead = http;
+  // HTTP and mail both open with a header block that ends at the first blank line
+  let inHead = http || proto === "smtp";
   const lines = shown ? shown.split(/\r?\n/) : [];
   return (
     <div className="@container/pane relative flex min-h-[220px] min-w-0 flex-col rounded-[3px] border border-rule-2 bg-well max-[820px]:min-h-[200px]">
@@ -64,7 +65,10 @@ function RawPane({ title, sub, text, exact, http, p, tag, domain, capture, clien
           if (inHead && ln === "" && idx > 0) inHead = false;
           return (
             <span key={idx} className="block min-h-[18px] in-[.wrap]:pl-[2ch] in-[.wrap]:-indent-[2ch]">
-              {http ? <ExactLine ln={ln} idx={idx} inHead={head} tag={tag} /> : ln || "​"}
+              {http ? <ExactLine ln={ln} idx={idx} inHead={head} tag={tag} />
+                : proto === "dns" ? <DnsLine ln={ln} tag={tag} />
+                : proto === "smtp" ? <MailLine ln={ln} inHead={head} />
+                : ln || "​"}
             </span>
           );
         })}
@@ -146,7 +150,7 @@ export function HitDetail({ id }: { id: number }) {
       </div>
 
       <div className="flex flex-none flex-wrap items-center gap-x-[22px] gap-y-1 text-body whitespace-nowrap max-[820px]:whitespace-normal">
-        <span className="flex items-center gap-2"><span className="text-label font-[650] tracking-[.04em] text-smoke">{d.protocol === "dns" ? "Resolver" : "Source"}</span><span className={cn("font-mono text-body", !fromBox && !mine && "font-[550] text-bone")}>{d.remoteAddress}</span>{fromBox && <span title="This is the OOB box itself: a self-test, not a target."><Chip grey>this box</Chip></span>}
+        <span className="flex items-center gap-2"><span className="text-label font-[550] tracking-[.03em] text-ash">{d.protocol === "dns" ? "Resolver" : "Source"}</span><span className={cn("font-mono text-body", !fromBox && !mine && "font-[550] text-bone")}>{d.remoteAddress}</span>{fromBox && <span title="This is the OOB box itself: a self-test, not a target."><Chip grey>this box</Chip></span>}
           {d.protocol !== "dns" && !fromBox && (
             <Button variant="quiet" size="sm" title={mine ? "Hits from this address count as targets again" : "Your browser or proxy: its hits become self-tests (left out of reach and the report's first request)"}
               onClick={() => setMine(d.remoteAddress, !mine).then(() => toast(mine ? `${d.remoteAddress} is no longer marked as yours.` : `${d.remoteAddress} is marked as yours: its hits are self-tests now.`), (x) => toast((x as Error).message, true))}>
@@ -155,12 +159,12 @@ export function HitDetail({ id }: { id: number }) {
           )}</span>
         {web && forwardedFor(d.rawRequest).map(([h, v]) => (
           <span key={h} className="flex min-w-0 items-center gap-2" title={`From the ${h} header. The sender sets it, so it may be spoofed.`}>
-            <span className="text-label font-[650] tracking-[.04em] text-smoke">Forwarded for</span><span className="truncate font-mono text-body text-bone">{v}</span>
+            <span className="text-label font-[550] tracking-[.03em] text-ash">Forwarded for</span><span className="truncate font-mono text-body text-bone">{v}</span>
           </span>
         ))}
-        <span className="flex min-w-0 items-center gap-2"><span className="text-label font-[650] tracking-[.04em] text-smoke">rDNS</span>{e.rdnsAt && e.rdns ? <span className="truncate font-mono text-body">{e.rdns}</span> : <span className="text-body text-ash">{e.rdnsAt ? "no PTR record" : "looking up…"}</span>}</span>
+        <span className="flex min-w-0 items-center gap-2"><span className="text-label font-[550] tracking-[.03em] text-ash">rDNS</span>{e.rdnsAt && e.rdns ? <span className="truncate font-mono text-body">{e.rdns}</span> : <span className="text-body text-ash">{e.rdnsAt ? "no PTR record" : "looking up…"}</span>}</span>
         <span className="flex flex-wrap items-center gap-2">
-          <span className="text-label font-[650] tracking-[.04em] text-smoke">ASN / owner</span>
+          <span className="text-label font-[550] tracking-[.03em] text-ash">ASN / owner</span>
           {e.asn ? <span className="font-mono text-body">{[e.asn, e.asnName, e.asnCc, e.asnPrefix].filter(Boolean).join(" · ")}</span> : (
             <>
               <Button variant="quiet" size="sm" disabled={asnBusy} onClick={() => { setAsnBusy(true); lookupAsn(d.remoteAddress).catch((x) => toast((x as Error).message, true)).finally(() => setAsnBusy(false)); }}>
@@ -176,7 +180,7 @@ export function HitDetail({ id }: { id: number }) {
           <b className="font-semibold text-bone">Likely resolver chatter.</b> A lookup of the bare payload id within 10 s of a hit on <span className="font-mono text-bone">{chatter}</span>: a resolver walking the name label by label (QNAME minimisation), or a client resolving the HTTPS host. Kept, but not counted as new.
         </p>
       )}
-      {d.protocol === "dns" && <p className="flex-none text-body text-smoke">DNS hits come from the resolver that asked on the target's behalf. It is often a public or ISP resolver, not the target itself.</p>}
+      {d.protocol === "dns" && <p className="flex-none text-body text-ash">DNS hits come from the resolver that asked on the target's behalf. It is often a public or ISP resolver, not the target itself.</p>}
       {step && (
         <p className="flex-none text-body text-smoke">
           <b className="font-semibold text-bone">Resolver step, not data.</b> The same resolver asked for <span className="font-mono text-bone">{step}</span> within seconds. Resolvers that minimise queries ask for the name one label at a time, so the labels here are part of that longer name.
@@ -239,11 +243,11 @@ export function HitDetail({ id }: { id: number }) {
       </div>
 
       <div className="grid min-h-[220px] flex-1 grid-cols-2 gap-3 @max-[900px]:flex-none @max-[900px]:grid-cols-1 @max-[900px]:[&>*]:max-h-[360px]">
-        <RawPane title={d.protocol === "dns" ? "Query" : "Request"} http={web} p={reqP} tag={d.tag} domain={s.status?.payload?.domain} capture={capture}
+        <RawPane title={d.protocol === "dns" ? "Query" : "Request"} http={web} proto={d.protocol} p={reqP} tag={d.tag} domain={s.status?.payload?.domain} capture={capture}
           sub={web ? webSub(d.rawRequest, reqP, reqWho) : decoded ? "decoded view · copy stays exact" : `${capture === "edge" ? "as received by the edge" : "as logged by interactsh-client"} · ${size(d.rawRequest)}`}
           text={!web && decoded ? decode(d.rawRequest, d.protocol) : d.rawRequest} exact={d.rawRequest} />
-        <RawPane title={d.protocol === "dns" ? "Answer" : "Response"} http={web} p={resP} tag={d.tag} domain={s.status?.payload?.domain} capture={capture} clientHttp2={http2}
-          sub={d.protocol === "dns" ? (capture === "edge" ? "sent by interactsh-server, relayed by the edge" : "sent by interactsh-server") : `${answeredBy(d.answer)} · ${parsed && !resP ? "couldn't parse · exact lines · " : ""}${byteCount(d.rawResponse)} bytes`}
+        <RawPane title={d.protocol === "dns" ? "Answer" : "Response"} http={web} proto={d.protocol} p={resP} tag={d.tag} domain={s.status?.payload?.domain} capture={capture} clientHttp2={http2}
+          sub={d.protocol === "dns" ? (capture === "edge" ? "sent by interactsh-server, relayed by the edge" : "sent by interactsh-server") : `${answeredBy(d.answer)} · ${web && parsed && !resP ? "couldn't parse · exact lines · " : ""}${byteCount(d.rawResponse)} bytes`}
           text={!web && decoded ? decode(d.rawResponse, d.protocol) : d.rawResponse} exact={d.rawResponse} />
       </div>
 

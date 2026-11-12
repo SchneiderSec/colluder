@@ -1,5 +1,5 @@
 import { Fragment, useState } from "react";
-import { ArrowDownToLine, Copy, Settings2, Briefcase } from "lucide-react";
+import { ArrowDownToLine, Copy, Settings2, Briefcase, Mail } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useApp, totalUnread, chatterOf, keyOf, select, selectHit, runCheck } from "@/store";
 import { UNTAGGED } from "@/lib/types";
@@ -17,6 +17,7 @@ import { nightNow, useDisplay } from "@/lib/display";
 export const TOOLS: { view: string; label: string; icon: LucideIcon }[] = [
   { view: "probes", label: "Probes", icon: ArrowDownToLine },
   { view: "kit", label: "Payload kit", icon: Briefcase },
+  { view: "mailbox", label: "Mailbox", icon: Mail },
 ];
 
 function markBase(s: ReturnType<typeof useApp<import("@/store").AppState>>): "wink" | "blink" | "doze" {

@@ -31,7 +31,8 @@ export const tagged = (tag: string, host: string) => `${tag}-${host}`;
 export const shownId = (id: string) => (id.length > 12 ? `${id.slice(0, 8)}…` : id);
 const sub = (code: string, tag: string, host: string) => `${code}.${tagged(tag, host)}`;
 
-// mailHost: the engine's long host. SMTP goes straight to interactsh, which only knows that id.
+// mailHost: where mail is received. Once the edge receives SMTP (deploy/smtp-front.sh) it's the short
+// host, like every other payload; before that it's the engine's long host, where interactsh receives it.
 export function callbacks(tag: string, host: string, mailHost = host): Payload[] {
   const v = (code: string, name: string, text: string, note?: string): Payload => ({ code, section: "callbacks", name, text, note });
   return [
@@ -39,7 +40,7 @@ export function callbacks(tag: string, host: string, mailHost = host): Payload[]
     v("kc2", "HTTPS", `https://${tagged(tag, host)}/k/kc2`, "The code goes in the path: in front of the host it would be a second label, which the certificate doesn't cover."),
     v("kc3", "DNS name", sub("kc3", tag, host), "For fields that only take a hostname, or a resolve-only check."),
     v("kc4", "Protocol-relative", `//${sub("kc4", tag, host)}/`, "Takes the scheme of the page or request it lands in."),
-    v("kc5", "Email address", `kc5@${tagged(tag, mailHost)}`, "Delivery arrives as an SMTP hit; the MX lookup comes first as DNS. Uses the long id: mail goes straight to interactsh."),
+    v("kc5", "Email address", `kc5@${tagged(tag, mailHost)}`, "Delivery arrives as an SMTP hit with the whole message; the MX lookup comes first as DNS."),
     v("kc6", "UNC path", `\\\\${sub("kc6", tag, host)}\\k`, "Windows tries SMB; the lookup of the name shows up as DNS."),
     v("kc7", "file URL (UNC)", `file://${sub("kc7", tag, host)}/k`, "On Windows a file URL with a host goes out over SMB."),
     v("kc8", "FTP", `ftp://${sub("kc8", tag, host)}/k`, "Clients that follow ftp:// show up as at least a DNS lookup."),

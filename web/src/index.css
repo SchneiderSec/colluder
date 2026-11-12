@@ -101,12 +101,15 @@
 /* Named dark themes, after their published palettes. The ground, ink and accents are the originals;
    where an original misses 4.5:1 for text (comment greys, red on the selection fill) it is lifted just
    enough, and the selected-row fill is a step deeper than the editor's "current line" colour, which
-   stays as the text selection. Roles: amber = new/unread, the four inks = protocols, kept apart. */
+   stays as the text selection. Roles: amber = new/unread, the four inks = protocols, kept apart.
+   Smoke and Ash sit at the same contrast floor as the default (6.3:1 and 4.7:1 on the brightest ground
+   they appear on, the selected row), not higher: lifted further they merge with Bone and the three
+   text tiers read as one (readability pass 2026-11-12). */
 /* Dracula (draculatheme.com, MIT): purple DNS, pink HTTP, cyan HTTPS, green SMTP, orange for new. */
 :root[data-theme="dracula"] {
   --soot: #282a36; --soot-1: #2f3242; --soot-2: #393c4e; --well: #21222c;
   --rule: #55596f; --rule-2: #363949;
-  --bone: #f8f8f2; --bone-glow: #ffffff; --bone-night: #ecece6; --smoke: #d0d3e3; --ash: #b4bad6; --amber: #ffb86c; --fur: #a7accb; --bad: #ff8a8a;
+  --bone: #f8f8f2; --bone-glow: #ffffff; --bone-night: #ecece6; --smoke: #c3c6d6; --ash: #a6acc7; --amber: #ffb86c; --fur: #a7accb; --bad: #ff8a8a;
   --ink-dns: #bd93f9; --ink-http: #ff79c6; --ink-https: #8be9fd; --ink-smtp: #50fa7b; --ink-other: #cfd2e0;
   --hover: #323546; --child: #252731; --mark: #574a6e;
   --alarm-ground: #3f2a35; --alarm-ink: #ffc2c2; --alarm-banner-ink: #ffd0d0; --alarm-border: #a3485a;
@@ -119,7 +122,7 @@
 :root[data-theme="nord"] {
   --soot: #2e3440; --soot-1: #353c4a; --soot-2: #3c4454; --well: #272c36;
   --rule: #56607a; --rule-2: #3b4252;
-  --bone: #eceff4; --bone-glow: #ffffff; --bone-night: #e5e9f0; --smoke: #d3d9e4; --ash: #b9c2d3; --amber: #ebcb8b; --fur: #a3adbf; --bad: #eb9aa1;
+  --bone: #eceff4; --bone-glow: #ffffff; --bone-night: #e5e9f0; --smoke: #cad0da; --ash: #adb5c6; --amber: #ebcb8b; --fur: #a3adbf; --bad: #eb9aa1;
   --ink-dns: #d0aeca; --ink-http: #e3a58e; --ink-https: #8ec6d5; --ink-smtp: #a3be8c; --ink-other: #cdd3de;
   --hover: #373e4c; --child: #2b313c; --mark: #50493a;
   --alarm-ground: #40303a; --alarm-ink: #f2c9cd; --alarm-banner-ink: #f6d5d8; --alarm-border: #94555d;
@@ -132,7 +135,7 @@
 :root[data-theme="tokyo"] {
   --soot: #1a1b26; --soot-1: #1f2232; --soot-2: #292e42; --well: #16161e;
   --rule: #3b4261; --rule-2: #262a3b;
-  --bone: #c0caf5; --bone-glow: #e0e6ff; --bone-night: #b8c2ec; --smoke: #a9b1d6; --ash: #9099c4; --amber: #e0af68; --fur: #8890b5; --bad: #f7768e;
+  --bone: #c0caf5; --bone-glow: #e0e6ff; --bone-night: #b8c2ec; --smoke: #a9b0d5; --ash: #8f98c2; --amber: #e0af68; --fur: #8890b5; --bad: #f7768e;
   --ink-dns: #bb9af7; --ink-http: #ff9e64; --ink-https: #7aa2f7; --ink-smtp: #9ece6a; --ink-other: #a9b1d6;
   --hover: #222537; --child: #181922; --mark: #3d3526;
   --alarm-ground: #33202a; --alarm-ink: #ffc2cd; --alarm-banner-ink: #ffd0d8; --alarm-border: #8a3d50;
@@ -146,12 +149,12 @@
 :root[data-theme="mocha"] {
   --soot: #1e1e2e; --soot-1: #252536; --soot-2: #313244; --well: #181825;
   --rule: #45475a; --rule-2: #2a2b3c;
-  --bone: #cdd6f4; --bone-glow: #e6ebff; --bone-night: #c3cbea; --smoke: #bac2de; --ash: #a6adc8; --amber: #f9e2af; --fur: #9399b2; --bad: #f38ba8;
+  --bone: #cdd6f4; --bone-glow: #e6ebff; --bone-night: #c3cbea; --smoke: #afb7d2; --ash: #989fb9; --amber: #f9e2af; --fur: #9399b2; --bad: #f38ba8;
   --ink-dns: #cba6f7; --ink-http: #fab387; --ink-https: #89b4fa; --ink-smtp: #a6e3a1; --ink-other: #bac2de;
   --hover: #282839; --child: #1b1b29; --mark: #4a4238;
   --alarm-ground: #3a2433; --alarm-ink: #f8c3d2; --alarm-banner-ink: #fad0dc; --alarm-border: #9c4a63;
   --caution-ground: #3a3428; --caution-ink: #f9e2af; --caution-border: #8a7a55;
-  --syn-name: #94e2d5; --syn-value: #f5e0dc;
+  --syn-name: #94e2d5; --syn-value: #f5c2e7; /* pink: rosewater sat on top of the text ink */
   --accent: #313244; --destructive: #d2557a;
   --selection: #45475a; --lit-flash: #45392e;
 }
@@ -161,7 +164,7 @@
 :root[data-theme="gruvbox"] {
   --soot: #282828; --soot-1: #32302f; --soot-2: #373331; --well: #1d2021;
   --rule: #5a514b; --rule-2: #3a3634;
-  --bone: #ebdbb2; --bone-glow: #fbf1c7; --bone-night: #e0d0a8; --smoke: #d5c4a1; --ash: #bdae93; --amber: #fabd2f; --fur: #a89984; --bad: #fd7f70;
+  --bone: #ebdbb2; --bone-glow: #fbf1c7; --bone-night: #e0d0a8; --smoke: #cebe9b; --ash: #b3a58a; --amber: #fabd2f; --fur: #a89984; --bad: #fd7f70;
   --ink-dns: #dc95a8; --ink-http: #fe8019; --ink-https: #8fb2a5; --ink-smtp: #8ec07c; --ink-other: #d5c4a1;
   --hover: #302e2c; --child: #252423; --mark: #4a3f22;
   --alarm-ground: #3c2421; --alarm-ink: #fbb5a8; --alarm-banner-ink: #fcc7bc; --alarm-border: #9d3a2e;

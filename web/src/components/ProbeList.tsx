@@ -72,7 +72,7 @@ function Row({ s, p, k, stop }: { s: AppState; p: Probe | (Counts & Partial<Prob
       className={cn("grid w-full cursor-pointer grid-cols-[12px_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-[3px] border-b border-rule-2 py-[11px] pr-4 pl-5 text-left hover:bg-hover",
         sel && "bg-soot-2 hover:bg-soot-2", isU && "border-t border-t-rule", s.lit === k && "animate-lit")}>
       {unread ? <NewDot title="New hits since you last looked" /> : <NilDot />}
-      <span className={cn("flex min-w-0 items-center gap-[9px] overflow-hidden font-mono text-title", talking && !quiet ? "font-[550] text-bone" : "text-smoke", isU && "font-sans font-semibold")}>
+      <span className={cn("flex min-w-0 items-center gap-[9px] overflow-hidden font-mono text-title", quiet ? "text-smoke" : talking ? "font-[550] text-bone" : "text-bone", isU && "font-sans font-semibold")}>
         <span className="truncate">{isU ? "No tag" : p.tag}</span>
         {talking && <b className="font-sans text-body font-medium whitespace-nowrap text-smoke">{plural(p.hits, "hit")}</b>}
         {!isU && !!p.muted && <BellOff aria-label="Discord alerts muted" className="size-3 flex-none text-ash" strokeWidth={1.5} />}
@@ -84,7 +84,7 @@ function Row({ s, p, k, stop }: { s: AppState; p: Probe | (Counts & Partial<Prob
         : st === "armed" || st === "heard" ? (
           <span className="flex items-center justify-end gap-1.5 whitespace-nowrap" title="Armed: planted and listening">
             <LineForm kind="live" signal="listen" seed={p.tag} className="w-4 text-bone" />
-            {talking ? <span className="text-body text-bone" title={p.lastHitAt ?? ""}>{dayOrTime(p.lastHitAt)}</span> : <span className="text-label text-smoke">Armed · silent {dur(Date.now() - isoMs(p.plantedAt))}</span>}
+            {talking ? <span className="text-body text-bone" title={p.lastHitAt ?? ""}>{dayOrTime(p.lastHitAt)}</span> : <span className="text-label text-ash">Armed · silent {dur(Date.now() - isoMs(p.plantedAt))}</span>}
           </span>
         ) : (
           <span className="flex items-center justify-end gap-1.5 text-label whitespace-nowrap text-ash" title={`Retired ${dayOrTime(p.retiredAt)}: out of the active list. New hits are still recorded.`}>
@@ -95,7 +95,7 @@ function Row({ s, p, k, stop }: { s: AppState; p: Probe | (Counts & Partial<Prob
       <span className="col-span-2 col-start-2 flex min-w-0 items-center gap-2 text-body text-smoke">
         {!isU && st !== "unplanted" && p.technique !== "callback" && <TechniqueMark technique={p.technique} />}
         {!isU && p.plantedBy === "claude" && <Chip grey>Claude</Chip>}
-        <span className="truncate">{isU ? "Hits that carry no tag" : st === "unplanted" ? "A request used this tag; nobody planted it" : p.target || "No target noted"}</span>
+        <span className={cn("truncate", !isU && st !== "unplanted" && !p.target && "text-ash")}>{isU ? "Hits that carry no tag" : st === "unplanted" ? "A request used this tag; nobody planted it" : p.target || "No target noted"}</span>
       </span>
       {talking ? (
         <span className="col-start-2 flex min-w-0 flex-wrap gap-x-3 gap-y-1 text-label">

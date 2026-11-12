@@ -8,8 +8,8 @@
 import net from "node:net";
 import tls from "node:tls";
 import { isUtf8 } from "node:buffer";
-import { readFileSync, openSync, writeSync, writeFileSync, renameSync, watchFile, existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
-import { X509Certificate } from "node:crypto";
+import { readFileSync, openSync, writeSync, writeFileSync, renameSync, watchFile, existsSync, mkdirSync, readdirSync, statSync, fsyncSync, closeSync } from "node:fs";
+import { X509Certificate, createHash } from "node:crypto";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { Reader, readHead, readBody, lenientHead, HttpError, LIMITS } from "./lib/http1.mjs";
@@ -17,11 +17,13 @@ import { respond, serialize, reason } from "./lib/rules.mjs";
 import { parseInteraction } from "./lib/tag.mjs";
 import { edgeCodeHash } from "./lib/codehash.mjs";
 import { dnsFront } from "./lib/dns.mjs";
+import { smtpFront } from "./lib/smtp.mjs";
 
 const CODE = edgeCodeHash(); // what this process loaded (see lib/codehash.mjs)
 
 const env = process.env;
 const DATA = env.COLLUDER_DATA || join(homedir(), ".local/share/colluder");
+const listOf = (v) => (v && v !== "off" ? v.split(",").map((x) => x.trim()).filter(Boolean) : []);
 const addr = (s) => { const i = s.lastIndexOf(":"); return { host: s.slice(0, i), port: Number(s.slice(i + 1)) }; };
 const CFG = {
   domain: env.COLLUDER_DOMAIN || "oob.example",
@@ -32,6 +34,11 @@ const CFG = {
   // DNS front (PLAN-SHORTID.md): off until deploy/dns-front.sh moves interactsh's DNS off :53
   dns: env.COLLUDER_EDGE_DNS && env.COLLUDER_EDGE_DNS !== "off" ? addr(env.COLLUDER_EDGE_DNS) : null,
   upDns: addr(env.COLLUDER_UPSTREAM_DNS || "127.0.0.1:8053"),
+  // SMTP (PLAN-MAILBOX.md): off until deploy/smtp-front.sh moves interactsh's SMTP off :25/:587/:465.
+  // COLLUDER_EDGE_SMTP: plain ports with STARTTLS (25, 587); COLLUDER_EDGE_SMTPS: implicit TLS (465)
+  smtp: [...listOf(env.COLLUDER_EDGE_SMTP).map((a) => ({ ...addr(a), implicitTls: false })),
+    ...listOf(env.COLLUDER_EDGE_SMTPS).map((a) => ({ ...addr(a), implicitTls: true }))],
+  spool: env.COLLUDER_MAIL_SPOOL || join(DATA, "mail-spool"),
   cert: env.COLLUDER_EDGE_CERT || join(homedir(), "caido-cert/fullchain.pem"),
   key: env.COLLUDER_EDGE_KEY || join(homedir(), "caido-cert/privkey.pem"),
   // one wildcard per extra domain, <dir>/<domain>/{fullchain,privkey}.pem (deploy/cert-sync.sh);
@@ -166,6 +173,38 @@ function passthrough(sock, first, up) {
 let logFd = null;
 function record(o) {
   writeSync(logFd, JSON.stringify(o) + "\n"); // one write per line; O_APPEND keeps lines whole
+}
+
+// ---------- mail (PLAN-MAILBOX.md) ----------
+// Each accepted recipient gets the message as a file in the spool (with its own Received line) and a
+// line in edge.jsonl naming it; both are fsynced before the sender hears 250. The dashboard reads the
+// file into its database and removes it. The log line carries no body, so mail doesn't pile up in it.
+const ONE_LINE = (s) => String(s ?? "").replace(/[\r\n]+/g, " ").slice(0, 255);
+export function receivedLine(m, rcpt, hostname) {
+  const proto = (m.esmtp ? "ESMTP" : "SMTP") + (m.tls ? "S" : "");
+  return `Received: from ${ONE_LINE(m.helo || "unknown")} ([${m.remoteAddress}])\r\n\tby ${hostname} (Colluder) with ${proto} id ${m.id}\r\n\tfor <${ONE_LINE(rcpt)}>; ${new Date(m.at).toUTCString()}\r\n`;
+}
+function durable(path, bytes) {
+  const fd = openSync(path, "wx", 0o600);
+  try { writeSync(fd, bytes); fsyncSync(fd); } finally { closeSync(fd); }
+}
+function syncDir(dir) { try { const fd = openSync(dir, "r"); try { fsyncSync(fd); } finally { closeSync(fd); } } catch { /* best effort */ } }
+async function deliverMail(m) {
+  const hostname = `mail.${state.domains[0] || CFG.domain}`;
+  const lines = m.rcpts.map((r, i) => {
+    const file = `${m.id}-${i}.eml`;
+    const bytes = Buffer.concat([Buffer.from(receivedLine(m, r.address, hostname), "latin1"), m.data]);
+    durable(join(CFG.spool, file), bytes);
+    return {
+      protocol: "smtp", "unique-id": r.own.uniqueId, "full-id": r.own.fullId, "smtp-from": m.mailFrom,
+      "raw-request": "", "raw-response": "", "remote-address": m.remoteAddress, timestamp: m.at,
+      "colluder-mail": { file, size: bytes.length, sha256: createHash("sha256").update(bytes).digest("hex"), rcpt: r.address, helo: m.helo, tls: m.tls, port: m.port, id: m.id },
+    };
+  });
+  syncDir(CFG.spool);
+  for (const o of lines) record(o);
+  fsyncSync(logFd);
+  stats.smtpOwn = (stats.smtpOwn || 0) + lines.length;
 }
 
 const ipOf = (sock) => String(sock.remoteAddress || "").replace(/^::ffff:/, "");
@@ -368,6 +407,7 @@ function certSignature(cfg = CFG) {
 const certSummary = (c) => ({ notAfter: c.def.notAfter, all: [c.def, ...c.extra].map((p) => ({ names: p.names, notAfter: p.notAfter })) });
 let certInfo = null;
 const servers = [];
+let httpsServer = null;
 function start() {
   mkdirSync(DATA, { recursive: true, mode: 0o700 });
   logFd = openSync(CFG.log, "a", 0o600);
@@ -380,16 +420,27 @@ function start() {
   h.listen(CFG.http.port, CFG.http.host, () => log(`edge http on ${CFG.http.host}:${CFG.http.port}`));
   servers.push(h);
 
+  // certificates: HTTPS and SMTP's STARTTLS/465 share them, and a renewal reaches both
+  let c = null, ctxs = [];
+  const sni = (name, done) => { const p = pickCert(name, [c.def, ...ctxs]); done(null, p && p !== c.def ? p.ctx : undefined); };
+  let mail = null;
+  if (CFG.https || CFG.smtp.length) {
+    try {
+      c = loadCerts();
+      ctxs = c.extra.map((p) => ({ ...p, ctx: tls.createSecureContext({ cert: p.cert, key: p.key }) }));
+      certInfo = certSummary(c);
+    } catch (e) {
+      if (CFG.https) throw e;
+      log("no certificate: SMTP runs without STARTTLS and without the implicit-TLS port:", e.message);
+    }
+  }
   if (CFG.https) {
-    let c = loadCerts();
-    let ctxs = c.extra.map((p) => ({ ...p, ctx: tls.createSecureContext({ cert: p.cert, key: p.key }) }));
-    certInfo = certSummary(c);
     // TLS is terminated only after reading the server name: the apex (interactsh's polling API, which
     // the wildcard certificate doesn't cover) goes through untouched; everything else is ours to read.
     const s = tls.createServer({
       cert: c.def.cert, key: c.def.key, ALPNProtocols: ["http/1.1"],
       // the default answers unless another domain's certificate covers the name better
-      SNICallback: (name, done) => { const p = pickCert(name, [c.def, ...ctxs]); done(null, p && p !== c.def ? p.ctx : undefined); },
+      SNICallback: sni,
     }, (sock) => {
       const key = connKey(sock), p = pendingTls.get(key);
       if (p) { p.handshook = true; sock.once("data", () => pendingTls.delete(key)); }
@@ -424,6 +475,9 @@ function start() {
     front.maxConnections = CFG.maxConns;
     front.listen(CFG.https.port, CFG.https.host, () => log(`edge https on ${CFG.https.host}:${CFG.https.port}, certificates: ${[c.def, ...c.extra].map((p) => `${p.names.join(" ")} until ${p.notAfter}`).join("; ")}`));
     servers.push(front);
+    httpsServer = s;
+  }
+  if (c) {
     let sig = certSignature();
     setInterval(() => {
       const now = certSignature();
@@ -432,13 +486,26 @@ function start() {
       try {
         const n = loadCerts();
         const nCtxs = n.extra.map((p) => ({ ...p, ctx: tls.createSecureContext({ cert: p.cert, key: p.key }) }));
-        s.setSecureContext({ cert: n.def.cert, key: n.def.key });
+        httpsServer?.setSecureContext({ cert: n.def.cert, key: n.def.key });
+        mail?.setContext({ cert: n.def.cert, key: n.def.key, SNICallback: sni });
         c = n; ctxs = nCtxs; certInfo = certSummary(n);
         log(`certificates reloaded: ${[n.def, ...n.extra].map((p) => `${p.names.join(" ")} until ${p.notAfter}`).join("; ")}`);
       } catch (e) { log("certificate reload failed, keeping the old ones:", e.message); }
     }, 60_000).unref();
   }
   for (const s of servers) s.on("error", (e) => { log("listener error:", e.message); process.exit(1); });
+
+  if (CFG.smtp.length) {
+    mkdirSync(CFG.spool, { recursive: true, mode: 0o700 });
+    mail = smtpFront({
+      listen: CFG.smtp, hostname: `mail.${CFG.domain}`, log, stats,
+      owns: (domain) => ownership(domain, state.cids, state.shortIds, state.domains),
+      tlsOptions: () => (c ? { cert: c.def.cert, key: c.def.key, SNICallback: sni } : null),
+      deliver: deliverMail,
+    });
+    mail.listen().then(() => log(`edge smtp on ${CFG.smtp.map((l) => `${l.host}:${l.port}${l.implicitTls ? " (tls)" : ""}`).join(", ")}${c ? "" : " (no TLS)"}`))
+      .catch((e) => { log("smtp listener error:", e.message); process.exit(1); });
+  }
 
   let dns = null;
   if (CFG.dns) {
@@ -452,7 +519,8 @@ function start() {
     try {
     writeFileSync(tmp, JSON.stringify({
       pid: process.pid, stopped, heartbeatAt: new Date().toISOString(), ...stats,
-      listen: { http: `${CFG.http.host}:${CFG.http.port}`, https: CFG.https ? `${CFG.https.host}:${CFG.https.port}` : null, dns: CFG.dns ? `${CFG.dns.host}:${CFG.dns.port}` : null },
+      listen: { http: `${CFG.http.host}:${CFG.http.port}`, https: CFG.https ? `${CFG.https.host}:${CFG.https.port}` : null, dns: CFG.dns ? `${CFG.dns.host}:${CFG.dns.port}` : null,
+        smtp: CFG.smtp.length ? CFG.smtp.map((l) => `${l.host}:${l.port}${l.implicitTls ? "/tls" : ""}`) : null },
       upstream: { http: `${CFG.upHttp.host}:${CFG.upHttp.port}`, https: `${CFG.upHttps.host}:${CFG.upHttps.port}`, dns: CFG.dns ? `${CFG.upDns.host}:${CFG.upDns.port}` : null },
       cert: certInfo, rules: Object.keys(state.rules).length, rulesGeneratedAt: state.generatedAt, code: CODE,
     }), { mode: 0o600 });
@@ -461,7 +529,7 @@ function start() {
   };
   writeStatus();
   const t = setInterval(writeStatus, 5000);
-  const stop = () => { clearInterval(t); writeStatus(true); for (const s of servers) s.close(); dns?.close(); setTimeout(() => process.exit(0), 1500).unref(); };
+  const stop = () => { clearInterval(t); writeStatus(true); for (const s of servers) s.close(); dns?.close(); mail?.close(); setTimeout(() => process.exit(0), 1500).unref(); };
   process.on("SIGTERM", stop);
   process.on("SIGINT", stop);
 }

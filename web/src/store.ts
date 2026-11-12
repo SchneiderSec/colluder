@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import type { AlertKind, CheckResult, Counts, Enrich, HttpRule, Interaction, InteractionDetail, Probe, RuleState, StateResponse, Status } from "@/lib/types";
+import type { AlertKind, CheckResult, Counts, Enrich, HttpRule, Interaction, InteractionDetail, MailRow, Mailbox, Probe, RuleState, StateResponse, Status } from "@/lib/types";
 import { UNTAGGED } from "@/lib/types";
 import { dnsSteps } from "@/lib/dns";
 import { toast } from "@/lib/toast";
@@ -292,6 +292,12 @@ const scopePath = (tag: string | null) => (tag ? `/api/probes/${encodeURICompone
 export const clearProbe = (tag: string | null) => api<{ cleared: number }>(`${scopePath(tag)}/clear`, { method: "POST", body: {} });
 export const restoreProbe = (tag: string | null) => api<{ restored: number }>(`${scopePath(tag)}/restore`, { method: "POST", body: {} });
 
+// ---------- the mailbox (PLAN-MAILBOX.md): its own list, fed by the stream while the page is open ----------
+export type MailEvent = { type: "mail"; row: MailRow } | { type: "deleted"; id: number };
+const mailSubs = new Set<(e: MailEvent) => void>();
+export function onMail(fn: (e: MailEvent) => void) { mailSubs.add(fn); return () => { mailSubs.delete(fn); }; }
+export const fetchMail = () => api<{ messages: MailRow[]; mailbox: Mailbox }>("/api/mail?limit=200");
+
 // ---------- SSE ----------
 let es: EventSource | null = null;
 export function connect() {
@@ -317,6 +323,9 @@ export function connect() {
   on<Counts>("untagged", (u) => set({ untagged: u }));
   on<{ tag: string }>("probe-deleted", (d) => dropProbe(d.tag));
   on<Enrich>("enrich", (e) => set({ enrich: new Map(state.enrich).set(e.ip, e) }));
+  on<MailRow>("mail", (row) => mailSubs.forEach((f) => f({ type: "mail", row })));
+  on<{ id: number }>("mail-deleted", (d) => mailSubs.forEach((f) => f({ type: "deleted", id: d.id })));
+  on<Mailbox>("mailbox", (m) => { if (state.status) set({ status: { ...state.status, mailbox: m } }); });
   on<{ reason: string; count: number; tag?: string | null }>("reload", (d) => {
     const whose = d.tag === undefined ? "" : d.tag ? ` from ${d.tag}` : " with no tag";
     toast(d.reason === "cleared" ? (d.tag === undefined ? `Took out the trash: ${plural(d.count, "interaction")} hidden` : `Cleared ${plural(d.count, "hit")}${whose}. Restore brings them back.`) : `Restored ${plural(d.count, "hit")}${whose}`);

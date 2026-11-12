@@ -9,7 +9,8 @@ Your insider on the wire. A self-hosted dashboard for out-of-band interactions a
 ```
 internet ── :80/:443 ── colluder-edge (phase 2)  answers Colluder's probes itself → edge.jsonl
                               └─ everything else → interactsh-server on 8081/8444 (real IP in X-Colluder-Origin-IP)
-         ── :53 :25 :389 ── interactsh-server (203.0.113.10, token in /etc/interactsh/server.yaml)
+         ── :25 :587 :465 ── colluder-edge (after smtp-front.sh): mail for Colluder's names → mail-spool + edge.jsonl
+         ── :53 :389 ── interactsh-server (203.0.113.10, token in /etc/interactsh/server.yaml)
         ▲ polls every 2 s (token from ~/.config/colluder/engine.yaml, session in session.yaml)
 colluder-engine.service   interactsh-client v1.4.1, stdout appended → ~/.local/share/colluder/interactions.jsonl
         │ tail both files (fs.watch + poll, resumes by offset, survives truncation)
@@ -42,7 +43,7 @@ A probe is a tag you plant somewhere. The composer gives three payloads per tag:
 Every protocol uses one host form, `tag-<id>.oob.example`. With the edge's DNS front
 (`sudo deploy/dns-front.sh`, see PLAN-SHORTID.md) `<id>` is Colluder's 6-char short id, e.g.
 `https://signup7-k7wq2x.oob.example/`; before it, the engine's 33-char id. Email
-payloads always use the long id (SMTP goes straight to interactsh).
+payloads use the short id once the edge receives SMTP (`deploy/smtp-front.sh`, PLAN-MAILBOX.md).
 
 Hits are matched to probes by the label just before the id, or (HTTP/S) by the first path
 segment. Labels further left are kept as exfil data. Hits for tags you never planted create an
@@ -88,6 +89,20 @@ Discord on the change (and again when it passes). The tag `colluder-check` is re
 never stored as hits. Settings → Outside check shows every step and has **Check now**; Claude sees the
 result in its `status` tool. It runs only once the edge fronts DNS (the short host is the payload).
 
+## Mailbox (PLAN-MAILBOX.md)
+
+Mail to `<anyone>@mailbox-<short>.<domain>` is kept as mail, not hits: no Discord alert, not in the
+probe views, kept 7 days (`COLLUDER_MAIL_DAYS`). The local part names the account (`orca-attacker@…`).
+The edge receives it on :25/:587 (STARTTLS) and :465 once `sudo deploy/smtp-front.sh` has run, writes
+each message to disk before it answers 250, and refuses mail for any other name. Read it in the
+Mailbox tool, with `GET /api/mail/latest?local=orca-attacker&since=<time>&wait=30` (the newest message
+with the one-time code and magic link found in it), or with the MCP's `wait_for_mail`.
+
+**Engine check.** interactsh keeps registrations in memory: when it restarts it forgets the engine's
+id and the engine keeps polling silently. Every 3 minutes the dashboard looks up its own engine id
+through the public DNS path and expects the engine to log it; twice not, and the engine is restarted
+(it registers again). The engine reads "degraded" until it records again.
+
 ## Two domains (moving to a new one)
 
 Colluder can serve a second domain next to the payload domain, so a new domain is answering, has its
@@ -101,8 +116,8 @@ default). interactsh reads its domains from `/etc/interactsh/domains.env`.
 ```sh
 # 1. at the registrar: glue records ns1/ns2.<new> -> 203.0.113.10, then nameservers ns1/ns2.<new>
 # 2. operator:
-sudo tools/oob-dashboard/deploy/add-domain.sh alt.example     # checks the delegation first
-sudo tools/oob-dashboard/deploy/add-domain.sh --rollback       # undo
+sudo ~/tools/colluder/deploy/add-domain.sh alt.example     # checks the delegation first
+sudo ~/tools/colluder/deploy/add-domain.sh --rollback       # undo
 ```
 
 The script stops unless the registry already delegates the domain here (interactsh asks Let's Encrypt
@@ -113,8 +128,8 @@ through Cloudflare), HTTPS on both domains and the outside check. Payloads keep 
 ## Phase 2 cutover (operator, once)
 
 ```sh
-sudo tools/oob-dashboard/deploy/cutover-phase2.sh     # edge on :80/:443, interactsh to 8081/8444, token rotated
-sudo tools/oob-dashboard/deploy/rollback-phase2.sh    # undo: interactsh back on :80/:443 (keeps the new token)
+sudo ~/tools/colluder/deploy/cutover-phase2.sh     # edge on :80/:443, interactsh to 8081/8444, token rotated
+sudo ~/tools/colluder/deploy/rollback-phase2.sh    # undo: interactsh back on :80/:443 (keeps the new token)
 ```
 
 The script stops if a nuclei scan is running (`--force` overrides), never prints the token, and ends
@@ -123,7 +138,7 @@ with live checks (edge answers, interactsh still reachable and authenticated, en
 ## Install / update (operator)
 
 ```sh
-tools/oob-dashboard/deploy/install.sh        # config (600), UI build, units, daemon-reload
+~/tools/colluder/deploy/install.sh        # config (600), UI build, units, daemon-reload
 systemctl --user disable --now interactsh-web.service    # first time only: frees :8090
 systemctl --user enable --now colluder-engine.service colluder.service
 ```
@@ -162,7 +177,7 @@ hits and fetch reports (PLAN-MCP.md). Claude can change only the probes it plant
 read-only to it. It runs over stdio, so Claude Code starts it per session. It listens on nothing and
 talks to the collector's API like the dashboard does. Register it once (the operator):
 
-    claude mcp add --scope user colluder -- node ~/work/tools/oob-dashboard/mcp.mjs
+    claude mcp add --scope user colluder -- node ~/tools/colluder/mcp.mjs
 
 `COLLUDER_URL` points it at the collector (default `http://100.64.0.10:8090`). Everything a hit
 carries comes back under an `untrusted` key: Claude is told it is evidence, never instructions.
@@ -181,6 +196,8 @@ carries comes back under an `untrusted` key: Claude is told it is evidence, neve
 | `COLLUDER_PUBLIC_IP` | the first of `COLLUDER_SELF_IPS` (the address payload names must resolve to; the outside check expects it) |
 | `COLLUDER_EXTRA_DOMAINS` | unset (other domains served besides `COLLUDER_DOMAIN`; see Two domains) |
 | `COLLUDER_EDGE_CERT_DIR` (edge) | `~/caido-cert/domains` (one `<domain>/` per extra certificate) |
+| `COLLUDER_MAIL_DAYS` | `7` (how long the mailbox keeps mail) |
+| `COLLUDER_EDGE_SMTP` / `COLLUDER_EDGE_SMTPS` (edge) | unset: off (smtp-front.sh writes `203.0.113.10:25,203.0.113.10:587` / `203.0.113.10:465`) |
 | `COLLUDER_CHECK_MINUTES` | `10` (how often the outside check runs; 0 is off; Settings changes it) |
 | `COLLUDER_ENV_FILE`, `COLLUDER_ENGINE_CONFIG`, `COLLUDER_NUCLEI_CONFIG` | `~/.config/colluder/colluder.env`, `~/.config/colluder/engine.yaml`, `~/.config/user/config.yaml` (what Settings writes, and the nuclei line it reads) |
 | `COLLUDER_EDGE_HTTP` / `COLLUDER_EDGE_HTTPS` (edge) | `203.0.113.10:80` / `:443` (`off` disables HTTPS) |
