@@ -104,7 +104,7 @@ export default function App() {
           {route.view === "probes" ? (
             <>
               {planting && <Composer />}
-              <div className="grid min-h-0 flex-1 grid-cols-[400px_minmax(0,1fr)] max-[1180px]:grid-cols-[320px_minmax(0,1fr)] max-[820px]:block">
+              <div className="grid min-h-0 flex-1 grid-cols-[400px_minmax(0,1fr)] gap-x-2 p-2 max-[1180px]:grid-cols-[320px_minmax(0,1fr)] max-[820px]:flex max-[820px]:flex-col max-[820px]:gap-2 max-[820px]:p-1.5">
                 <ProbeList />
                 <ProbePane />
               </div>

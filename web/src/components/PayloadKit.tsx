@@ -104,7 +104,7 @@ export function PayloadKit({ section }: { section: string | null }) {
 
   if (!host || !tag) {
     return (
-      <div className="min-h-0 overflow-auto px-8 py-7 max-[820px]:px-4">
+      <div className="min-h-0 overflow-auto px-8 py-7 m-2 rounded-md border border-rule bg-soot max-[820px]:m-1.5 max-[820px]:px-4">
         <h1 className="text-headline font-bold">Payload kit</h1>
         <p className="mt-3 max-w-[64ch] text-title text-smoke">{!host ? "Waiting for the engine's payload host." : <>Plant a probe first: every payload here calls back to one. <a className="text-bone underline underline-offset-2" href="#probes">Plant a probe</a></>}</p>
       </div>
@@ -115,7 +115,7 @@ export function PayloadKit({ section }: { section: string | null }) {
   const forms = sec === "address" ? addressForms(ip) : null;
 
   return (
-    <div className="grid min-h-0 flex-1 grid-cols-[208px_minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)] max-[820px]:block">
+    <div className="grid min-h-0 flex-1 grid-cols-[208px_minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)] m-2 overflow-hidden rounded-md border border-rule bg-soot max-[820px]:m-1.5 max-[820px]:block">
       <header className="col-span-full flex flex-wrap items-center gap-x-5 gap-y-2.5 border-b border-rule px-8 py-4 max-[820px]:px-4">
         <h1 className="text-headline font-bold">Payload kit</h1>
         <Select value={tag} onValueChange={setPicked}>

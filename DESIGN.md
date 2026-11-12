@@ -305,14 +305,14 @@ components:
 
 **Creative North Star: "The Insider on the Wire"**
 
-Colluder is a night-shift accomplice that sits beside the operator's proxy and reports, in a low voice, exactly who called back. The surface is a warm soot room lit by bone-coloured ink. Everything is dense, tabular and small (a 12.5px working size), because the screen lives on a second monitor and has to be read at a glance from across a desk. Character is real but held back: a raccoon's Domino mask in the corner, a ringed tail drawn under each probe, an amber eye that opens when something arrives. The data itself is never decorated.
+Colluder is a night-shift accomplice that sits beside the operator's proxy and reports, in a low voice, exactly who called back. The surface is a strip bay (since 2026-11-12, see "Strip Bay"): a neutral graphite frame holding strips, where every region, probe and detail block is its own object with a hard edge. Everything is dense, tabular and small (a 12.5px working size), because the screen lives on a second monitor and has to be read at a glance from across a desk. Character is real but held back: a raccoon's Domino mask in the corner, a ringed tail drawn under each probe, an amber eye that opens when something arrives. The data itself is never decorated.
 
 The system is built on trust. Liveness is drawn, not implied: every state of the engine and stream has a line form and a plain word. Raw captures are evidence, so they are rendered as inert text, copied byte for byte, and any part that is folded away says how much is missing. Colour carries meaning (protocol, newness, alarm) and is always paired with a word.
 
 It must not look like a hacker costume: no green-on-black terminal, no glitch effects, no neon, no matrix rain. It is a professional instrument that happens to have a raccoon.
 
 **Key Characteristics:**
-- Warm near-black soot ground, layered in three tonal steps plus a deeper well for raw bytes.
+- A neutral graphite bay (rail, status bar, the gaps) holding strips one tonal step up, each with a 1px edge; a matched dark and light pair that follows the system.
 - One accent with a single job: amber means new/unread (and the mark's eyes).
 - Four protocol inks, never shown without their word.
 - A four-step type scale (11 / 12.5 / 13.5 / 17px) in Archivo at a slightly condensed width, with Fragment Mono only for data.
@@ -322,32 +322,34 @@ It must not look like a hacker costume: no green-on-black terminal, no glitch ef
 
 ## Colors
 
-A warm, low-chroma brown-black ground with bone ink. The only saturated colours are the four protocol inks, the amber eyeshine and the alarm reds.
+Strip Bay (2026-11-12): a neutral graphite bay and strips with near-white ink (near-black on the light pair). Warmth lives only in the accents: the amber eyeshine, the crew's coats and the mask. The other saturated colours are the four protocol inks and the alarm reds. The names below are the token names; the values are the default dark theme's (the light pair is under "Strip Bay").
 
 ### Primary
-- **Bone** (#ece3d1): the ink. Body text, primary values, the focus outline, and the fill of the single loud button in a region. It brightens to **Bone Glow** (#fff8ea) on primary hover. Between midnight and 05:00 local time the app dims it to **Night Bone** (#e6dccb) and shows a quiet "Night shift" label in the status bar.
+- **Bone** (#eceef1): the ink. Body text, primary values, the focus outline, and the fill of the single loud button in a region. It brightens to **Bone Glow** (#ffffff) on primary hover. Between midnight and 05:00 local time the app dims it to **Night Bone** (#dfe1e4) and shows a quiet "Night shift" label in the status bar.
 
 ### Secondary
 - **Amber Eyeshine** (#f2b33d): new and unread. The new dot, the "n new" chip, the unread badge on the Probes rail item, the favicon's unread dot, and the eyes of the mark. It also tints the text caret in inputs.
 
 ### Tertiary (protocol inks)
-- **Heather** (#c793c4): DNS.
-- **Vermilion** (#e2643f): HTTP.
-- **Periwinkle** (#8aa2ea): HTTPS.
-- **Lichen** (#62b08f): SMTP.
-- **Dust** (#b5ab9c): anything else.
+- **Heather** (#b9a0f2): DNS.
+- **Vermilion** (#f08c55): HTTP.
+- **Periwinkle** (#73a9f5): HTTPS.
+- **Lichen** (#5fc290): SMTP.
+- **Dust** (#b5bac1): anything else.
+The four sit at one even chroma so none shouts over the others.
 
 ### Neutral
-- **Soot** (#16120e): app ground, rail, status-bar-adjacent surfaces, table header, field wells in the composer.
-- **Soot 1** (#1e1914): raised bands: composer, hit detail, status bar, dialogs, rail hover.
-- **Soot 2** (#2a221b): selection fill, the active rail item, the "on" segment of a toggle, the secondary button.
-- **Well** (#110e0b): the deepest surface, used only behind raw request and response bytes.
-- **Accent Hover** (#30271f): hover fill for secondary, quiet and ghost buttons.
-- **Rule** (#3a3129): structural borders between regions, field strokes, scrollbar thumb.
-- **Rule 2** (#2a231d): row dividers inside lists and tables, raw-pane frames, section rules inside a parsed request.
-- **Smoke** (#b3a99a; was #a99f90): secondary text, labels, column headers.
-- **Ash** (#9a8f80; was #8f8576): tertiary text: hints, footnotes, placeholders, sub-captions.
-- **Fur** (#9a9084): the mark's tile and the raccoon tail's body. Not a text colour.
+- **Bay** (#101113): the frame. Body ground, the rail, the status bar, and the gaps between strips (the hit detail sits on it too).
+- **Soot** (#1b1d20): a strip. The probe pane, each probe row, the list header and footer, the Mailbox and Payload kit pages, table headers.
+- **Soot 1** (#212327): raised: the plant form, dialogs, popovers.
+- **Soot 2** (#2b2f34): selected: the selected probe and hit, the "on" segment of a toggle, the secondary button.
+- **Well** (#141518): behind raw request and response bytes and the custody line.
+- **Accent Hover** (#282b30), **Hover** (#232529): hover fills.
+- **Rule** (#3a3e45): every strip's edge, region borders, field strokes, scrollbar thumb.
+- **Rule 2** (#2a2d32): row and column hairlines inside a strip.
+- **Smoke** (#b5bac1): secondary text, labels, column headers.
+- **Ash** (#979da5): tertiary text: hints, footnotes, placeholders.
+- **Fur** (#9a9084): the mark's tile and the raccoon tail's body. Not a text colour; it stays warm (the mask is an accent).
 
 ### Status
 - **Ember** (#e8735a): "bad" words in the status bar and the invalid-tag field border.
@@ -370,7 +372,7 @@ A warm, low-chroma brown-black ground with bone ink. The only saturated colours 
 
 **The Word-Beside-Ink Rule.** A protocol ink never appears alone. Every ink is drawn as a small square or tick next to its word (DNS, HTTP, HTTPS, SMTP, OTHER) or inside a labelled row. A colour-blind operator loses nothing.
 
-**The Warm Soot Rule.** Every neutral is warm (OKLCH hue 62-78°, chroma under 0.03). No cool greys, no pure black, no pure white.
+**The Neutral Bay Rule** (replaced the Warm Soot Rule, 2026-11-12). Every neutral is a neutral graphite (chroma under 0.01). Warmth is an accent: amber, the crew's coats, the mask. No brown grounds, no beige ink.
 
 ## Typography
 
@@ -416,7 +418,7 @@ Spacing is tight and regular: 24px page gutter, 20px list gutter, 10px gaps betw
 
 ## Elevation & Depth
 
-Flat. Depth is tonal: Well (deepest, raw bytes) → Soot (ground) → Soot 1 (raised bands) → Soot 2 (selected), divided by 1px Rule hairlines. Shadows appear only on things that float above the grid.
+Flat. Depth is tonal and edged: Bay (the frame) → Soot (a strip, with a 1px Rule edge and a 5-6px radius) → Soot 1 (raised) → Soot 2 (selected); the Well sits inside a strip for raw bytes. Shadows appear only on things that float above the grid, and on a cocked strip.
 
 ### Shadow Vocabulary
 - **Toast lift** (`box-shadow: 0 6px 18px rgba(0,0,0,.4)`): the bone copy-confirmation toast above the status bar.
@@ -424,7 +426,7 @@ Flat. Depth is tonal: Well (deepest, raw bytes) → Soot (ground) → Soot 1 (ra
 - Radix popovers, selects and dialogs keep shadcn's default small shadows.
 
 ### Named Rules
-**The Flat Soot Rule.** Panels, rows, panes and bands never cast shadows. If something needs to stand forward, move it one tonal step up.
+**The Strip Rule.** Every object the operator reads as one thing (a region, a probe, a detail block, a banner) is a strip: its own ground one step above the bay, a hard 1px edge, and a gap of bay around it. Nothing is separated by tone alone, and strips never cast shadows except a cocked one.
 
 ## Shapes
 
@@ -702,3 +704,18 @@ The same four complaints, followed into the other surfaces: too much at once, th
 - **Kinds are dealt like coats** (`crewKinds` in `lib/crew.ts`, a second hash independent of the coat): the first ten on the active list are ten different animals, and a probe keeps its kind as newer ones arrive. `crew()` returns each member's look (coat and kind); the Mailbox deals its addresses the same way. Strays (no tag, not planted) stay the grey raccoon.
 - Hovering a member names it: "orca's colluder: a monkey", "orca-shop-victim: a monkey".
 - Eyes are unchanged: a cream wink while armed, shut once retired, amber with the badge only for unseen hits.
+
+## Strip Bay (2026-11-12)
+
+"No clear separation between elements": the warm soot theme had one brown ground for the rail, list, pane and status bar, beige ink in every tier, and murky banners. The replacement world, chosen from four mockups (Strip Bay, Packet List, Departure Board, the category standard), comes from air-traffic-control flight strips: each flight is a strip in a bay, fields sit in ruled boxes, and a controller flags one by sliding it out of line.
+
+- **A matched pair that follows the system.** "Match system" is the default (Settings → Display: Match system, Colluder dark, Colluder light, then High contrast and the named themes). A browser that saved the old default "dark" moves to Match system once (`colluder.display` v2); an explicit pick of any other theme is kept.
+- **Dark:** bay `#101113`, strip `#1b1d20`, raised `#212327`, selected `#2b2f34`, well `#141518`, edge `#3a3e45`, hairline `#2a2d32`; ink `#eceef1` / `#b5bac1` / `#979da5`.
+- **Light:** bay `#d7dade`, strip `#ffffff`, selected `#e6ebf1`, well `#f5f6f8`, edge `#b9bfc7`, hairline `#e1e4e8`; ink `#16181b` / `#454a52` / `#555b64`; amber `#7f4f00`; inks DNS `#7348c2`, HTTP `#a94c18`, HTTPS `#2a5fbe`, SMTP `#1c754b`. Every text ink holds 4.5:1 on every ground it can sit on, the bay included (checked with a script). High contrast is the same bay with brighter edges and text; the named themes each get a bay one step below their ground.
+- **The shell:** the rail and status bar sit on the bay with no borders; the current tool is a strip. Banners are strips with their own alarm or caution edge, stacked with 6px gaps. The work area has 8px of bay around and between the probe list and the pane.
+- **The probe list is not a strip; its parts are.** The header (53px, so its bottom edge meets the probe header's), each probe row (5px radius) and the Discord footer are strips in the bay; silent and retired probes are slimmer strips. **Bays** label the sections: Active (shown when there are other sections), Silent and Retired, each a small Smoke label over a Rule line.
+- **The cocked strip (signature).** A probe with unread hits slides 12px out of line toward the pane, with an amber edge and a soft shadow; once read it slides back (0.5 s, ease-out-expo; reduced motion shows the offset without the slide). The list keeps 14px on the right so a cocked strip never clips. Amber still means only "not seen yet".
+- **The pane** is one strip. Hit-table columns are divided by Rule 2 hairlines; state (selected, new, chatter) restyles a row's fill and ink, never the grid. The **hit detail** sits on the bay inside the pane as two strips: what happened (header, lead, fields, notes), then the bytes (view controls, request and response wells with a Rule edge, custody on the Well).
+- **Mailbox and the Payload kit** are each one strip in the bay; Settings' grouped panels already were.
+- **Theme tiles** were redrawn from the new values (the rail swatch is the bay, the ground is a strip).
+

@@ -33,15 +33,15 @@ export function Rail({ view }: { view: string }) {
   const unread = totalUnread(s);
   const Item = ({ v, label, Icon, badge }: { v: string; label: string; Icon: LucideIcon; badge?: number }) => (
     <a href={`#${v}`} aria-current={view === v ? "page" : undefined}
-      className={cn("relative flex w-[70px] flex-none flex-col items-center gap-[5px] rounded py-[9px] pb-2 text-center text-label leading-3 font-[550] text-smoke no-underline hover:bg-soot-1 hover:text-bone max-[820px]:min-h-11 max-[820px]:w-auto max-[820px]:min-w-11 max-[820px]:justify-center max-[820px]:px-2.5 max-[820px]:py-1.5",
-        view === v && "bg-soot-2 text-bone")}>
+      className={cn("relative flex w-[70px] flex-none flex-col items-center gap-[5px] rounded py-[9px] pb-2 text-center text-label leading-3 font-[550] border border-transparent text-smoke no-underline hover:bg-soot hover:text-bone max-[820px]:min-h-11 max-[820px]:w-auto max-[820px]:min-w-11 max-[820px]:justify-center max-[820px]:px-2.5 max-[820px]:py-1.5",
+        view === v && "border-rule bg-soot text-bone")}>
       <Icon className="size-[19px]" strokeWidth={1.5} />
       <span className="max-[820px]:sr-only">{label}</span>
       {!!badge && <span className="absolute top-[5px] left-[42px] h-[15px] min-w-4 rounded-lg bg-amber px-1 text-label leading-[0.9375rem] font-bold text-soot max-[820px]:left-auto max-[820px]:right-0" aria-label={`${badge} unread`}>{badge > 99 ? "99+" : badge}</span>}
     </a>
   );
   return (
-    <nav aria-label="Tools" className="row-span-2 z-10 flex flex-col items-center gap-0.5 border-r border-rule bg-soot pt-3.5 pb-2.5 max-[820px]:row-span-1 max-[820px]:sticky max-[820px]:top-0 max-[820px]:flex-row max-[820px]:overflow-x-auto max-[820px]:border-r-0 max-[820px]:border-b max-[820px]:px-2.5 max-[820px]:py-0">
+    <nav aria-label="Tools" className="row-span-2 z-10 flex flex-col items-center gap-0.5 bg-bay pt-3.5 pb-2.5 max-[820px]:row-span-1 max-[820px]:sticky max-[820px]:top-0 max-[820px]:flex-row max-[820px]:overflow-x-auto max-[820px]:border-b max-[820px]:border-rule max-[820px]:px-2.5 max-[820px]:py-0">
       <Mark base={markBase(s)} pulse={s.pulse} />
       {TOOLS.map((t, i) => (
         <Fragment key={t.view}>
@@ -90,7 +90,7 @@ export function StatusBar() {
     </div>
   );
   return (
-    <footer role="status" aria-live="off" className="col-start-2 flex h-7 items-center gap-[22px] max-[820px]:gap-3.5 overflow-hidden border-t border-rule bg-soot-1 pr-4 pl-6 text-body whitespace-nowrap max-[820px]:sticky max-[820px]:bottom-0 max-[820px]:col-start-1 max-[820px]:pl-3.5">
+    <footer role="status" aria-live="off" className="col-start-2 flex h-7 items-center gap-[22px] max-[820px]:gap-3.5 overflow-hidden bg-bay pr-4 pl-3 text-body whitespace-nowrap max-[820px]:sticky max-[820px]:bottom-0 max-[820px]:col-start-1 max-[820px]:pl-3.5">
       <span className="font-brand text-title leading-none font-bold tracking-[-.01em] max-[820px]:hidden">colluder</span>
       <Item kind={engine[0]} signal="beat" label="Engine" short="Eng" word={engine[1]} bad={engine[2]}
         sub={`${e?.version ?? ""}${e?.state === "capturing" && e.since ? ` · up ${dur(Date.now() - Date.parse(e.since))}` : ""}`}
@@ -141,7 +141,7 @@ export function Banners() {
   const out = [];
   if (e && ["down", "missing", "degraded"].includes(e.state)) {
     out.push(
-      <div key="engine" className="flex flex-wrap items-center gap-3 border-b border-rule bg-alarm-ground px-6 py-[9px] text-body text-alarm-banner-ink max-[820px]:px-3.5">
+      <div key="engine" className="flex flex-wrap items-center gap-3 rounded-md border border-alarm-border bg-alarm-ground px-4 py-[9px] text-body text-alarm-banner-ink max-[820px]:px-3.5">
         <LineForm kind="down" />
         <span><b>{e.state === "degraded" ? "The engine is having trouble. " : "The engine is not capturing. "}</b>{e.detail}{e.state !== "degraded" && " Payloads will not record hits until it is back."}</span>
         {e.fix && <Button variant="quiet" className="ml-auto max-w-full overflow-hidden" onClick={() => copy(e.fix!, "fix command")}><Copy /><span className="truncate font-mono text-bone">{e.fix}</span></Button>}
@@ -150,7 +150,7 @@ export function Banners() {
   }
   if (s.stream.state !== "connected" && Date.now() - s.stream.since > 8000) {
     out.push(
-      <div key="stream" className="flex items-center gap-3 border-b border-rule bg-caution-ground px-6 py-[9px] max-[820px]:px-3.5 text-body text-caution-ink">
+      <div key="stream" className="flex items-center gap-3 rounded-md border border-caution-border bg-caution-ground px-4 py-[9px] max-[820px]:px-3.5 text-body text-caution-ink">
         <LineForm kind="dash" />
         Live updates paused: reconnecting to the dashboard{s.stream.lastEventAt ? `, last update ${ago(Date.now() - s.stream.lastEventAt)}` : ""}. What you see may be out of date.
       </div>,
@@ -161,7 +161,7 @@ export function Banners() {
   if (ed && (ed.state === "stale" || ed.state === "stopped")) {
     const fix = "sudo systemctl restart colluder-edge";
     out.push(
-      <div key="edge" className="flex flex-wrap items-center gap-3 border-b border-rule bg-alarm-ground px-6 py-[9px] text-body text-alarm-banner-ink max-[820px]:px-3.5">
+      <div key="edge" className="flex flex-wrap items-center gap-3 rounded-md border border-alarm-border bg-alarm-ground px-4 py-[9px] text-body text-alarm-banner-ink max-[820px]:px-3.5">
         <LineForm kind="down" />
         <span><b>Colluder's edge isn't answering. </b>HTTP and HTTPS hits on your probes are not being captured{ed.heartbeatAt ? ` (last heartbeat ${ago(Date.now() - isoMs(ed.heartbeatAt))})` : ""}. {ed.listen?.dns ? "Nor is DNS: the edge answers it, so payload names don't resolve at all." : "DNS still is."}</span>
         <Button variant="quiet" className="ml-auto max-w-full overflow-hidden" onClick={() => copy(fix, "fix command")}><Copy /><span className="truncate font-mono text-bone">{fix}</span></Button>
@@ -172,7 +172,7 @@ export function Banners() {
   if (ed?.state === "running" && ed.codeStale) {
     const fix = "sudo systemctl restart colluder-edge";
     out.push(
-      <div key="edge-code" className="flex flex-wrap items-center gap-3 border-b border-rule bg-caution-ground px-6 py-[9px] text-body text-caution-ink max-[820px]:px-3.5">
+      <div key="edge-code" className="flex flex-wrap items-center gap-3 rounded-md border border-caution-border bg-caution-ground px-4 py-[9px] text-body text-caution-ink max-[820px]:px-3.5">
         <span><b className="font-semibold">The edge is running older code than what's installed.</b> Rules still answer, but features added since it started aren't served yet. A restart takes about a second.</span>
         <Button variant="quiet" className="ml-auto max-w-full overflow-hidden" onClick={() => copy(fix, "restart command")}><Copy /><span className="truncate font-mono text-bone">{fix}</span></Button>
       </div>,
@@ -183,7 +183,7 @@ export function Banners() {
   if (ck?.active && ck.last?.state === "failing") {
     const bad = ck.last.steps.filter((x) => !x.ok);
     out.push(
-      <div key="check" className="flex flex-wrap items-center gap-3 border-b border-rule bg-alarm-ground px-6 py-[9px] text-body text-alarm-banner-ink max-[820px]:px-3.5">
+      <div key="check" className="flex flex-wrap items-center gap-3 rounded-md border border-alarm-border bg-alarm-ground px-4 py-[9px] text-body text-alarm-banner-ink max-[820px]:px-3.5">
         <LineForm kind="down" />
         <span><b>Callbacks may not be reaching Colluder. </b>{bad.map((x) => `${x.label}: ${x.detail}.`).join(" ")} Until this clears, a quiet probe proves nothing.</span>
         <Button variant="quiet" className="ml-auto" disabled={ck.running} onClick={() => runCheck().catch((x) => toast((x as Error).message, true))}>{ck.running ? "Checking…" : "Check again"}</Button>
@@ -195,7 +195,7 @@ export function Banners() {
   const warnKey = ck?.last?.warnings.join("|") ?? "";
   if (ck?.active && warnKey && warnKey !== seenWarn) { // shown when failing too: a lapsing cert matters either way
     out.push(
-      <div key="check-warn" className="flex items-center gap-3 border-b border-rule bg-caution-ground px-6 py-[9px] max-[820px]:px-3.5 text-body text-caution-ink">
+      <div key="check-warn" className="flex items-center gap-3 rounded-md border border-caution-border bg-caution-ground px-4 py-[9px] max-[820px]:px-3.5 text-body text-caution-ink">
         <span>{ck.last?.warnings.join(" ")}</span>
         <Button variant="ghost" className="ml-auto" onClick={() => { try { localStorage.setItem("colluder.ackCheckWarn", warnKey); } catch { /* */ } bump((n) => n + 1); }}>Got it</Button>
       </div>,
@@ -206,7 +206,7 @@ export function Banners() {
   try { acked = localStorage.getItem("colluder.ackCorr") ?? ""; } catch { /* */ }
   if (ch && acked !== JSON.stringify(ch)) {
     out.push(
-      <div key="corr" className="flex items-center gap-3 border-b border-rule bg-caution-ground px-6 py-[9px] max-[820px]:px-3.5 text-body text-caution-ink">
+      <div key="corr" className="flex items-center gap-3 rounded-md border border-caution-border bg-caution-ground px-4 py-[9px] max-[820px]:px-3.5 text-body text-caution-ink">
         {s.status?.edge?.state === "running"
           ? <>The engine's correlation id changed at {ch.replace("T", " ").slice(0, 16)} UTC. Older payloads still bring HTTP(S) hits here through Colluder's edge, but not their DNS lookups; copy fresh ones for DNS.</>
           : <>The engine's correlation id changed at {ch.replace("T", " ").slice(0, 16)} UTC. Payloads planted before then no longer reach this dashboard; copy fresh ones.</>}
@@ -214,6 +214,6 @@ export function Banners() {
       </div>,
     );
   }
-  if (s.loadError) out.push(<div key="load" className="border-b border-rule bg-alarm-ground px-6 py-[9px] text-body text-alarm-banner-ink max-[820px]:px-3.5">Could not load Colluder's state: {s.loadError}. Retrying…</div>);
-  return <>{out}</>;
+  if (s.loadError) out.push(<div key="load" className="rounded-md border border-alarm-border bg-alarm-ground px-4 py-[9px] text-body text-alarm-banner-ink max-[820px]:px-3.5">Could not load Colluder's state: {s.loadError}. Retrying…</div>);
+  return out.length ? <div className="flex flex-none flex-col gap-1.5 px-2 pt-2 max-[820px]:px-1.5">{out}</div> : null;
 }

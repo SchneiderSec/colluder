@@ -211,7 +211,7 @@ export function Composer() {
 
   const fld = "flex h-9 items-center gap-[9px] overflow-hidden rounded-[3px] border border-rule bg-soot px-3 whitespace-nowrap transition-colors focus-within:border-smoke";
   return (
-    <section aria-label="Plant a probe" className="grid grid-cols-[132px_minmax(0,1fr)_auto] gap-x-0 gap-y-2.5 border-b border-rule bg-soot-1 px-6 pt-3.5 pb-3 max-[820px]:grid-cols-[minmax(0,1fr)_auto] max-[820px]:px-3.5"
+    <section aria-label="Plant a probe" className="grid grid-cols-[132px_minmax(0,1fr)_auto] gap-x-0 gap-y-2.5 mx-2 mt-2 rounded-md border border-rule bg-soot-1 px-5 pt-3.5 pb-3 max-[820px]:mx-1.5 max-[820px]:grid-cols-[minmax(0,1fr)_auto] max-[820px]:px-3.5"
       onKeyDown={(e) => { if (e.key === "Escape" && !tag && !target && !empty) setPlanting(false); }}>
       <h1 className="self-start pt-[6px] text-headline font-[650] max-[820px]:pt-0">Plant a probe</h1>
       <form onSubmit={submit} noValidate autoComplete="off"

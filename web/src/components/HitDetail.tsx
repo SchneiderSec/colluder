@@ -54,7 +54,7 @@ function RawPane({ title, sub, text, exact, http, proto, p, tag, domain, capture
   let inHead = http || proto === "smtp";
   const lines = shown ? shown.split(/\r?\n/) : [];
   return (
-    <div className="@container/pane relative flex min-h-[220px] min-w-0 flex-col rounded-[3px] border border-rule-2 bg-well max-[820px]:min-h-[200px]">
+    <div className="@container/pane relative flex min-h-[220px] min-w-0 flex-col rounded-[3px] border border-rule bg-well max-[820px]:min-h-[200px]">
       <div className="flex h-8 flex-none items-center gap-2 border-b border-rule-2 pr-1.5 pl-3 text-body font-[650]">
         {title}<span className="truncate text-label font-normal text-ash">{sub}</span>
         <Button variant="ghost" size="sm" className="ml-auto" onClick={() => copy(exact, title.toLowerCase())}><Copy />Copy</Button>
@@ -140,9 +140,12 @@ export function HitDetail({ id }: { id: number }) {
     return () => removeEventListener("keydown", onKey);
   }, []);
 
-  const box = "@container relative flex min-h-0 flex-col gap-2.5 overflow-auto border-t border-rule bg-soot-1 py-3.5 pr-5 pl-6 max-[820px]:px-3.5";
+  // Strip Bay: the detail sits on the bay, as two strips: what happened (header, lead, fields, notes),
+  // then the bytes (view controls, request and response, custody)
+  const box = "@container relative flex min-h-0 flex-col gap-2 overflow-auto border-t border-rule bg-bay p-2 max-[820px]:p-1.5";
+  const strip = "flex flex-none flex-col gap-2.5 rounded-md border border-rule bg-soot py-3 pr-4 pl-5 max-[820px]:px-3";
   const d = s.details.get(id);
-  if (!d) return <article className={box}><p className="text-ash">{err ? `Could not load #${id}: ${err}` : `Loading #${id}…`}</p></article>;
+  if (!d) return <article className={box}><p className={cn(strip, "text-ash")}>{err ? `Could not load #${id}: ${err}` : `Loading #${id}…`}</p></article>;
 
   const e: Partial<Enrich> = s.enrich.get(d.remoteAddress) ?? d.enrich ?? {};
   const open = s.openSeen[s.sel!] ?? s.seen[s.sel!] ?? 0;
@@ -169,6 +172,7 @@ export function HitDetail({ id }: { id: number }) {
 
   return (
     <article aria-label={`Hit ${d.id}`} className={cn(box, wrap && "wrap")}>
+      <div className={strip}>
       <div className="flex min-h-[30px] flex-none flex-wrap items-center gap-3">
         <span className="text-headline font-bold tracking-[.01em]">#{d.id}</span>
         <TypeChip proto={d.protocol} />
@@ -250,6 +254,8 @@ export function HitDetail({ id }: { id: number }) {
         </p>
       )}
 
+      </div>
+      <div className={cn(strip, "min-h-0", (d.protocol !== "dns" || dnsBytes) && "flex-1 max-[820px]:flex-none")}>
       {d.protocol === "dns" && !dnsBytes ? (
         <button type="button" onClick={() => { setDnsBytes(true); save("colluder.dnsBytes", true); }}
           className="mt-0.5 flex flex-none items-center gap-1.5 self-start text-body text-smoke hover:text-bone">
@@ -291,7 +297,7 @@ export function HitDetail({ id }: { id: number }) {
           text={!web && decoded ? decode(d.rawResponse, d.protocol) : d.rawResponse} exact={d.rawResponse} />
       </div>
 
-      <div aria-label="Custody record" className="flex flex-none flex-wrap items-center gap-x-4 gap-y-1 rounded-[3px] border border-rule bg-soot px-3 py-1.5 text-label whitespace-nowrap max-[820px]:flex-col max-[820px]:items-start">
+      <div aria-label="Custody record" className="flex flex-none flex-wrap items-center gap-x-4 gap-y-1 rounded-[3px] border border-rule-2 bg-well px-3 py-1.5 text-label whitespace-nowrap max-[820px]:flex-col max-[820px]:items-start">
         <b className="font-[650]">Custody</b>
         <span title={`Captured by ${d.answer ? "Colluder's edge" : "the engine"} ${d.timestamp}`}><span className="text-smoke">{d.answer ? "Edge " : "Engine "}</span><span className="font-mono">{d.timestamp}</span></span>
         <span title={`Received by dashboard ${d.receivedAt}`}>
@@ -305,6 +311,7 @@ export function HitDetail({ id }: { id: number }) {
       </div>
       </>
       )}
+      </div>
       {!!peek && <Peek key={peek} />}
     </article>
   );

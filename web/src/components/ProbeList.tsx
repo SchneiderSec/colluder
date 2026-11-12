@@ -77,8 +77,8 @@ function Row({ s, p, k, stop }: { s: AppState; p: Probe | (Counts & Partial<Prob
   const look = isU || st === "unplanted" ? STRAY_LOOK : lookOf(crewOf(s.probes), p.tag!);
   return (
     <button ref={ref} type="button" role="option" aria-selected={sel} data-key={k} onClick={() => select(k)} tabIndex={sel || stop ? 0 : -1}
-      className={cn("grid w-full cursor-pointer grid-cols-[30px_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-[3px] border-b border-rule py-[11px] pr-4 pl-4 text-left hover:bg-hover",
-        sel && "bg-soot-2 hover:bg-soot-2", isU && "border-t border-t-rule", s.lit === k && "animate-lit")}>
+      className={cn("mb-1.5 grid w-[calc(100%-14px)] cursor-pointer grid-cols-[30px_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-[3px] rounded-[5px] border border-rule bg-soot py-[10px] pr-4 pl-4 text-left transition-[transform,box-shadow,border-color] duration-500 ease-out-expo hover:bg-hover",
+        sel && "border-ash bg-soot-2 hover:bg-soot-2", !!unread && !sel && "translate-x-3 border-amber shadow-[0_4px_12px_rgb(0_0_0/0.28)]", isU && "mt-1.5", s.lit === k && "animate-lit")}>
       {/* the probe's raccoon: its coat tells probes apart at a glance; amber eyes mean new hits */}
       <span className="row-span-2 self-start pt-px" title={[isU || st === "unplanted" ? "A stray: nobody planted it" : `${p.tag}'s colluder: ${aKind(look.species)}`, unread && "New hits since you last looked"].filter(Boolean).join(" · ")}>
         <CrewMark size={30} {...look} state={quiet || isU ? "doze" : "wink"} unread={!!unread} className={cn(st === "retired" && "opacity-70")} />
@@ -167,7 +167,7 @@ function Brief({ s, p }: { s: AppState; p: Probe }) {
   const tip = [st === "unplanted" ? p.tag : `${p.tag}'s colluder: ${aKind(look.species)}`, p.target, quietLine(p, s.status?.lastClear?.at), p.plantedBy === "claude" && "Planted by Claude", p.httpRule && `HTTP rule v${p.httpRule.version}: ${p.httpRule.line}`, p.muted && "Discord alerts muted"].filter(Boolean).join("\n");
   return (
     <button ref={ref} type="button" role="option" aria-selected={sel} data-key={p.tag} onClick={() => select(p.tag)} tabIndex={sel ? 0 : -1} title={tip}
-      className={cn("flex w-full min-w-0 cursor-pointer items-center gap-2.5 border-b border-rule-2 py-[7px] pr-4 pl-[22px] text-left hover:bg-hover max-[820px]:min-h-11", sel && "bg-soot-2 hover:bg-soot-2", s.lit === p.tag && "animate-lit")}>
+      className={cn("mb-1 flex w-[calc(100%-14px)] min-w-0 cursor-pointer items-center gap-2.5 rounded border border-rule-2 bg-soot py-[6px] pr-4 pl-3 text-left hover:bg-hover max-[820px]:min-h-11", sel && "border-ash bg-soot-2 hover:bg-soot-2", s.lit === p.tag && "animate-lit")}>
       <CrewMark size={18} {...look} state={retired || st === "unplanted" ? "doze" : "wink"} className={cn(retired && "opacity-70")} />
       <span className={cn("flex-none font-mono text-body", retired ? "text-smoke" : "text-bone")}>{p.tag}</span>
       <span className={cn("min-w-0 flex-1 truncate text-label", p.target ? "text-smoke" : "text-ash")}>{p.target || "No target noted"}</span>
@@ -231,8 +231,8 @@ export function ProbeList() {
     el?.focus(); el?.click();
   };
   return (
-    <section aria-label="Probes" className="flex min-h-0 flex-col border-r border-rule max-[820px]:max-h-[48vh] max-[820px]:border-r-0">
-      <div className="flex h-[42px] flex-none items-center gap-2 border-b border-rule pr-3 pl-5">
+    <section aria-label="Probes" className="flex min-h-0 flex-col gap-1.5 max-[820px]:max-h-[48vh]">
+      <div className="mr-[14px] flex h-[53px] flex-none items-center gap-2 rounded-md border border-rule bg-soot pr-3 pl-4">
         <h2 className="text-title font-[650]" title="Latest activity first">Probes</h2><span className="text-body text-smoke">{live.length}</span>
         <label className="ml-auto flex h-7 w-[min(170px,45%)] items-center gap-1.5 rounded-[3px] border border-rule bg-soot px-2 focus-within:border-smoke">
           <Search className="size-3.5 flex-none text-ash" strokeWidth={1.5} aria-hidden="true" />
@@ -252,13 +252,14 @@ export function ProbeList() {
             Plant one: a tag (e.g. avatar) and where you'll put it. Then copy a payload into the target. Hits show up here the moment something calls back.
           </div>
         )}
+        {!!active.length && (!!quiet.length || !!retired.length) && <div className="flex min-w-0 items-center gap-1.5 mr-[14px] mb-1.5 border-b border-rule px-1 pt-2 pb-1.5 text-label font-semibold tracking-[.02em] text-smoke">Active <span className="font-medium text-ash">{active.length}</span></div>}
         {active.map((p, i) => <Row key={p.tag} s={s} p={p} k={p.tag} stop={!s.sel && i === 0} />)}
         {!!quiet.length && (
           <>
             <button type="button" aria-expanded={showSilent} onClick={() => { setSilentOpen(!silentOpen); save("colluder.silentOpen", !silentOpen); }}
               title="Armed, planted over a day ago, and no hits yet"
-              className="flex min-w-0 items-center gap-1.5 border-b border-rule-2 px-5 py-2 text-left text-body text-ash hover:text-bone max-[820px]:min-h-11">
-              {showSilent ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}<span className="flex-none whitespace-nowrap">Silent ({quiet.length})</span>
+              className="flex min-w-0 items-center gap-1.5 mr-[14px] mb-1.5 border-b border-rule px-1 pt-2 pb-1.5 text-left text-label font-semibold tracking-[.02em] text-smoke hover:text-bone max-[820px]:min-h-11">
+              {showSilent ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}<span className="flex-none whitespace-nowrap">Silent <span className="font-medium text-ash">{quiet.length}</span></span>
               {!showSilent && <span className="truncate font-mono text-label text-ash">{quiet.map((p) => p.tag).join(" · ")}</span>}
             </button>
             {showSilent && quiet.map((p) => <Brief key={p.tag} s={s} p={p} />)}
@@ -266,9 +267,9 @@ export function ProbeList() {
         )}
         <div className="flex-1" />
         {!!retired.length && (
-          <div className="flex items-center border-t border-rule-2 pr-3">
-            <button type="button" aria-expanded={showRetired || !!needle} onClick={() => setShowRetired(!showRetired)} className="flex flex-1 items-center gap-1.5 px-5 py-2 text-left text-body text-smoke hover:text-bone max-[820px]:min-h-11">
-              {showRetired || needle ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}Retired ({retired.length}){retiredNew > 0 && <span className="text-amber"> · {retiredNew} new</span>}
+          <div className="mr-[14px] mb-1.5 flex items-center border-b border-rule">
+            <button type="button" aria-expanded={showRetired || !!needle} onClick={() => setShowRetired(!showRetired)} className="flex flex-1 items-center gap-1.5 px-1 pt-2 pb-1.5 text-left text-label font-semibold tracking-[.02em] text-smoke hover:text-bone max-[820px]:min-h-11">
+              {showRetired || needle ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}Retired <span className="font-medium text-ash">{retired.length}</span>{retiredNew > 0 && <span className="text-amber"> · {retiredNew} new</span>}
             </button>
             {(showRetired || needle) && !needle && <Button variant="ghost" size="sm" className="text-smoke" onClick={() => setDelAll(true)}><Trash2 />Delete all…</Button>}
           </div>
@@ -277,7 +278,7 @@ export function ProbeList() {
         <DeleteRetired tags={deletable.map((p) => p.tag)} hits={deletableHits} open={delAll} onOpenChange={setDelAll} />
         {!!s.untagged?.hits && <Row s={s} p={s.untagged} k={UNTAGGED} />}
       </div>
-      <div className="flex h-10 flex-none items-center gap-2.5 border-t border-rule pr-4 pl-5 text-smoke">
+      <div className="mr-[14px] flex h-10 flex-none items-center gap-2.5 rounded-md border border-rule bg-soot pr-4 pl-4 text-smoke">
         <Bell className="size-3.5" strokeWidth={1.5} /><span>Discord alerts</span>
         {d && !d.available && <a href="#settings" className="text-ash underline decoration-rule underline-offset-2 hover:text-bone">Set up in Settings</a>}
         {d?.available && (

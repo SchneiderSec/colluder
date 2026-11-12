@@ -62,7 +62,7 @@ export function Mailbox({ arg }: { arg: string | null }) {
   const sel = arg && /^\d+$/.test(arg) ? Number(arg) : shown[0]?.id ?? null;
 
   return (
-    <div className="grid min-h-0 flex-1 grid-cols-[400px_minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)] max-[1180px]:grid-cols-[320px_minmax(0,1fr)] max-[820px]:block">
+    <div className="grid min-h-0 flex-1 grid-cols-[400px_minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)] m-2 overflow-hidden rounded-md border border-rule bg-soot max-[820px]:m-1.5 max-[1180px]:grid-cols-[320px_minmax(0,1fr)] max-[820px]:block">
       <header className="col-span-full border-b border-rule px-8 py-4 max-[820px]:px-4">
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
           <h1 className="text-headline font-bold">Mailbox</h1>
@@ -98,7 +98,7 @@ export function Mailbox({ arg }: { arg: string | null }) {
               {shown.map((r) => (
                 <li key={r.id}>
                   <a href={`#mailbox/${r.id}`} aria-current={r.id === sel ? "true" : undefined}
-                    className={cn("grid grid-cols-[30px_minmax(0,1fr)_auto] items-start gap-x-2.5 border-b border-rule px-4 py-[11px] no-underline hover:bg-soot-1", r.id === sel && "bg-soot-2 hover:bg-soot-2")}>
+                    className={cn("grid grid-cols-[30px_minmax(0,1fr)_auto] items-start gap-x-2.5 border-b border-rule px-4 py-[11px] no-underline hover:bg-hover", r.id === sel && "bg-soot-2 hover:bg-soot-2")}>
                     <span className="pt-px" title={[`${r.localPart}: ${aKind((coats.get(r.localPart) ?? STRAY_LOOK).species)}`, r.id > seenAtOpen && "Arrived since your last visit"].filter(Boolean).join(" · ")}><CrewMark size={30} {...(coats.get(r.localPart) ?? STRAY_LOOK)} unread={r.id > seenAtOpen} /></span>
                     <span className="min-w-0">
                       <span className="block truncate font-mono text-title font-[650] text-bone">{r.localPart}</span>

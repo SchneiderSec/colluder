@@ -239,7 +239,7 @@ function HitRow({ i, open, sel, arrived, child, chatter, inProbe, step, self, st
 function Td({ children, sel, first, last, className }: { children: React.ReactNode; sel: boolean; first?: boolean; last?: boolean; className?: string }) {
   return (
     <td className={cn("overflow-hidden border-b border-rule-2 px-2.5 py-1.5 text-body text-ellipsis whitespace-nowrap group-hover:bg-hover",
-      first && "pl-6 max-[820px]:pl-3.5", last && "max-[820px]:hidden", sel && "border-rule bg-soot-2 text-bone group-hover:bg-soot-2", className)}>{children}</td>
+      first && "pl-6 max-[820px]:pl-3.5", last ? "max-[820px]:hidden" : "border-r border-r-rule-2", sel && "border-b-rule bg-soot-2 text-bone group-hover:bg-soot-2", className)}>{children}</td>
   );
 }
 
@@ -352,7 +352,7 @@ export function ProbePane() {
     return () => removeEventListener("keydown", onKey);
   }, []);
 
-  const wrap = "@container/probe grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,auto)_minmax(0,1fr)] max-[820px]:grid-rows-[auto_auto_auto]";
+  const wrap = "@container/probe grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,auto)_minmax(0,1fr)] overflow-hidden rounded-md border border-rule bg-soot max-[820px]:grid-rows-[auto_auto_auto] max-[820px]:overflow-visible";
   if (!s.sel) {
     return (
       <section className={wrap}>
@@ -500,7 +500,7 @@ export function ProbePane() {
           <colgroup><col className="w-[112px] max-[820px]:w-[84px]" /><col className="w-[116px] max-[820px]:w-[96px]" /><col className="w-[106px] max-[820px]:w-[96px]" /><col className="w-[218px] max-[820px]:w-auto" /><col className="max-[820px]:w-0" /></colgroup>
           <thead>
             <tr>{["#", "Time (UTC)", "Type", "Source", "Request"].map((t, i) => (
-              <th key={t} scope="col" className={cn("sticky top-0 z-[1] border-b border-rule bg-soot px-2.5 py-[5px] text-left text-label font-semibold tracking-[.03em] text-smoke", i === 0 && "pl-6 max-[820px]:pl-3.5", i === 4 && "max-[820px]:hidden")}>{t}</th>
+              <th key={t} scope="col" className={cn("sticky top-0 z-[1] border-b border-rule bg-soot px-2.5 py-[5px] text-left text-label font-semibold tracking-[.03em] text-smoke [&:not(:last-child)]:border-r [&:not(:last-child)]:border-r-rule-2", i === 0 && "pl-6 max-[820px]:pl-3.5", i === 4 && "max-[820px]:hidden")}>{t}</th>
             ))}</tr>
           </thead>
           <tbody onKeyDown={(e) => {

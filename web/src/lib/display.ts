@@ -13,16 +13,21 @@ export type Chime = "off" | "firings" | "hidden";
 export type HitsHeight = "short" | "tall" | "half";
 export type Display = { theme: Theme; dark: DarkTheme; inks: Inks; motion: Motion; night: Night; chime: Chime; hits: HitsHeight };
 
-const DEFAULTS: Display = { theme: "dark", dark: "dark", inks: "colluder", motion: "full", night: "auto", chime: "off", hits: "short" };
+// the default follows the system: Strip Bay is a matched dark and light pair (DESIGN.md)
+const DEFAULTS: Display = { theme: "system", dark: "dark", inks: "colluder", motion: "full", night: "auto", chime: "off", hits: "short" };
 const ALLOWED: { [K in keyof Display]: readonly Display[K][] } = {
   theme: [...DARK_THEMES, "light", "system"], dark: DARK_THEMES, inks: ["colluder", "safe"], motion: ["full", "still", "none"],
   night: ["auto", "off"], chime: ["off", "firings", "hidden"], hits: ["short", "tall", "half"],
 };
 const KEY = "colluder.display";
+// v2 (Strip Bay): "system" became the default. A browser saved before then holds "dark" because it
+// was the old default, so it moves to "system" once; any other theme it picked is kept.
+const VERSION = 2;
 
 function read(): Display {
   try {
-    const saved = JSON.parse(localStorage.getItem(KEY) || "{}") as Partial<Display>;
+    const saved = JSON.parse(localStorage.getItem(KEY) || "{}") as Partial<Display> & { v?: number };
+    if (saved.v !== VERSION && saved.theme === "dark") delete saved.theme;
     const out = { ...DEFAULTS };
     for (const k of Object.keys(ALLOWED) as (keyof Display)[]) if ((ALLOWED[k] as readonly string[]).includes(saved[k] as string)) (out as Record<string, string>)[k] = saved[k] as string;
     return out;
@@ -50,7 +55,7 @@ function apply() {
 export function setDisplay<K extends keyof Display>(k: K, v: Display[K]) {
   current = { ...current, [k]: v };
   if (k === "theme" && isDark(v as Theme)) current.dark = v as DarkTheme; // what "Match system" uses at night
-  try { localStorage.setItem(KEY, JSON.stringify(current)); } catch { /* private mode: this load only */ }
+  try { localStorage.setItem(KEY, JSON.stringify({ ...current, v: VERSION })); } catch { /* private mode: this load only */ }
   apply();
   subs.forEach((f) => f());
 }
