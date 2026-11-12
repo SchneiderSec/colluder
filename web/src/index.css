@@ -305,6 +305,52 @@
 @keyframes rub { from { transform: translateX(-2px); } to { transform: translateX(2px); } }
 .peek { position: absolute; bottom: -90px; right: 48px; width: 120px; height: 90px; transition: transform 0.7s var(--ease-out-expo); pointer-events: none; z-index: 5; }
 .peek.up { transform: translateY(-62px); }
+/* Crew tricks (CrewMark in components/Mark.tsx): click a crew member three times in a row. Each
+   part's own style is the trick's key pose; the keyframes move in and out of it, and reduced motion
+   (which drops every animation) leaves just the pose. Coordinates are the mark's 64-unit viewBox. */
+.cm-body { transform-origin: 32px 40px; }
+.cm-back { transform-origin: 32px 20px; }
+.cm-top { transform-origin: 32px 51px; }
+.cm-mask { transition: transform 180ms ease-out; }
+.cm-paw { transform-origin: 50px 50px; }
+.trick-raccoon.beat-0 .cm-mask { transform: translateY(9px); }
+.trick-shark .cm-body { animation: crew-lunge 430ms ease-out; }
+.trick-cat .cm-paw { animation: crew-swat 750ms ease-in-out both; }
+.trick-fox .cm-body { animation: crew-pounce 850ms ease-in-out; }
+.trick-bear .cm-yawn { transform-origin: 32px 53px; animation: crew-yawn 900ms ease-in-out both; }
+.trick-bear .cm-zzz text { animation: crew-zzz 1.3s ease-out 2 both; }
+.trick-bear .cm-zzz text:nth-child(2) { animation-delay: 0.35s; }
+.trick-bear .cm-zzz text:nth-child(3) { animation-delay: 0.7s; }
+.trick-rabbit .cm-body { animation: crew-hop 800ms ease-out; }
+.trick-rabbit .cm-back { animation: crew-flop 800ms ease-out; }
+.trick-bird .cm-body { animation: crew-lift 1100ms ease-in-out; }
+.trick-bird .cm-back { animation: crew-flap 220ms ease-in-out 5 alternate; }
+.trick-monkey .cm-hands { animation: crew-cover 1500ms ease-in-out both; }
+.trick-owl .cm-body { animation: crew-spin 1000ms cubic-bezier(.65, 0, .35, 1); }
+.trick-mouse .cm-top { animation: crew-twitch 100ms linear 6 alternate; }
+.trick-mouse .cm-body { animation: crew-shrink 1100ms ease-in-out; }
+.trick-dog .cm-tongue { transform-origin: 32px 56.5px; animation: crew-pant 250ms ease-in-out 6 alternate; }
+.trick-dog .cm-body { animation: crew-bob 250ms ease-in-out 6 alternate; }
+@keyframes crew-lunge { 0%, 100% { transform: none; } 45% { transform: scale(1.12) rotate(-5deg); } 75% { transform: scale(1.18) translateY(1px); } }
+@keyframes crew-swat {
+  0% { transform: translate(12px, 14px) rotate(20deg); opacity: 0; } 15% { transform: translate(6px, 6px); opacity: 1; }
+  35%, 50% { transform: translate(-16px, -18px) rotate(-30deg) scale(1.15); } 70% { transform: translate(-10px, -11px) rotate(-18deg); opacity: 1; }
+  100% { transform: translate(12px, 14px) rotate(20deg); opacity: 0; }
+}
+@keyframes crew-pounce { 0%, 100% { transform: none; } 35% { transform: translate(2px, 3px) rotate(9deg) scale(.93); } 60% { transform: translate(-2px, -5px) rotate(-12deg) scale(1.16); } 80% { transform: rotate(-3deg) scale(1.04); } }
+@keyframes crew-yawn { 0% { transform: scaleY(0); } 40% { transform: scaleY(1.15); } 75% { transform: scaleY(1); } 100% { transform: scaleY(0); } }
+@keyframes crew-zzz { 0% { opacity: 0; transform: translateY(4px); } 30% { opacity: 1; } 100% { opacity: 0; transform: translate(5px, -9px); } }
+@keyframes crew-hop { 0%, 100% { transform: none; } 18% { transform: translateY(2px) scale(1.07, .9); } 50% { transform: translateY(-13px) scale(.95, 1.06); } 80% { transform: translateY(1px) scale(1.08, .92); } }
+@keyframes crew-flop { 0%, 70%, 100% { transform: none; } 82% { transform: scaleY(.78) rotate(4deg); } 92% { transform: scaleY(1.05); } }
+@keyframes crew-lift { 0%, 100% { transform: none; } 30%, 70% { transform: translateY(-9px); } }
+@keyframes crew-flap { from { transform: none; } to { transform: scaleY(.6); } }
+@keyframes crew-cover { 0% { transform: translateY(30px); opacity: 0; } 22%, 80% { transform: none; opacity: 1; } 100% { transform: translateY(30px); opacity: 0; } }
+@keyframes crew-spin { from { transform: none; } to { transform: rotate(360deg); } }
+@keyframes crew-twitch { from { transform: rotate(-6deg); } to { transform: rotate(6deg); } }
+@keyframes crew-shrink { 0%, 50%, 100% { transform: none; } 62%, 88% { transform: translateY(4px) scale(.78); } }
+@keyframes crew-pant { from { transform: none; } to { transform: scaleY(1.4); } }
+@keyframes crew-bob { from { transform: none; } to { transform: translateY(1.2px); } }
+
 /* ultrathink: the colours run backwards through the keyframes so, with each letter a step later,
    the rainbow reads red to violet and flows rightward */
 @keyframes ultra-flow {

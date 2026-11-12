@@ -123,45 +123,91 @@ const Jaw = ({ open }: { open: number }) => (
     <path d={TOP_TEETH} fill={CREAM} /><path d={LOW_TEETH} fill={CREAM} />
   </g>
 );
-// Easter egg: click the shark three times in a row and it bites (lunge, jaws open, snap shut). The
-// click still does whatever the row does. Reduced motion shows the two frames without the movement.
-const BITE = [
-  { jaw: 0.3, head: "none" },
-  { jaw: 1, head: "scale(1.12) rotate(-5deg)" },
-  { jaw: 0.04, head: "scale(1.18) translateY(1px)" },
-] as const;
-function useBite() {
-  const [phase, setPhase] = useState(0);
+// Easter eggs: click any crew member three times in a row and it does its trick. The click still
+// does whatever the row does. The movement is CSS keyframes on the parts below ("Crew tricks" in
+// index.css); the eyes and the shark's jaw are timed here, beat by beat. Each trick's parts rest in
+// its key pose (hands over the eyes, tongue out), so reduced motion shows the pose without the moves.
+type Eyes = "rest" | "shut" | "mirror" | "hidden";
+type Beat = { ms: number; eyes?: Eyes; jaw?: number };
+const TRICKS: Record<Species, Beat[]> = {
+  raccoon: [{ ms: 650, eyes: "hidden" }, { ms: 800, eyes: "mirror" }], // pulls the mask over its eyes, then winks the other eye
+  cat: [{ ms: 750 }], // swats a paw at the cursor
+  fox: [{ ms: 850 }], // crouches, then pounces nose-first
+  bear: [{ ms: 900 }, { ms: 2600, eyes: "shut" }], // yawns, then naps
+  rabbit: [{ ms: 800 }], // hops, ears flopping on the landing
+  bird: [{ ms: 1100 }], // flaps its crest and lifts off
+  monkey: [{ ms: 1500 }], // see no evil
+  owl: [{ ms: 1000 }], // turns its head all the way round
+  mouse: [{ ms: 1100 }], // whiskers twitch, then it shrinks back
+  dog: [{ ms: 1500 }], // pants
+  shark: [{ ms: 240, jaw: 1 }, { ms: 190, jaw: 0.04 }], // bites: jaws wide, then snap
+};
+function useTrick(species: Species) {
+  const [beat, setBeat] = useState(-1);
+  const [run, setRun] = useState(0); // remounts the parts, so a trick restarts from the top
   const timers = useRef<number[]>([]);
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
-  const bite = () => {
+  const play = () => {
     timers.current.forEach(clearTimeout);
-    setPhase(1);
-    timers.current = [window.setTimeout(() => setPhase(2), 240), window.setTimeout(() => setPhase(0), 430)];
+    setRun((n) => n + 1);
+    setBeat(0);
+    let at = 0;
+    timers.current = TRICKS[species].map((b, i) => (at += b.ms, window.setTimeout(() => setBeat(i + 1 < TRICKS[species].length ? i + 1 : -1), at)));
   };
-  return [BITE[phase], bite] as const;
+  return { beat, run, step: beat < 0 ? null : TRICKS[species][beat], play };
 }
+
+// the props a trick brings on: paws, hands, a tongue, a yawn, the z's of a nap
+function Prop({ species, coat, beat }: { species: Species; coat: string; beat: number }) {
+  if (species === "cat") return (
+    <g className="cm-paw"><ellipse cx="50" cy="50" rx="7.5" ry="6.5" fill={coat} {...line} />
+      <path d="M46.5 45.5v3M50 44.5v3.5M53.5 45.5v3" stroke={INK} strokeOpacity=".5" strokeWidth="1.3" strokeLinecap="round" /></g>
+  );
+  if (species === "monkey") return (
+    // the backs of two hands, fingers up, over the eyes
+    <g className="cm-hands"><Both><path d="M11.5 44Q10 34 13 28.5Q15.5 25 18.5 27.5Q20.5 24.5 23.5 26.5Q26.5 24.5 29 27.5Q32.5 28 32 33.5Q31.5 42 28.5 46Q20 49.5 11.5 44Z" fill={coat} {...line} />
+      <path d="M18.5 27.5l.8 6M23.5 26.5l.2 6.5M28.8 27.6l-.6 6" stroke={INK} strokeOpacity=".45" strokeWidth="1.3" strokeLinecap="round" fill="none" /></Both></g>
+  );
+  if (species === "dog") return <path className="cm-tongue" d="M29 56.5h6v4.5q-3 4.5-6 0Z" fill={PINK} stroke={INK} strokeOpacity=".45" strokeWidth="1" />;
+  if (species === "bear" && beat === 0) return <ellipse className="cm-yawn" cx="32" cy="55" rx="4.2" ry="4" fill="#2a0d10" />;
+  if (species === "bear") return (
+    <g className="cm-zzz" fill={C.hl} fontFamily="ui-sans-serif, system-ui" fontWeight="800">
+      <text x="50" y="16" fontSize="13">z</text><text x="58" y="6" fontSize="10">z</text><text x="64" y="-2" fontSize="8">z</text>
+    </g>
+  );
+  return null;
+}
+
+// Night shift: from midnight to 05:00 local time an owl doesn't doze. Silent and retired owls keep
+// their eyes wide open while the rest of the quiet crew sleeps.
+const owlHours = () => new Date().getHours() < 5;
 
 export function CrewMark({ coat, species = "raccoon", state = "wink", unread = false, size = 22, className }: { coat: string; species?: Species; state?: "wink" | "doze"; unread?: boolean; size?: number; className?: string }) {
   const k = KIND[species];
-  const shark = species === "shark";
-  const [b, bite] = useBite();
+  const { beat, run, step, play } = useTrick(species);
+  const eyes = step?.eyes ?? "rest";
+  const awake = species === "owl" && state === "doze" && !unread && owlHours();
   return (
-    <svg width={size} height={size} viewBox="0 0 64 64" aria-hidden="true" className={cn("flex-none overflow-visible", shark && "select-none", className)}
-      onClick={shark ? (e) => { if (e.detail > 0 && e.detail % 3 === 0) bite(); } : undefined}>
-      <g style={shark ? { transformOrigin: "32px 38px", transform: b.head, transition: "transform 140ms cubic-bezier(.2,.9,.3,1.3)" } : undefined}>
-      {k.back?.(coat)}
-      <ellipse cx="32" cy="38" rx="24" ry="22" fill={coat} {...line} />
-      {k.front?.(coat)}
-      {/* the Colluder's mask and eyes, a size down so the face shows around them */}
-      <g transform="translate(32 36) scale(.8) translate(-32 -31)">
-        <path d={MASK} fill={C.mask} />
-        {unread ? <><Open x={L[0]} y={L[1]} k={1.1} /><Open x={R[0]} y={R[1]} k={1.1} /></>
-          : state === "doze" ? <><Shut x={L[0]} y={L[1]} /><Shut x={R[0]} y={R[1]} /></>
-          : <><Open x={L[0]} y={L[1]} ink={C.hl} /><Wink x={R[0]} y={R[1]} ink={C.hl} /></>}
-      </g>
-      {k.top}
-      {shark && <Jaw open={b.jaw} />}
+    <svg width={size} height={size} viewBox="0 0 64 64" aria-hidden="true" className={cn("flex-none overflow-visible select-none", step && `trick-${species} beat-${beat}`, className)}
+      onClick={(e) => { if (e.detail > 0 && e.detail % 3 === 0) play(); }}>
+      <g key={run} className="cm-body">
+        <g className="cm-back">{k.back?.(coat)}</g>
+        <ellipse cx="32" cy="38" rx="24" ry="22" fill={coat} {...line} />
+        {k.front?.(coat)}
+        {/* the Colluder's mask and eyes, a size down so the face shows around them */}
+        <g transform="translate(32 36) scale(.8) translate(-32 -31)">
+          <path className="cm-mask" d={MASK} fill={C.mask} />
+          {eyes === "hidden" ? null
+            : eyes === "shut" ? <><Shut x={L[0]} y={L[1]} /><Shut x={R[0]} y={R[1]} /></>
+            : eyes === "mirror" ? <><Wink x={L[0]} y={L[1]} ink={C.hl} /><Open x={R[0]} y={R[1]} ink={C.hl} /></>
+            : unread ? <><Open x={L[0]} y={L[1]} k={1.1} /><Open x={R[0]} y={R[1]} k={1.1} /></>
+            : awake ? <><Open x={L[0]} y={L[1]} k={1.15} ink={C.hl} /><Open x={R[0]} y={R[1]} k={1.15} ink={C.hl} /></>
+            : state === "doze" ? <><Shut x={L[0]} y={L[1]} /><Shut x={R[0]} y={R[1]} /></>
+            : <><Open x={L[0]} y={L[1]} ink={C.hl} /><Wink x={R[0]} y={R[1]} ink={C.hl} /></>}
+        </g>
+        <g className="cm-top">{k.top}</g>
+        {species === "shark" && <Jaw open={step?.jaw ?? 0.3} />}
+        {step && <Prop species={species} coat={coat} beat={beat} />}
       </g>
       {unread && <circle cx="57" cy="7" r="9" fill={C.shine} stroke="var(--soot)" strokeWidth="4" />}
     </svg>
