@@ -11,13 +11,7 @@
 set -euo pipefail
 umask 077
 
-U=user; H=/home/$U; UID_U=$(id -u $U)
-APP=$H/tools/colluder
-DATA=$H/.local/share/colluder
-NODE=$H/.nvm/versions/node/v26.1.0/bin/node
-PUB=203.0.113.10
-DOMAIN=oob.example
-DASH=http://100.64.0.10:8090
+. "$(dirname "$0")/lib.sh"   # the operator, paths, public IP and domain, from config.yaml
 PORTS=/etc/interactsh/ports.env
 EENV=$H/.config/colluder/edge.env
 UP_SMTP=8025; UP_SMTPS=8587; UP_AUTOTLS=8465

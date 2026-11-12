@@ -2,7 +2,8 @@
 # Domains live in /etc/interactsh/domains.env (INTERACTSH_DOMAINS=a,b: deploy/add-domain.sh writes it).
 # The token lives in /etc/interactsh/server.yaml (root, 600), never on the command line.
 # Port flags live in /etc/interactsh/ports.env: the cutover moves HTTP/HTTPS to internal ports behind
-# colluder-edge; the rollback empties them (back to :80/:443). Installed by deploy/cutover-phase2.sh.
+# colluder-edge; the rollback empties them (back to :80/:443). A template: deploy/cutover-phase2.sh
+# installs it with the @...@ values from config.yaml.
 [Unit]
 Description=interactsh-server (Colluder's domains)
 After=network-online.target
@@ -13,9 +14,9 @@ Type=simple
 # certmagic keeps the Let's Encrypt certificates under $HOME
 Environment=HOME=/root
 EnvironmentFile=/etc/interactsh/ports.env
-Environment=INTERACTSH_DOMAINS=oob.example
+Environment=INTERACTSH_DOMAINS=@DOMAIN@
 EnvironmentFile=-/etc/interactsh/domains.env
-ExecStart=/home/user/go/bin/interactsh-server -config /etc/interactsh/server.yaml -d ${INTERACTSH_DOMAINS} $INTERACTSH_PORT_FLAGS
+ExecStart=@SERVER_BIN@ -config /etc/interactsh/server.yaml -d ${INTERACTSH_DOMAINS} $INTERACTSH_PORT_FLAGS
 KillSignal=SIGINT
 TimeoutStopSec=10
 Restart=always

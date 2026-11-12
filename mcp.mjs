@@ -4,14 +4,17 @@
 //
 //   claude mcp add --scope user colluder -- node <this file>
 //
-// COLLUDER_URL: the collector (default http://100.64.0.10:8090; another tailnet machine sets the
-// tailnet name). stdout carries only protocol messages; diagnostics go to stderr.
+// COLLUDER_URL: the collector. On the Colluder box it defaults to the dashboard address in
+// ~/.config/colluder/config.yaml; another machine sets it (e.g. http://box.tailnet:8090).
+// stdout carries only protocol messages; diagnostics go to stderr.
 
 import http from "node:http";
 import { createInterface } from "node:readline";
 import { createServer } from "./lib/mcp.mjs";
+import { loadConfig } from "./lib/config.mjs";
 
-const BASE = new URL(process.env.COLLUDER_URL || "http://100.64.0.10:8090");
+const C = process.env.COLLUDER_URL ? null : loadConfig();
+const BASE = new URL(process.env.COLLUDER_URL || `http://${C["dashboard.host"]}:${C["dashboard.port"]}`);
 const TIMEOUT_MS = 15_000;
 
 // node:http, not fetch: the collector checks the Host header, which fetch won't let us set

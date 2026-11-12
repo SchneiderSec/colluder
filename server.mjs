@@ -28,16 +28,22 @@ import { readMail, splitAddress } from "./lib/mime.mjs";
 import { MAILBOX_TAG, mailQuery } from "./lib/mailbox.mjs";
 import { EngineCheck } from "./lib/enginecheck.mjs";
 import { Resolver } from "node:dns/promises";
+import { loadConfig, requireConfig, configPath, writeConfig } from "./lib/config.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const env = process.env;
-const DATA = env.COLLUDER_DATA || join(homedir(), ".local/share/colluder");
+// this box's settings: ~/.config/colluder/config.yaml, each key overridable by its environment variable
+// (lib/config.mjs). Secrets stay in colluder.env.
+const C = loadConfig();
+try { requireConfig(C, ["domain", "public_ip"]); } catch (e) { console.error(e.message); process.exit(1); }
+const DATA = C["paths.data"];
 const CFG = {
-  host: env.COLLUDER_HOST || "100.64.0.10",
-  port: Number(env.COLLUDER_PORT || 8090),
-  // the payload domain; COLLUDER_EXTRA_DOMAINS: others still served (an old one, until it lapses)
-  domain: env.COLLUDER_DOMAIN || "oob.example",
-  extraDomains: (env.COLLUDER_EXTRA_DOMAINS || "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean),
+  host: C["dashboard.host"],
+  port: C["dashboard.port"],
+  // the payload domain; extra_domains: others still served (an old one, until it lapses)
+  domain: C.domain,
+  extraDomains: C.extra_domains,
+  configFile: configPath(),
   jsonl: env.COLLUDER_JSONL || join(DATA, "interactions.jsonl"),
   edgeJsonl: env.COLLUDER_EDGE_LOG || join(DATA, "edge.jsonl"),
   rulesFile: env.COLLUDER_RULES || join(DATA, "rules.json"),
@@ -45,20 +51,20 @@ const CFG = {
   payloadFile: env.COLLUDER_PAYLOAD_FILE || join(DATA, "payload.txt"),
   db: env.COLLUDER_DB || join(DATA, "colluder.db"),
   unit: env.COLLUDER_ENGINE_UNIT || "colluder-engine.service",
-  clientBin: env.COLLUDER_CLIENT_BIN || join(homedir(), "go/bin/interactsh-client"),
+  clientBin: C["paths.interactsh_client"],
   envFile: env.COLLUDER_ENV_FILE || join(homedir(), ".config/colluder/colluder.env"),
   engineConfig: env.COLLUDER_ENGINE_CONFIG || join(homedir(), ".config/colluder/engine.yaml"),
-  nucleiConfig: env.COLLUDER_NUCLEI_CONFIG || join(homedir(), ".config/user/config.yaml"),
+  nucleiConfig: C["nuclei.config"],
   spool: env.COLLUDER_MAIL_SPOOL || join(DATA, "mail-spool"),
   // the mailbox keeps mail this many days (PLAN-MAILBOX.md)
-  mailDays: Math.max(Number(env.COLLUDER_MAIL_DAYS) || 7, 1),
-  extraHosts: (env.COLLUDER_ALLOWED_HOSTS || "box.tailnet.ts.net,user").split(",").map((s) => s.trim()).filter(Boolean),
+  mailDays: Math.max(C.mail_days || 7, 1),
+  extraHosts: C["dashboard.allowed_hosts"],
 };
 const DOMAINS = [...new Set([CFG.domain, ...CFG.extraDomains])];
-const SELF_IPS = (env.COLLUDER_SELF_IPS || "203.0.113.10").split(",").map((s) => s.trim()).filter(Boolean);
+const SELF_IPS = C.self_ips;
 // the address targets reach (the A record every payload name resolves to)
-const PUBLIC_IP = env.COLLUDER_PUBLIC_IP || SELF_IPS[0];
-const PUBLIC_URL = env.COLLUDER_PUBLIC_URL || `http://${CFG.host}:${CFG.port}/`;
+const PUBLIC_IP = C.public_ip;
+const PUBLIC_URL = C["dashboard.public_url"];
 const ALLOWED_HOSTS = new Set([CFG.host, ...CFG.extraHosts, "127.0.0.1", "localhost"].map((h) => `${h}:${CFG.port}`.toLowerCase()));
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
@@ -327,8 +333,9 @@ async function discordIdentity() {
 // Saved where each setting already lives (colluder.env, engine.yaml), applied without a restart where
 // it can be. The payload domain needs one: the engine re-registers on it, and the collector restarts
 // so every part (payloads, the check, the edge's rules) starts from the same domain.
-let nucleiNow = await nucleiServer(CFG.nucleiConfig);
-setInterval(async () => { nucleiNow = await nucleiServer(CFG.nucleiConfig); }, 60_000).unref();
+// nuclei.config (optional): another interactsh client's config, so Settings can say if it matches
+let nucleiNow = CFG.nucleiConfig ? await nucleiServer(CFG.nucleiConfig) : null;
+if (CFG.nucleiConfig) setInterval(async () => { nucleiNow = await nucleiServer(CFG.nucleiConfig); }, 60_000).unref();
 let switching = "";
 const systemctl = (...a) => new Promise((ok) => execFile("systemctl", ["--user", ...a], { timeout: 30_000 }, (e, _o, err) => ok(e ? (err || e.message).trim() : null)));
 async function saveSettings(b) {
@@ -354,8 +361,9 @@ async function saveSettings(b) {
     if (!DOMAINS.includes(b.payloadDomain)) return [400, { error: `Only a domain this box serves: ${DOMAINS.join(", ")}.` }];
     if (switching) return [409, { error: "A domain switch is already under way." }];
     domain = b.payloadDomain;
-    envUpdates.COLLUDER_DOMAIN = domain;
-    envUpdates.COLLUDER_EXTRA_DOMAINS = DOMAINS.filter((d) => d !== domain).join(",") || null;
+    // the domains live in config.yaml; a leftover COLLUDER_DOMAIN in colluder.env would override it
+    envUpdates.COLLUDER_DOMAIN = null;
+    envUpdates.COLLUDER_EXTRA_DOMAINS = null;
   }
   if (Object.keys(envUpdates).length) {
     try { await writeEnv(CFG.envFile, envUpdates); } catch (e) { log("settings: colluder.env:", e.message); return [500, { error: `Couldn't save ${CFG.envFile}: ${e.code || e.message}` }]; }
@@ -364,8 +372,12 @@ async function saveSettings(b) {
   if ("webhookUrl" in b) { discord.url = envUpdates.DISCORD_WEBHOOK_URL || ""; log(`settings: Discord webhook ${discord.url ? "saved" : "removed"}`); discordIdentity(); }
   if ("checkMinutes" in b) { CHECK_EVERY = Number(envUpdates.COLLUDER_CHECK_MINUTES) * 60e3; log(`settings: outside check ${CHECK_EVERY ? `every ${CHECK_EVERY / 60e3} min` : "off"}`); }
   if (domain) {
+    try { await writeConfig(CFG.configFile, { domain, extra_domains: DOMAINS.filter((d) => d !== domain) }); } catch (e) {
+      log("settings: config.yaml:", e.message);
+      return [500, { error: `Couldn't save ${CFG.configFile}: ${e.code || e.message}` }];
+    }
     try { await writeEngineServer(CFG.engineConfig, domain); } catch (e) {
-      await writeEnv(CFG.envFile, { COLLUDER_DOMAIN: CFG.domain, COLLUDER_EXTRA_DOMAINS: CFG.extraDomains.join(",") || null }).catch(() => {});
+      await writeConfig(CFG.configFile, { domain: CFG.domain, extra_domains: CFG.extraDomains }).catch(() => {});
       return [500, { error: `Couldn't save the engine's server line (${e.code || e.message}); nothing changed.` }];
     }
     switching = domain;
@@ -417,7 +429,7 @@ function statusPayload() {
     serverTime: nowIso(),
     log: { path: CFG.jsonl, ...tailStatus() },
     discord: { available: discord.available, enabled: discordEnabled(), hint: webhookHint(discord.url), kinds: discord.kinds },
-    domains: { payload: CFG.domain, served: DOMAINS, nuclei: nucleiNow, switching: switching || null },
+    domains: { payload: CFG.domain, served: DOMAINS, nuclei: nucleiNow, nucleiConfig: CFG.nucleiConfig ? CFG.nucleiConfig.replace(homedir(), "~") : null, switching: switching || null },
     lastClear: store.lastClear(),
     edge: edgeStatus,
     selfIps: SELF_IPS, // B5: hits from the OOB box itself read "this box"

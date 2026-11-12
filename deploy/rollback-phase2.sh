@@ -4,7 +4,7 @@
 # Run as root:   sudo ~/tools/colluder/deploy/rollback-phase2.sh
 set -euo pipefail
 [[ $EUID -eq 0 ]] || { echo "run with sudo" >&2; exit 1; }
-PUB=203.0.113.10
+. "$(dirname "$0")/lib.sh"   # the operator, paths, public IP and domain, from config.yaml
 
 systemctl disable --now colluder-edge.service 2>/dev/null || true
 printf 'INTERACTSH_PORT_FLAGS=\n' > /etc/interactsh/ports.env

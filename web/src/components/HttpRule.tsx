@@ -131,7 +131,7 @@ function Num({ value, onChange, label, max, w = "w-[64px]", invalid }: { value: 
 }
 
 export function HttpRuleTab({ p }: { p: Probe }) {
-  const host = useApp((s) => s.status?.payload?.host) || "<id>.oob.example";
+  const host = useApp((s) => s.status?.payload?.host) || "<id>.<your domain>";
   const edge = useApp((s) => s.status?.edge);
   const live = edge?.state === "running";
   const [rs, setRs] = useState<RuleState | null>(null);
@@ -294,7 +294,7 @@ export function HttpRuleTab({ p }: { p: Probe }) {
         {draft.mode === "custom" && (
           <>
             <Row label="Status" error={errFor("status")}><Num label="Status" invalid={errF === "status"} value={draft.status ?? 200} max={599} onChange={(n) => set({ status: n })} /></Row>
-            <Row label="Headers" error={errFor("headers")} help="Content-Length is computed and Connection is always close. Server stays oob.example unless you set one.">
+            <Row label="Headers" error={errFor("headers")} help="Content-Length is computed and Connection is always close. Server stays your payload domain unless you set one.">
               {(draft.headers ?? []).map(([n, v], i) => (
                 <div key={i} className="flex gap-2">
                   <label className={cn(fld, "w-[180px]", bad("headers"))}><input aria-label={`Header ${i + 1} name`} spellCheck={false} value={n} placeholder="Name" className={inputCls} onChange={(e) => set({ headers: (draft.headers ?? []).map((h, j) => (j === i ? [e.target.value, h[1]] : h)) })} /></label>

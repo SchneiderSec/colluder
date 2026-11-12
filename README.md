@@ -107,17 +107,17 @@ through the public DNS path and expects the engine to log it; twice not, and the
 
 Colluder can serve a second domain next to the payload domain, so a new domain is answering, has its
 own certificate and passes the outside check before any payload uses it, and the old one keeps working
-until it lapses. `COLLUDER_DOMAIN` is the payload domain; `COLLUDER_EXTRA_DOMAINS` (colluder.env) lists
-the others. The dashboard publishes the list in `rules.json`; the edge owns our names under any of them,
-passes each apex through to interactsh, and picks each domain's certificate by server name
-(`~/caido-cert/domains/<domain>/`, copied there by `cert-sync.sh`; `~/caido-cert/fullchain.pem` stays the
-default). interactsh reads its domains from `/etc/interactsh/domains.env`.
+until it lapses. `domain` in config.yaml is the payload domain; `extra_domains` lists the others. The
+dashboard publishes the list in `rules.json`; the edge owns our names under any of them, passes each
+apex through to interactsh, and picks each domain's certificate by server name (`tls.cert_dir/<domain>/`,
+copied there by `cert-sync.sh`; `tls.cert` stays the default). interactsh reads its domains from
+`/etc/interactsh/domains.env`.
 
 ```sh
-# 1. at the registrar: glue records ns1/ns2.<new> -> 203.0.113.10, then nameservers ns1/ns2.<new>
+# 1. at the registrar: glue records ns1/ns2.<new> -> <public_ip>, then nameservers ns1/ns2.<new>
 # 2. operator:
-sudo ~/tools/colluder/deploy/add-domain.sh alt.example     # checks the delegation first
-sudo ~/tools/colluder/deploy/add-domain.sh --rollback       # undo
+sudo deploy/add-domain.sh new.example         # checks the delegation first; adds it to extra_domains
+sudo deploy/add-domain.sh --rollback          # undo
 ```
 
 The script stops unless the registry already delegates the domain here (interactsh asks Let's Encrypt
@@ -128,8 +128,8 @@ through Cloudflare), HTTPS on both domains and the outside check. Payloads keep 
 ## Phase 2 cutover (operator, once)
 
 ```sh
-sudo ~/tools/colluder/deploy/cutover-phase2.sh     # edge on :80/:443, interactsh to 8081/8444, token rotated
-sudo ~/tools/colluder/deploy/rollback-phase2.sh    # undo: interactsh back on :80/:443 (keeps the new token)
+sudo deploy/cutover-phase2.sh     # edge on :80/:443, interactsh to 8081/8444, token rotated
+sudo deploy/rollback-phase2.sh    # undo: interactsh back on :80/:443 (keeps the new token)
 ```
 
 The script stops if a nuclei scan is running (`--force` overrides), never prints the token, and ends
@@ -138,10 +138,15 @@ with live checks (edge answers, interactsh still reachable and authenticated, en
 ## Install / update (operator)
 
 ```sh
-~/tools/colluder/deploy/install.sh        # config (600), UI build, units, daemon-reload
-systemctl --user disable --now interactsh-web.service    # first time only: frees :8090
+deploy/install.sh        # config.yaml (asks once), engine.yaml + colluder.env (600), UI build, units
 systemctl --user enable --now colluder-engine.service colluder.service
 ```
+
+The first run writes `~/.config/colluder/config.yaml`: it asks for the payload domain, detects the
+public IP and a tailnet address, and never overwrites the file afterwards. Unattended:
+`deploy/install.sh --domain oob.example --public-ip 203.0.113.10 --dashboard-host 100.64.0.10 --yes`.
+The units in `deploy/` are templates; install.sh (user units) and the cutover (system units) fill in
+the paths, node and user from config.yaml.
 
 After changing UI code: `npm run build` here, then reload the browser (no restart needed).
 After changing server code: `systemctl --user restart colluder`. After changing `edge.mjs` or
@@ -158,10 +163,10 @@ from this tailnet-only box).
 ## Settings
 Settings saves what it changes where it already lives, so a restart, a deploy script and a hand
 edit agree with it (lib/settings.mjs). Claude can't change any of it.
-- **Domains:** which served domain new payloads use. Switching writes `COLLUDER_DOMAIN` and
-  `COLLUDER_EXTRA_DOMAINS` to `colluder.env` and the `server:` line of `engine.yaml` (nothing else
-  in it), restarts the engine (new long payload; the short id stays) and Colluder. Nuclei's
-  `interactsh_server` in user's config is shown, not changed. RDAP's registration date warns about
+- **Domains:** which served domain new payloads use. Switching writes `domain` and `extra_domains`
+  in config.yaml (comments and other keys kept) and the `server:` line of `engine.yaml` (nothing else
+  in it), restarts the engine (new long payload; the short id stays) and Colluder. When
+  `nuclei.config` is set, that client's `interactsh_server` is shown, not changed. RDAP's registration date warns about
   a domain under 32 days old, which some corporate web filters block.
 - **Outside check:** how often it runs (`COLLUDER_CHECK_MINUTES`, 0 is off). Applied at once.
 - **Alerts:** the Discord webhook (`DISCORD_WEBHOOK_URL`, only Discord's own webhook URLs; the
@@ -179,30 +184,40 @@ talks to the collector's API like the dashboard does. Register it once (the oper
 
     claude mcp add --scope user colluder -- node ~/tools/colluder/mcp.mjs
 
-`COLLUDER_URL` points it at the collector (default `http://100.64.0.10:8090`). Everything a hit
+`COLLUDER_URL` points it at the collector (default: `dashboard.host:port` from config.yaml, so
+another machine sets it). Everything a hit
 carries comes back under an `untrusted` key: Claude is told it is evidence, never instructions.
 
-## Configuration (environment, all optional)
+## Configuration
 
-| Variable | Default |
-|---|---|
-| `COLLUDER_HOST` / `COLLUDER_PORT` | `100.64.0.10` / `8090` |
-| `COLLUDER_DATA` | `~/.local/share/colluder` (jsonl, payload.txt, colluder.db) |
-| `COLLUDER_ENGINE_UNIT` | `colluder-engine.service` |
-| `COLLUDER_ALLOWED_HOSTS` | `box.tailnet.ts.net,user` (plus host:port) |
-| `COLLUDER_DOMAIN` | `oob.example` |
-| `DISCORD_WEBHOOK_URL` | unset (alerts off) |
-| `COLLUDER_SELF_IPS` | `203.0.113.10` (comma-separated; hits from these read "this box") |
-| `COLLUDER_PUBLIC_IP` | the first of `COLLUDER_SELF_IPS` (the address payload names must resolve to; the outside check expects it) |
-| `COLLUDER_EXTRA_DOMAINS` | unset (other domains served besides `COLLUDER_DOMAIN`; see Two domains) |
-| `COLLUDER_EDGE_CERT_DIR` (edge) | `~/caido-cert/domains` (one `<domain>/` per extra certificate) |
-| `COLLUDER_MAIL_DAYS` | `7` (how long the mailbox keeps mail) |
-| `COLLUDER_EDGE_SMTP` / `COLLUDER_EDGE_SMTPS` (edge) | unset: off (smtp-front.sh writes `203.0.113.10:25,203.0.113.10:587` / `203.0.113.10:465`) |
-| `COLLUDER_CHECK_MINUTES` | `10` (how often the outside check runs; 0 is off; Settings changes it) |
-| `COLLUDER_ENV_FILE`, `COLLUDER_ENGINE_CONFIG`, `COLLUDER_NUCLEI_CONFIG` | `~/.config/colluder/colluder.env`, `~/.config/colluder/engine.yaml`, `~/.config/user/config.yaml` (what Settings writes, and the nuclei line it reads) |
-| `COLLUDER_EDGE_HTTP` / `COLLUDER_EDGE_HTTPS` (edge) | `203.0.113.10:80` / `:443` (`off` disables HTTPS) |
-| `COLLUDER_UPSTREAM_HTTP` / `COLLUDER_UPSTREAM_HTTPS` (edge) | `127.0.0.1:8081` / `127.0.0.1:8444` (cutover writes the real ones to `~/.config/colluder/edge.env`) |
-| `COLLUDER_EDGE_CERT` / `COLLUDER_EDGE_KEY` (edge) | `~/caido-cert/fullchain.pem` / `privkey.pem` (kept fresh by `colluder-cert-sync.timer`) |
+Everything about the box lives in `~/.config/colluder/config.yaml` (`COLLUDER_CONFIG` moves it),
+written once by install.sh and commented key by key. Each key has an environment variable that
+overrides it, for tests and one-off runs. `node lib/config.mjs get <key>` prints a resolved value;
+the deploy scripts read the file that way (deploy/lib.sh).
+
+| Key | Variable | Default |
+|---|---|---|
+| `domain` | `COLLUDER_DOMAIN` | none: required (the payload domain) |
+| `extra_domains` | `COLLUDER_EXTRA_DOMAINS` | none (other domains served; see Two domains) |
+| `public_ip` | `COLLUDER_PUBLIC_IP` | none: required (where payload names resolve; the edge listens here) |
+| `self_ips` | `COLLUDER_SELF_IPS` | `public_ip` (hits from these read "this box") |
+| `dashboard.host` / `.port` | `COLLUDER_HOST` / `COLLUDER_PORT` | `127.0.0.1` / `8090` |
+| `dashboard.allowed_hosts` | `COLLUDER_ALLOWED_HOSTS` | none (other names you open it by, besides host:port) |
+| `dashboard.public_url` | `COLLUDER_PUBLIC_URL` | `http://host:port/` (the link Discord alerts carry) |
+| `paths.data` | `COLLUDER_DATA` | `~/.local/share/colluder` (jsonl, payload.txt, colluder.db) |
+| `paths.node` | `COLLUDER_NODE` | the node install.sh ran with (the units run it) |
+| `paths.interactsh_client` / `_server` | `COLLUDER_CLIENT_BIN` / `COLLUDER_SERVER_BIN` | `~/go/bin/interactsh-client` / `-server` |
+| `tls.cert` / `tls.key` | `COLLUDER_EDGE_CERT` / `COLLUDER_EDGE_KEY` | `~/.local/share/colluder/tls/{fullchain,privkey}.pem` (kept fresh by `colluder-cert-sync.timer`) |
+| `tls.cert_dir` | `COLLUDER_EDGE_CERT_DIR` | `~/.local/share/colluder/tls/domains` (one `<domain>/` per extra domain) |
+| `nuclei.config` | `COLLUDER_NUCLEI_CONFIG` | none (another interactsh client's config; Settings shows its server) |
+| `nuclei.token_file` / `token_var` | | none (an env file the cutover's token rotation also updates) |
+| `mail_days` | `COLLUDER_MAIL_DAYS` | `7` |
+
+Secrets stay out of it. `~/.config/colluder/colluder.env` (600) holds `DISCORD_WEBHOOK_URL` and
+`COLLUDER_CHECK_MINUTES` (Settings writes both); `engine.yaml` (600) holds the interactsh server and
+token. The edge's listeners come from `~/.config/colluder/edge.env`, which the deploy scripts write:
+`COLLUDER_EDGE_HTTP` / `_HTTPS` (default `public_ip:80` / `:443`, `off` disables HTTPS),
+`COLLUDER_UPSTREAM_HTTP` / `_HTTPS`, `COLLUDER_EDGE_DNS`, `COLLUDER_EDGE_SMTP` / `_SMTPS`.
 
 ## Security notes
 

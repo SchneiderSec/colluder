@@ -9,12 +9,8 @@
 set -euo pipefail
 umask 077
 
-U=user; H=/home/$U; UID_U=$(id -u $U)
-APP=$H/tools/colluder
-DATA=$H/.local/share/colluder
-NODE=$H/.nvm/versions/node/v26.1.0/bin/node
-PUB=203.0.113.10
-OLD=oob.example
+. "$(dirname "$0")/lib.sh"   # the operator, paths, public IP and domain, from config.yaml
+OLD=$DOMAIN
 UNIT=/etc/systemd/system/interactsh.service
 DOMS=/etc/interactsh/domains.env
 CENV=$H/.config/colluder/colluder.env
@@ -44,7 +40,8 @@ rollback() {
   [[ -d $BK ]] || { echo "   no backup in $BK: nothing to undo"; return 0; }
   [[ -f $BK/interactsh.service ]] && install -m 644 $BK/interactsh.service $UNIT
   if [[ -f $BK/domains.env ]]; then install -m 600 $BK/domains.env $DOMS; else rm -f $DOMS; fi
-  if [[ -f $BK/colluder.env ]]; then install -o $U -g $U -m 600 $BK/colluder.env "$CENV"; else set_env "$CENV" COLLUDER_EXTRA_DOMAINS; fi
+  if [[ -f $BK/colluder.env ]]; then install -o $U -g $U -m 600 $BK/colluder.env "$CENV"; fi
+  if [[ -f $BK/config.yaml ]]; then install -o $U -g $U -m 600 $BK/config.yaml "$CONFIG"; fi
   systemctl daemon-reload
   systemctl restart interactsh.service
   if wait_udp 8053; then ok "interactsh is back"; else printf '   FAIL  interactsh did not come back: journalctl -u interactsh\n'; fi
@@ -87,6 +84,7 @@ rm -rf $BK; install -d -m 700 $BK
 cp -p $UNIT $BK/interactsh.service
 [[ -f $DOMS ]] && cp -p $DOMS $BK/domains.env
 [[ -f "$CENV" ]] && cp -p "$CENV" $BK/colluder.env
+cp -p "$CONFIG" $BK/config.yaml
 ok "backups in $BK"
 trap 'echo; printf "   STOP  something failed: rolling back\n"; rollback' ERR
 
@@ -104,14 +102,16 @@ ok "Let's Encrypt issued *.$NEW"
 say "3/5 certificates for the edge"
 install -D -m 755 "$APP/deploy/cert-sync.sh" /usr/local/libexec/colluder-cert-sync
 install -m 644 "$APP/deploy/colluder-cert-sync.service" /etc/systemd/system/colluder-cert-sync.service
-[[ -f /etc/default/colluder-cert-sync ]] || printf 'ROOT_DOMAIN=%s\n' "$OLD" > /etc/default/colluder-cert-sync
+write_cert_defaults
 systemctl daemon-reload
-ROOT_DOMAIN=$(sed -n 's/^ROOT_DOMAIN=//p' /etc/default/colluder-cert-sync) /usr/local/libexec/colluder-cert-sync | sed 's/^/   /'
-[[ -f $H/caido-cert/domains/$NEW/fullchain.pem ]] || { echo "   cert-sync did not place $NEW's certificate"; false; }
-ok "both certificates in $H/caido-cert/domains/"
+/usr/local/libexec/colluder-cert-sync | sed 's/^/   /'
+[[ -f $(cfg tls.cert_dir)/$NEW/fullchain.pem ]] || { echo "   cert-sync did not place $NEW's certificate"; false; }
+ok "both certificates in $(cfg tls.cert_dir)/"
 
 say "4/5 the edge and the dashboard serve both"
-set_env "$CENV" COLLUDER_EXTRA_DOMAINS "$NEW"
+EXTRA=$(cfg extra_domains); EXTRA=$(printf '%s\n' ${EXTRA//,/ } "$NEW" | awk 'NF && !seen[$0]++' | paste -sd,)
+as_op env COLLUDER_CONFIG="$CONFIG" "$NODE" "$APP/lib/config.mjs" set extra_domains "$EXTRA" | sed 's/^/   /'
+set_env "$CENV" COLLUDER_EXTRA_DOMAINS   # the domains live in config.yaml now; an old line here would override it
 as_user systemctl --user restart colluder.service
 sleep 2
 systemctl restart colluder-edge.service
@@ -129,7 +129,7 @@ for d in "$NEW" "$OLD"; do
   code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 8 --resolve "colluder-check-$SHORT.$d:443:$PUB" "https://colluder-check-$SHORT.$d/add-domain" 2>&1 || true)
   [[ "$code" =~ ^[0-9]{3}$ && "$code" != "000" ]] && ok "https://…$d answers $code with a valid certificate" || bad "HTTPS on $d: $code"
 done
-r=$(as_user curl -s -X POST -H "host: 100.64.0.10:8090" -H "origin: http://100.64.0.10:8090" -H "content-type: application/json" --data '{}' --max-time 120 http://100.64.0.10:8090/api/check || true)
+r=$(as_user curl -s -X POST -H "host: ${DASH#http://}" -H "origin: $DASH" -H "content-type: application/json" --data '{}' --max-time 120 "$DASH/api/check" || true)
 st=$("$NODE" -e 'try{const j=JSON.parse(process.argv[1]);process.stdout.write(j.state+(j.steps||[]).filter(s=>!s.ok).map(s=>"\n      "+s.label+": "+s.detail).join(""))}catch{process.stdout.write("unreadable")}' "$r")
 [[ "$st" == ok* || "$st" == warn* ]] && ok "the outside check passes on both domains ($st)" || bad "outside check: $st"
 

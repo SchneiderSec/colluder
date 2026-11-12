@@ -1,17 +1,19 @@
-# Colluder dashboard: tails the engine's JSON lines, serves the UI on the tailnet only.
-# Optional secrets (DISCORD_WEBHOOK_URL) live in ~/.config/colluder/colluder.env (mode 600).
+# Colluder dashboard: tails the engine's JSON lines, serves the UI on a private address.
+# Its address, domain and paths come from ~/.config/colluder/config.yaml; optional secrets
+# (DISCORD_WEBHOOK_URL) live in ~/.config/colluder/colluder.env (mode 600).
+# A template: deploy/install.sh fills in the @...@ values from config.yaml.
 [Unit]
-Description=Colluder dashboard (http://100.64.0.10:8090)
+Description=Colluder dashboard (@DASH@)
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
 UMask=0077
-WorkingDirectory=%h/tools/colluder
+WorkingDirectory=@APP@
 EnvironmentFile=-%h/.config/colluder/colluder.env
-ExecStart=%h/.nvm/versions/node/v26.1.0/bin/node server.mjs
-# the tailnet address may not exist yet at boot; keep retrying until it binds
+ExecStart=@NODE@ server.mjs
+# a tailnet address may not exist yet at boot; keep retrying until it binds
 Restart=always
 RestartSec=5
 NoNewPrivileges=yes

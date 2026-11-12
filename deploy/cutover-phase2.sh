@@ -6,13 +6,8 @@
 set -euo pipefail
 umask 077
 
-U=user; H=/home/$U; UID_U=$(id -u $U)
-APP=$H/tools/colluder
-DATA=$H/.local/share/colluder
-NODE=$H/.nvm/versions/node/v26.1.0/bin/node
-BIN=$H/go/bin/interactsh-server
-PUB=203.0.113.10
-DOMAIN=oob.example
+. "$(dirname "$0")/lib.sh"   # the operator, paths, public IP and domain, from config.yaml
+BIN=$SERVER_BIN
 ORIGIN_HDR=X-Colluder-Origin-IP
 FORCE=0; [[ "${1:-}" == "--force" ]] && FORCE=1
 
@@ -32,6 +27,7 @@ if pgrep -x nuclei >/dev/null && (( ! FORCE )); then die "a nuclei scan is runni
 as_user "$NODE" --test "$APP/test/edge.test.mjs" >/dev/null 2>&1 || die "edge tests fail: run npm test in $APP"
 ok "edge tests pass"
 install -D -m 755 "$APP/deploy/cert-sync.sh" /usr/local/libexec/colluder-cert-sync
+write_cert_defaults
 /usr/local/libexec/colluder-cert-sync | sed 's/^/   /'
 for p in 8081 8444; do
   if ss -ltnH "sport = :$p" | grep -q . && ! systemctl is-active -q interactsh; then die "port $p is already in use"; fi
@@ -48,16 +44,20 @@ install -d -m 700 /etc/interactsh
 printf 'token: "%s"\n' "$NEW" > /etc/interactsh/server.yaml
 chmod 600 /etc/interactsh/server.yaml
 # user files: rewritten by the user (owner and mode kept), token passed on stdin
-printf '%s' "$NEW" | as_user python3 -I -c '
+printf '%s' "$NEW" | as_user env TOKEN_FILE="$(cfg nuclei.token_file)" TOKEN_VAR="$(cfg nuclei.token_var)" DATA="$DATA" python3 -I -c '
 import os, re, sys
 tok = sys.stdin.read().strip()
 assert re.fullmatch(r"[0-9a-f]{64}", tok)
 home = os.path.expanduser("~")
 edits = [
-    (f"{home}/.config/user/api-keys.env", r"^NUCLEI_INTERACTSH_TOKEN=.*$", f"NUCLEI_INTERACTSH_TOKEN={tok}"),
     (f"{home}/.config/colluder/engine.yaml", r"^token:.*$", f"token: \x27{tok}\x27"),
-    (f"{home}/.local/share/colluder/session.yaml", r"^server-token:.*$", f"server-token: \"{tok}\""),
+    (os.environ["DATA"] + "/session.yaml", r"^server-token:.*$", f"server-token: \"{tok}\""),
 ]
+# config.yaml nuclei.token_file / token_var: another client on this box that uses the same token
+if os.environ.get("TOKEN_FILE") and os.environ.get("TOKEN_VAR"):
+    v = os.environ["TOKEN_VAR"]
+    assert re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", v)
+    edits.insert(0, (os.environ["TOKEN_FILE"], rf"^(export )?{v}=.*$", f"{v}={tok}"))
 for path, pat, line in edits:
     s = open(path).read()
     n, k = re.subn(pat, lambda m: line, s, count=1, flags=re.M)
@@ -72,8 +72,8 @@ unset NEW
 
 say "4/6 move interactsh to internal HTTP ports, under systemd"
 printf 'INTERACTSH_PORT_FLAGS=-http-port 8081 -https-port 8444 -oih %s\n' "$ORIGIN_HDR" > /etc/interactsh/ports.env
-install -m 644 "$APP/deploy/interactsh.service" /etc/systemd/system/interactsh.service
-install -m 644 "$APP/deploy/colluder-edge.service" /etc/systemd/system/colluder-edge.service
+render_unit "$APP/deploy/interactsh.service" /etc/systemd/system/interactsh.service
+render_unit "$APP/deploy/colluder-edge.service" /etc/systemd/system/colluder-edge.service
 install -m 644 "$APP/deploy/colluder-cert-sync.service" /etc/systemd/system/colluder-cert-sync.service
 install -m 644 "$APP/deploy/colluder-cert-sync.timer" /etc/systemd/system/colluder-cert-sync.timer
 systemctl daemon-reload
@@ -131,8 +131,7 @@ if (( FAILED )); then
 fi
 cat <<EOF
 Cutover done. Colluder answers your probes on :80/:443; everything else reaches interactsh unchanged.
-  - New interactsh token: in ~/.config/user/api-keys.env (NUCLEI_INTERACTSH_TOKEN). New nuclei
-    runs pick it up; anything started before now keeps the old token and stops receiving.
-  - The interactsh-client writing /tmp/ssrf-callbacks.jsonl has the old token; restart it with the new one if you still need it.
+  - New interactsh token: in engine.yaml$( [[ -n "$(cfg nuclei.token_file)" ]] && echo " and $(cfg nuclei.token_file) ($(cfg nuclei.token_var))"). Any other
+    interactsh client started before now keeps the old token and stops receiving.
   - Rollback: sudo $APP/deploy/rollback-phase2.sh
 EOF

@@ -86,7 +86,7 @@ function RawPane({ title, sub, text, exact, http, proto, p, tag, domain, capture
 }
 
 
-// What happened, in one line, before any detail: "MX lookup of x.orca-k7wq2x.oob.example",
+// What happened, in one line, before any detail: "MX lookup of x.orca-k7wq2x.alt.example",
 // "GET /d?d= HTTP/1.1" with its User-Agent, "Mail from a@b to kc5@…" with its subject. Captured values
 // stay mono and are text only.
 function What({ d }: { d: InteractionDetail }) {

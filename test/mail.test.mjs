@@ -246,7 +246,7 @@ test("edge: a message is in the spool and the log, fsynced, before 250", async (
   const port = await freePort(), http = await freePort();
   writeFileSync(join(d, "rules.json"), JSON.stringify({ cids: ["abcdefghij0123456789"], shortIds: ["abc123"], domains: ["colluder.test"], domain: "colluder.test", rules: {} }));
   const edge = spawn(process.execPath, [join(HERE, "..", "edge.mjs")], {
-    env: { ...process.env, COLLUDER_DATA: d, COLLUDER_DOMAIN: "colluder.test", COLLUDER_EDGE_HTTP: `127.0.0.1:${http}`, COLLUDER_EDGE_HTTPS: "off",
+    env: { ...process.env, COLLUDER_CONFIG: join(d, "none.yaml"), COLLUDER_DATA: d, COLLUDER_DOMAIN: "colluder.test", COLLUDER_EDGE_HTTP: `127.0.0.1:${http}`, COLLUDER_EDGE_HTTPS: "off",
       COLLUDER_EDGE_SMTP: `127.0.0.1:${port}`, COLLUDER_EDGE_CERT: join(dir, "cert.pem"), COLLUDER_EDGE_KEY: join(dir, "key.pem") },
     stdio: ["ignore", "pipe", "inherit"],
   });

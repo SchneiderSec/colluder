@@ -1,19 +1,20 @@
-# Colluder edge: the public :80/:443 front door (PHASE2.md). System unit, runs as user with only
-# the capability to bind low ports. Installed by deploy/cutover-phase2.sh.
+# Colluder edge: the public front door (PHASE2.md). System unit, runs as the operator with only the
+# capability to bind low ports. Its domain, address and certificate paths come from the operator's
+# ~/.config/colluder/config.yaml. A template: deploy/cutover-phase2.sh fills in the @...@ values.
 [Unit]
-Description=Colluder edge (public HTTP/HTTPS for oob.example, relays to interactsh)
+Description=Colluder edge (public HTTP/HTTPS/DNS/SMTP, relays to interactsh)
 After=network-online.target interactsh.service
 Wants=network-online.target
 
 [Service]
 Type=simple
-User=user
-Group=user
+User=@USER@
+Group=@USER@
 UMask=0077
-WorkingDirectory=/home/user/tools/colluder
+WorkingDirectory=@APP@
 # written by the cutover script: upstream addresses interactsh actually bound
-EnvironmentFile=-/home/user/.config/colluder/edge.env
-ExecStart=/home/user/.nvm/versions/node/v26.1.0/bin/node edge.mjs
+EnvironmentFile=-@HOME@/.config/colluder/edge.env
+ExecStart=@NODE@ edge.mjs
 Restart=always
 RestartSec=2
 
@@ -21,7 +22,7 @@ AmbientCapabilities=CAP_NET_BIND_SERVICE
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 NoNewPrivileges=yes
 ProtectSystem=strict
-ReadWritePaths=/home/user/.local/share/colluder
+ReadWritePaths=@DATA@
 PrivateTmp=yes
 PrivateDevices=yes
 ProtectKernelTunables=yes

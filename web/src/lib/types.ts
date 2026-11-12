@@ -141,8 +141,9 @@ export interface Status {
   serverTime: string;
   log: { path: string; exists: boolean; size: number; error: string | null };
   discord: { available: boolean; enabled: boolean; hint?: string | null; kinds?: Record<AlertKind, boolean> };
-  // the served domains, the one payloads use, and nuclei's interactsh_server as user's config has it
-  domains?: { payload: string; served: string[]; nuclei: string | null; switching: string | null };
+  // the served domains, the one payloads use, and (when nuclei.config is set) the interactsh_server
+  // another client on this box uses, and where it reads it
+  domains?: { payload: string; served: string[]; nuclei: string | null; nucleiConfig: string | null; switching: string | null };
   lastClear: { at: string; count: number } | null;
   edge?: EdgeStatus;
   selfIps?: string[];

@@ -41,7 +41,7 @@ test("query: decoded values keep + and show control characters", () => {
 import { dnsSteps, mostSpecific } from "../src/lib/dns.ts";
 
 test("dns: resolver steps toward a longer name are flagged, real names are not", () => {
-  const id = "c0ffee12c0ffee12c0ffk3m9qx7wz2pdn";
+  const id = "c0ffee12a3b4c5d6e7f8k3m9qx7wz2pdn";
   const at = (s: number) => `2026-11-05T10:00:${String(s).padStart(2, "0")}.000Z`;
   const list = [
     { id: 1, protocol: "dns", fullId: `bbop.${id}`, remoteAddress: "1.1.1.1", timestamp: at(0) },
@@ -183,7 +183,7 @@ test("xxe: payloads load the DTD over HTTP with their code; the data hit decodes
   assert.equal(ps.find((p) => p.code === "kx7")!.text, `http://kx7.x1-${H}/feed.xml`);
   assert.equal(variantOf({ extraLabels: ["kx0"] })!.name, "File data from the DTD");
   assert.equal(stageOf({ answerPart: "x.dtd" }), "served x.dtd");
-  assert.equal(stageOf({ fullId: "kx0.x1.abc", summary: "GET /d?d=user%0A HTTP/1.1" }), "file data: user\\n");
+  assert.equal(stageOf({ fullId: "kx0.x1.abc", summary: "GET /d?d=hostname%0A HTTP/1.1" }), "file data: hostname\\n");
   assert.equal(xxeData({ fullId: "kx0.x1.abc", summary: "GET /d?d=cm9vdDp4OjA6MDpyb290Oi9yb290Oi9iaW4vYmFzaAo= HTTP/1.1" }), "root:x:0:0:root:/root:/bin/bash\\n (base64, decoded)");
   assert.equal(xxeData({ fullId: "kx1.x1.abc", summary: "GET /d?d=x HTTP/1.1" }), null, "only the DTD's own exfil hit");
 });
@@ -194,8 +194,8 @@ test("review 4: XXE data takes all after d=, says when empty; DNS exfil skips th
   assert.equal(xxeData({ fullId: "kx0.x1.abc", rawRequest: "GET /d?d=line one\nline two HTTP/1.1\r\nHost: h\r\n\r\n" }), "line one\\nline two");
   assert.equal(stageOf({ answerMode: "tls" }), "TLS handshake only: no request arrived");
   assert.equal(stageOf({ malformed: "bad request line", answerPart: "x.dtd" }), "malformed request · served x.dtd");
-  const hex = Buffer.from("uid=1000(user) gid=1000").toString("hex");
-  assert.equal(decodeLabels([hex.slice(0, 30), hex.slice(30), "kc3"])[0].decoded.text, "uid=1000(user) gid=1000");
+  const hex = Buffer.from("uid=1000(op) gid=1000").toString("hex");
+  assert.equal(decodeLabels([hex.slice(0, 30), hex.slice(30), "kc3"])[0].decoded.text, "uid=1000(op) gid=1000");
 });
 
 // DNS and mail raw panes are tinted for reading, but they are evidence: every line must come back whole
@@ -208,9 +208,9 @@ test("dns lines: tinted segments join back to the exact line", () => {
     ";; flags:; QUERY: 1, ANSWER: 0, AUTHORITY: 0, ADDITIONAL: 1",
     "; EDNS: version 0; flags: do; udp: 1452",
     ";; QUESTION SECTION:",
-    ";x.orca-k7wq2x.oob.example.\tIN\t MX",
-    "x.orca-k7wq2x.oob.example.\t3600\tIN\tMX\t1 mail.oob.example.",
-    "ORCA.c0ffee12g8.oob.example. 60 IN A 203.0.113.10",
+    ";x.orca-k7wq2x.alt.example.\tIN\t MX",
+    "x.orca-k7wq2x.alt.example.\t3600\tIN\tMX\t1 mail.oob.example.",
+    "ORCA.c0ffee12a3.oob.example. 60 IN A 203.0.113.10",
     ";; opcode: QUERY, status: NXDOMAIN, id: 1",
     "", "not dns at all \u0000 \r", ";", "x 1 IN TXT \"a b\" \"c\"",
   ];
@@ -218,18 +218,18 @@ test("dns lines: tinted segments join back to the exact line", () => {
 });
 
 test("dns lines: what gets which ink", () => {
-  const q = kinds(dnsLine(";x.orca-k7wq2x.oob.example.\tIN\t MX", "orca"));
+  const q = kinds(dnsLine(";x.orca-k7wq2x.alt.example.\tIN\t MX", "orca"));
   assert.equal(q.MX, "type");
   assert.equal(q.orca, "tag", "the tag part of <tag>-<id> is marked");
   assert.equal(q.IN, "ash");
-  const r = kinds(dnsLine("ORCA.c0ffee12g8.oob.example. 60 IN A 203.0.113.10", "orca"));
+  const r = kinds(dnsLine("ORCA.c0ffee12a3.oob.example. 60 IN A 203.0.113.10", "orca"));
   assert.equal(r.ORCA, "tag", "DNS names are case-insensitive");
   assert.equal(r["203.0.113.10"], "value");
   assert.equal(r["60"], "ash");
   assert.equal(kinds(dnsLine(";; opcode: QUERY, status: NOERROR, id: 9692", null)).NOERROR, "ok");
   assert.equal(kinds(dnsLine(";; opcode: QUERY, status: SERVFAIL, id: 9692", null)).SERVFAIL, "bad");
   assert.equal(dnsLine(";; ANSWER SECTION:", null)[0].k, "head");
-  assert.ok(!kinds(dnsLine("x.orca-k7wq2x.oob.example.", "orca")).orca, "a line that isn't a record isn't guessed at");
+  assert.ok(!kinds(dnsLine("x.orca-k7wq2x.alt.example.", "orca")).orca, "a line that isn't a record isn't guessed at");
 });
 
 test("mail lines: field names tinted in the header block only, text kept", () => {
@@ -276,7 +276,7 @@ test("crew coats: a retired probe with a late hit is back on the list and picks 
 
 test("payload parts: the shared host recedes, the tag and code stand out, text joins back exactly", async () => {
   const { payloadParts } = await import("../src/lib/kit.ts");
-  const host = "c0ffee12c0ffee12c0ffr8t2vb6ny4hcs.oob.example", short = "k7wq2x.alt.example";
+  const host = "c0ffee12a3b4c5d6e7f8r8t2vb6ny4hcs.oob.example", short = "k7wq2x.alt.example";
   const cases = [
     [`http://kc1.orca-${host}/`, "kc1"], [`https://orca-${host}/k/kc2`, "kc2"], [`kc5@orca-${host}`, "kc5"],
     [`\\\\kc6.orca-${host}\\k`, "kc6"], [`http://kc1.orca-${short}/`, "kc1"], [`http%3A%2F%2Fkc1.orca-${host}%2F`, "kc1"], [`orca-${host}`, undefined],

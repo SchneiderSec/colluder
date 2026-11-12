@@ -133,16 +133,16 @@ export function PayloadSection({ st }: { st: Status | null }) {
               </div>
             );
           })}
-          <div className="flex flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
+          {d.nucleiConfig && <div className="flex flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-bone">Nuclei</span>
-                {nucleiOk ? <span className="text-ash">uses <Mono>{d.nuclei}</Mono>, which matches</span> : <span className="text-caution-ink">{d.nuclei ? <>still uses <Mono className="text-caution-ink">{d.nuclei}</Mono></> : "has no interactsh_server in user's config"}</span>}
+                {nucleiOk ? <span className="text-ash">uses <Mono>{d.nuclei}</Mono>, which matches</span> : <span className="text-caution-ink">{d.nuclei ? <>still uses <Mono className="text-caution-ink">{d.nuclei}</Mono></> : "has no interactsh_server in its config"}</span>}
               </div>
-              <p className="mt-1 text-ash">It runs its own interactsh client, so it doesn't follow this setting: it reads <Mono className="text-ash">interactsh_server</Mono> from <Mono className="text-ash">~/.config/user/config.yaml</Mono>.</p>
+              <p className="mt-1 text-ash">It runs its own interactsh client, so it doesn't follow this setting: it reads <Mono className="text-ash">interactsh_server</Mono> from <Mono className="text-ash">{d.nucleiConfig}</Mono>.</p>
             </div>
             {!nucleiOk && <Button variant="quiet" onClick={() => copy(`interactsh_server: ${want}`, "nuclei line")}><Copy />Copy the line</Button>}
-          </div>
+          </div>}
         </Group>
       )}
 

@@ -11,24 +11,28 @@ import { isUtf8 } from "node:buffer";
 import { readFileSync, openSync, writeSync, writeFileSync, renameSync, watchFile, existsSync, mkdirSync, readdirSync, statSync, fsyncSync, closeSync } from "node:fs";
 import { X509Certificate, createHash } from "node:crypto";
 import { join } from "node:path";
-import { homedir } from "node:os";
 import { Reader, readHead, readBody, lenientHead, HttpError, LIMITS } from "./lib/http1.mjs";
 import { respond, serialize, reason } from "./lib/rules.mjs";
 import { parseInteraction } from "./lib/tag.mjs";
 import { edgeCodeHash } from "./lib/codehash.mjs";
 import { dnsFront } from "./lib/dns.mjs";
 import { smtpFront } from "./lib/smtp.mjs";
+import { loadConfig, requireConfig } from "./lib/config.mjs";
 
 const CODE = edgeCodeHash(); // what this process loaded (see lib/codehash.mjs)
 
 const env = process.env;
-const DATA = env.COLLUDER_DATA || join(homedir(), ".local/share/colluder");
+// the domain, public address and certificate paths come from ~/.config/colluder/config.yaml (lib/config.mjs);
+// the ports and upstreams from edge.env, which the deploy scripts write
+const C = loadConfig();
+try { requireConfig(C, env.COLLUDER_EDGE_HTTP ? ["domain"] : ["domain", "public_ip"]); } catch (e) { console.error(e.message); process.exit(1); }
+const DATA = C["paths.data"];
 const listOf = (v) => (v && v !== "off" ? v.split(",").map((x) => x.trim()).filter(Boolean) : []);
 const addr = (s) => { const i = s.lastIndexOf(":"); return { host: s.slice(0, i), port: Number(s.slice(i + 1)) }; };
 const CFG = {
-  domain: env.COLLUDER_DOMAIN || "oob.example",
-  http: addr(env.COLLUDER_EDGE_HTTP || "203.0.113.10:80"),
-  https: env.COLLUDER_EDGE_HTTPS === "off" ? null : addr(env.COLLUDER_EDGE_HTTPS || "203.0.113.10:443"),
+  domain: C.domain,
+  http: addr(env.COLLUDER_EDGE_HTTP || `${C.public_ip}:80`),
+  https: env.COLLUDER_EDGE_HTTPS === "off" ? null : addr(env.COLLUDER_EDGE_HTTPS || `${C.public_ip}:443`),
   upHttp: addr(env.COLLUDER_UPSTREAM_HTTP || "127.0.0.1:8081"),
   upHttps: addr(env.COLLUDER_UPSTREAM_HTTPS || "127.0.0.1:8444"),
   // DNS front (PLAN-SHORTID.md): off until deploy/dns-front.sh moves interactsh's DNS off :53
@@ -39,11 +43,11 @@ const CFG = {
   smtp: [...listOf(env.COLLUDER_EDGE_SMTP).map((a) => ({ ...addr(a), implicitTls: false })),
     ...listOf(env.COLLUDER_EDGE_SMTPS).map((a) => ({ ...addr(a), implicitTls: true }))],
   spool: env.COLLUDER_MAIL_SPOOL || join(DATA, "mail-spool"),
-  cert: env.COLLUDER_EDGE_CERT || join(homedir(), "caido-cert/fullchain.pem"),
-  key: env.COLLUDER_EDGE_KEY || join(homedir(), "caido-cert/privkey.pem"),
+  cert: C["tls.cert"],
+  key: C["tls.key"],
   // one wildcard per extra domain, <dir>/<domain>/{fullchain,privkey}.pem (deploy/cert-sync.sh);
   // a client's server name picks among them and the default above
-  certDir: env.COLLUDER_EDGE_CERT_DIR || join(homedir(), "caido-cert/domains"),
+  certDir: C["tls.cert_dir"],
   rules: env.COLLUDER_RULES || join(DATA, "rules.json"),
   payloadFile: env.COLLUDER_PAYLOAD_FILE || join(DATA, "payload.txt"),
   log: env.COLLUDER_EDGE_LOG || join(DATA, "edge.jsonl"),
