@@ -24,6 +24,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { cn } from "@/lib/utils";
 import { shownId } from "@/lib/kit";
 import { useDisplay, type HitsHeight } from "@/lib/display";
+import { Ultra } from "@/components/Ultra";
 
 // Settings > Display > Hits list. Short keeps the open hit's detail in view on a laptop (DESIGN.md);
 // taller sizes are for reviewing a session's hits later.
@@ -92,14 +93,14 @@ function Head({ s }: { s: AppState }) {
       <span className="flex items-center gap-2.5 font-mono text-headline whitespace-nowrap">
         <span title={st === "unplanted" ? undefined : `${p.tag}'s colluder: ${aKind(lookOf(crewOf(s.probes), p.tag).species)}`} className="flex">
           <CrewMark size={26} {...(st === "unplanted" ? STRAY_LOOK : lookOf(crewOf(s.probes), p.tag))} state={p.retiredAt || st === "unplanted" ? "doze" : "wink"} />
-        </span>{p.tag}
+        </span><Ultra text={p.tag} />
       </span>
       {st === "unplanted" ? <Chip grey>not planted</Chip>
         : p.retiredAt ? <span className="flex items-center gap-1.5 text-body whitespace-nowrap text-ash" title="Out of the active list. New hits on this tag are still recorded."><LineForm kind="off" className="w-4" />{st === "late" ? "Retired · late hit" : "Retired"}</span>
         : <span className="flex items-center gap-1.5 text-body font-[550] whitespace-nowrap text-bone" title={`Planted ${dayOrTime(p.plantedAt)} UTC and listening: a callback shows up here within seconds`}><LineForm kind="live" signal="listen" seed={p.tag} className="w-4" />Armed</span>}
       {st !== "unplanted" && p.technique !== "callback" && <TechniqueMark technique={p.technique} className="text-body font-[550]" />}
       {!!p.muted && <BellOff aria-label="Discord alerts muted" className="size-3.5 flex-none text-ash" strokeWidth={1.5} />}
-      <span className={cn("min-w-0 truncate text-body", p.target ? "text-smoke" : "text-ash")} title={[p.target, p.note && `Note: ${p.note}`].filter(Boolean).join("\n") || undefined}>{p.target || "No target noted"}</span>
+      <span className={cn("min-w-0 truncate text-body", p.target ? "text-smoke" : "text-ash")} title={[p.target, p.note && `Note: ${p.note}`].filter(Boolean).join("\n") || undefined}>{p.target ? <Ultra text={p.target} /> : "No target noted"}</span>
       <div className="ml-auto flex flex-none items-center gap-1.5 max-[820px]:ml-0 max-[820px]:flex-1 max-[820px]:basis-full max-[820px]:flex-wrap">
         <PayloadCopy tag={p.tag} />
         <Button variant="quiet" title={`Markdown for a bug report: summary, ${p.triggerBytes ? "the triggering request, " : ""}timeline, sources, decoded exfil and the first web request`}

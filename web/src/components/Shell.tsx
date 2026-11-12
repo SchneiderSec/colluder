@@ -11,6 +11,7 @@ import { Mark } from "./Mark";
 import { cn } from "@/lib/utils";
 import { shownId } from "@/lib/kit";
 import { nightNow, useDisplay } from "@/lib/display";
+import { Ultra } from "@/components/Ultra";
 
 // The rail holds tools that work across probes. What a single probe answers (HTTP response,
 // hosted files, DNS and rebinding) lives in tabs on the probe itself.
@@ -116,7 +117,7 @@ export function StatusBar() {
           selectHit(lastHit.id);
         }} className="flex min-w-0 cursor-pointer items-center gap-[7px] overflow-hidden rounded-[3px] hover:text-bone">
           <span className="text-smoke max-[820px]:hidden">Last hit</span>
-          <b className={cn("min-w-[5ch] truncate font-[650]", lastHit.tag && "font-mono")}>{lastHit.tag ?? "No tag"}</b>
+          <b className={cn("min-w-[5ch] truncate font-[650]", lastHit.tag && "font-mono")}>{lastHit.tag ? <Ultra text={lastHit.tag} /> : "No tag"}</b>
           <span className="text-smoke max-[820px]:hidden">{lastHit.protocol.toUpperCase()}</span>
           <b className="font-[650] whitespace-nowrap">{ago(Date.now() - isoMs(lastHit.timestamp))}</b>
           <span className="text-ash max-[1280px]:hidden in-[.type-comfortable]:max-[1520px]:hidden">{hms(lastHit.timestamp)}</span>

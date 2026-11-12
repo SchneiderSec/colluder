@@ -12,6 +12,7 @@ import { Chip, LineForm, TechniqueMark, TypeChip, inkClass, useTick } from "./bi
 import { cn } from "@/lib/utils";
 import { CrewMark } from "./Mark";
 import { aKind, crewOf, lookOf, STRAY_LOOK } from "@/lib/crew";
+import { Ultra } from "@/components/Ultra";
 
 const activity = (p: Probe) => Math.max(isoMs(p.lastHitAt) || 0, isoMs(p.plantedAt) || 0);
 // Armed probes that never heard anything fold into one "Silent" line, so the list leads with the
@@ -84,7 +85,7 @@ function Row({ s, p, k, stop }: { s: AppState; p: Probe | (Counts & Partial<Prob
         <CrewMark size={30} {...look} state={quiet || isU ? "doze" : "wink"} unread={!!unread} className={cn(st === "retired" && "opacity-70")} />
       </span>
       <span className={cn("flex min-w-0 items-center gap-[9px] overflow-hidden font-mono text-title", quiet ? "text-smoke" : talking ? "font-[550] text-bone" : "text-bone", isU && "font-sans font-semibold")}>
-        <span className="truncate">{isU ? "No tag" : p.tag}</span>
+        <span className="truncate">{isU ? "No tag" : <Ultra text={p.tag ?? ""} />}</span>
         {talking && <b className="font-sans text-body font-medium whitespace-nowrap text-smoke">{plural(p.hits, "hit")}</b>}
         {!isU && !!p.muted && <BellOff aria-label="Discord alerts muted" className="size-3 flex-none text-ash" strokeWidth={1.5} />}
       </span>
@@ -106,7 +107,7 @@ function Row({ s, p, k, stop }: { s: AppState; p: Probe | (Counts & Partial<Prob
       <span className="col-span-2 col-start-2 flex min-w-0 items-center gap-2 text-body text-smoke">
         {!isU && st !== "unplanted" && p.technique !== "callback" && <TechniqueMark technique={p.technique} />}
         {!isU && p.plantedBy === "claude" && <Chip grey>Claude</Chip>}
-        <span className={cn("truncate", !isU && st !== "unplanted" && !p.target && "text-ash")} title={isU ? "A hit that names a tag nobody planted gets its own row, marked “not planted”." : undefined}>{isU ? "Hits that carry no tag" : st === "unplanted" ? "A request used this tag; nobody planted it" : p.target || "No target noted"}</span>
+        <span className={cn("truncate", !isU && st !== "unplanted" && !p.target && "text-ash")} title={isU ? "A hit that names a tag nobody planted gets its own row, marked “not planted”." : undefined}>{isU ? "Hits that carry no tag" : st === "unplanted" ? "A request used this tag; nobody planted it" : p.target ? <Ultra text={p.target} /> : "No target noted"}</span>
       </span>
       {talking ? (
         <span className="col-start-2 flex min-w-0 flex-wrap gap-x-3 gap-y-1 text-label">
@@ -169,8 +170,8 @@ function Brief({ s, p }: { s: AppState; p: Probe }) {
     <button ref={ref} type="button" role="option" aria-selected={sel} data-key={p.tag} onClick={() => select(p.tag)} tabIndex={sel ? 0 : -1} title={tip}
       className={cn("mb-1 flex w-[calc(100%-14px)] min-w-0 cursor-pointer items-center gap-2.5 rounded border border-rule-2 bg-soot py-[6px] pr-4 pl-3 text-left hover:bg-hover max-[820px]:min-h-11", sel && "border-ash bg-soot-2 hover:bg-soot-2", s.lit === p.tag && "animate-lit")}>
       <CrewMark size={18} {...look} state={retired || st === "unplanted" ? "doze" : "wink"} className={cn(retired && "opacity-70")} />
-      <span className={cn("flex-none font-mono text-body", retired ? "text-smoke" : "text-bone")}>{p.tag}</span>
-      <span className={cn("min-w-0 flex-1 truncate text-label", p.target ? "text-smoke" : "text-ash")}>{p.target || "No target noted"}</span>
+      <span className={cn("flex-none font-mono text-body", retired ? "text-smoke" : "text-bone")}><Ultra text={p.tag} /></span>
+      <span className={cn("min-w-0 flex-1 truncate text-label", p.target ? "text-smoke" : "text-ash")}>{p.target ? <Ultra text={p.target} /> : "No target noted"}</span>
       {!!p.muted && <BellOff aria-label="Discord alerts muted" className="size-3 flex-none text-ash" strokeWidth={1.5} />}
       <span className="flex-none text-label whitespace-nowrap text-ash">{when}</span>
     </button>

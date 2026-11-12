@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib/utils";
+import { Ultra } from "@/components/Ultra";
 
 const READY = SECTIONS.filter((s) => s.ready);
 type SectionId = (typeof READY)[number]["id"];
@@ -120,7 +121,7 @@ export function PayloadKit({ section }: { section: string | null }) {
         <h1 className="text-headline font-bold">Payload kit</h1>
         <Select value={tag} onValueChange={setPicked}>
           <SelectTrigger aria-label="Probe" className="h-[30px] w-auto min-w-[150px] gap-2 rounded-[3px] border-rule bg-transparent px-2.5 font-mono text-title"><span className="font-sans text-body text-smoke">Probe</span><SelectValue /></SelectTrigger>
-          <SelectContent>{active.map((p) => <SelectItem key={p.tag} value={p.tag} className="font-mono">{p.tag}</SelectItem>)}</SelectContent>
+          <SelectContent>{active.map((p) => <SelectItem key={p.tag} value={p.tag} className="font-mono"><Ultra text={p.tag} /></SelectItem>)}</SelectContent>
         </Select>
         <code className="min-w-0 truncate font-mono text-body text-smoke"><Marked text={tagged(tag, host)} tag={tag} /></code>
         <span className="ml-auto flex items-center gap-2.5 text-body text-smoke">

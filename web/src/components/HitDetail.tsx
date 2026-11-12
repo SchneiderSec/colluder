@@ -18,6 +18,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Chip, TypeChip } from "./bits";
 import { Peek } from "./Mark";
 import { cn } from "@/lib/utils";
+import { Ultra } from "@/components/Ultra";
 
 const MAX = 200_000;
 
@@ -178,7 +179,7 @@ export function HitDetail({ id }: { id: number }) {
         <TypeChip proto={d.protocol} />
         {d.id > open && !chatter && <Chip>new</Chip>}
         <span className="text-smoke">Received <span className="text-bone">{d.timestamp.replace("T", " ").replace(/(\.\d{3})\d*Z$/, "$1 UTC")}</span></span>
-        {d.tag && <span className="text-smoke">tag <span className="font-mono text-bone">{d.tag}</span>{d.tagSource === "path" ? " (from path)" : ""}</span>}
+        {d.tag && <span className="text-smoke">tag <span className="font-mono text-bone"><Ultra text={d.tag} /></span>{d.tagSource === "path" ? " (from path)" : ""}</span>}
         <Button className="ml-auto" onClick={() => copy(evidence(d, e, probe, s.status?.payload?.domain), "evidence block")}><FileText />Copy as evidence</Button>
         <Button variant="ghost" size="icon" className="-mr-2 text-smoke" aria-label={`Close hit #${d.id}`} title="Close (Esc)" onClick={() => selectHit(null)}><X /></Button>
       </div>

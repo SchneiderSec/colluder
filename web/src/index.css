@@ -9,6 +9,8 @@
    tonal step up, with a hard 1px edge. Warmth lives only in the accents: amber = new/unread, the crew's
    coats and the mask. Token names are the original ones (soot = a strip, soot-2 = selected). */
 :root {
+  /* the ultrathink rainbow (components/Ultra.tsx): 4.6:1 or better on every ground of every dark theme */
+  --rb-1: #ff9494; --rb-2: #ffa45c; --rb-3: #ffd75e; --rb-4: #7ddc8a; --rb-5: #61baff; --rb-6: #b7a8ff; --rb-7: #f393d6;
   --bay: #101113;
   --soot: #1b1d20;
   --soot-1: #212327;
@@ -89,6 +91,7 @@
 /* Light: the same bay by day. A grey bay frame with white strips and near-black ink; the inks deepen to
    read on white, and amber deepens to an ochre so it still reads as text. */
 :root[data-theme="light"] {
+  --rb-1: #b3261e; --rb-2: #9b4400; --rb-3: #725a00; --rb-4: #1a6c33; --rb-5: #1e5bb7; --rb-6: #5b45c9; --rb-7: #9e2c8d;
   --bay: #d7dade; --soot: #ffffff; --soot-1: #fbfbfc; --soot-2: #e6ebf1; --well: #f5f6f8;
   --rule: #b9bfc7; --rule-2: #e1e4e8;
   --bone: #16181b; --bone-glow: #3a3e44; --smoke: #454a52; --ash: #555b64; --amber: #7f4f00; --fur: #7a7064; --bad: #9e321e;
@@ -302,6 +305,13 @@
 @keyframes rub { from { transform: translateX(-2px); } to { transform: translateX(2px); } }
 .peek { position: absolute; bottom: -90px; right: 48px; width: 120px; height: 90px; transition: transform 0.7s var(--ease-out-expo); pointer-events: none; z-index: 5; }
 .peek.up { transform: translateY(-62px); }
+/* ultrathink: the colours run backwards through the keyframes so, with each letter a step later,
+   the rainbow reads red to violet and flows rightward */
+@keyframes ultra-flow {
+  0%, 100% { color: var(--rb-1); } 14.286% { color: var(--rb-7); } 28.571% { color: var(--rb-6); } 42.857% { color: var(--rb-5); }
+  57.143% { color: var(--rb-4); } 71.429% { color: var(--rb-3); } 85.714% { color: var(--rb-2); }
+}
+.ultra-l { animation: ultra-flow 2.1s linear infinite; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 /* Settings > Display > Motion: "none" is reduced motion whatever the system says */
 :root[data-motion="none"] *, :root[data-motion="none"] *::before, :root[data-motion="none"] *::after { animation: none !important; transition: none !important; }

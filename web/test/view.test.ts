@@ -333,3 +333,15 @@ test("crew kinds: adding the shark kept every other tag's animal", async () => {
   const sharks = Array.from({ length: 1100 }, (_, i) => crewSpecies(`t${i}`)).filter((k) => k === "shark").length;
   assert.ok(sharks > 60 && sharks < 140, `about one tag in eleven or twelve is a shark (${sharks} of 1100)`);
 });
+
+test("ultrathink: the word is picked out of a tag or target in any case, everything else kept", async () => {
+  const { ultraParts } = await import("../src/lib/ultrathink.ts");
+  assert.deepEqual(ultraParts("webhook"), [{ s: "webhook", ultra: false }]);
+  assert.deepEqual(ultraParts(""), [{ s: "", ultra: false }]);
+  assert.deepEqual(ultraParts("ultrathink"), [{ s: "ultrathink", ultra: true }]);
+  assert.deepEqual(ultraParts("UltraThink the parser · ultrathink2"), [
+    { s: "UltraThink", ultra: true }, { s: " the parser · ", ultra: false }, { s: "ultrathink", ultra: true }, { s: "2", ultra: false },
+  ]);
+  for (const t of ["ultrathink-ssrf", "x-ULTRATHINK-y", "plain target, no easter egg"]) assert.equal(ultraParts(t).map((p) => p.s).join(""), t);
+  assert.ok(!ultraParts("ultra think").some((p) => p.ultra));
+});
