@@ -310,13 +310,26 @@ test("user agents in a few words; browser boilerplate headers recognised", async
   assert.ok(!isStandardHeader("Host") && !isStandardHeader("User-Agent") && !isStandardHeader("Authorization") && !isStandardHeader("X-Forwarded-For"));
 });
 
-test("crew kinds: the first ten on the list are ten different animals, and keep them as the crew grows", async () => {
+test("crew kinds: the first eleven on the list are eleven different animals, and keep them as the crew grows", async () => {
   const { crewKinds, crew, SPECIES } = await import("../src/lib/crew.ts");
-  const tags = ["orca", "orca-otp-inbox", "mailcheck", "sso-target", "import-ssrf", "healthcheck", "signup7", "avatar", "r4check", "r4xxe"];
+  const tags = ["orca", "orca-otp-inbox", "mailcheck", "sso-target", "import-ssrf", "healthcheck", "signup7", "avatar", "r4check", "r4xxe", "xxtest"];
   const probes = tags.map((tag, n) => ({ tag, plantedAt: `2026-11-${String(n + 1).padStart(2, "0")}T00:00:00Z` }));
   const a = crewKinds(probes);
   assert.equal(new Set(a.values()).size, SPECIES.length);
   const b = crewKinds([...probes, { tag: "newcomer", plantedAt: "2026-11-30T00:00:00Z" }]);
   for (const t of tags) assert.equal(b.get(t), a.get(t), `${t} kept its kind`);
   for (const [, look] of crew(probes)) { assert.ok(SPECIES.includes(look.species)); assert.match(look.coat, /^oklch\(/); }
+});
+
+test("crew kinds: adding the shark kept every other tag's animal", async () => {
+  const { crewSpecies } = await import("../src/lib/crew.ts");
+  // each tag's own kind before the shark joined (2026-11-12); only the ones the shark hash picks change
+  const before: Record<string, string> = { orca: "monkey", "orca-otp-inbox": "dog", mailcheck: "fox", "sso-target": "rabbit", "import-ssrf": "owl",
+    healthcheck: "bird", signup7: "monkey", r4check: "cat", r4xxe: "raccoon", xxtest: "dog", testing: "bear", third: "raccoon", rerank: "rabbit",
+    "webhook-test": "bear", "pdf-render": "monkey", "avatar-fetch": "bear", "xxe-import": "raccoon", "mail-reset": "fox", "sso-callback": "fox",
+    "oembed-preview": "rabbit", "import-csv": "bird", jaws: "fox", fin: "monkey", bruce: "raccoon", nemo: "monkey", reef: "bird", tide: "bear" };
+  for (const [tag, kind] of Object.entries(before)) assert.equal(crewSpecies(tag), kind, tag);
+  assert.equal(crewSpecies("avatar"), "shark");
+  const sharks = Array.from({ length: 1100 }, (_, i) => crewSpecies(`t${i}`)).filter((k) => k === "shark").length;
+  assert.ok(sharks > 60 && sharks < 140, `about one tag in eleven or twelve is a shark (${sharks} of 1100)`);
 });

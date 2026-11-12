@@ -8,8 +8,9 @@
 const HUES = [25, 105, 145, 185, 220, 255, 290, 330];
 const SHADES = [0.66, 0.84];
 
-// The crew's kinds. The raccoon is the Colluder itself; the rest joined the job.
-export const SPECIES = ["raccoon", "cat", "fox", "bear", "rabbit", "bird", "monkey", "owl", "mouse", "dog"] as const;
+// The crew's kinds. The raccoon is the Colluder itself; the rest joined the job. The shark joined last
+// (2026-11-12): it's appended, so the ten before it keep their places.
+export const SPECIES = ["raccoon", "cat", "fox", "bear", "rabbit", "bird", "monkey", "owl", "mouse", "dog", "shark"] as const;
 export type Species = (typeof SPECIES)[number];
 
 const fnv = (tag: string, seed: number) => {
@@ -18,8 +19,12 @@ const fnv = (tag: string, seed: number) => {
   return h >>> 0;
 };
 export const crewIndex = (tag: string): number => fnv(tag, 2166136261) % (HUES.length * SHADES.length);
-// a second, independent hash for the kind, so coat and kind don't move together
-export const speciesIndex = (tag: string): number => fnv(tag, 0x9e3779b9) % SPECIES.length;
+// a second, independent hash for the kind, so coat and kind don't move together. A third picks the
+// sharks (about one tag in eleven); every other tag keeps the kind it had among the first ten, so
+// adding the shark didn't reshuffle anyone's crew.
+const FIRST_TEN = 10;
+const SHARK = SPECIES.indexOf("shark");
+export const speciesIndex = (tag: string): number => (fnv(tag, 0x85ebca6b) % SPECIES.length === 0 ? SHARK : fnv(tag, 0x9e3779b9) % FIRST_TEN);
 export const crewSpecies = (tag: string): Species => SPECIES[speciesIndex(tag)];
 
 const COATS = HUES.length * SHADES.length;
@@ -49,7 +54,7 @@ function deal(order: Member[], n: number, own: (tag: string) => number): Map<str
 export function crewCoats(probes: Member[]): Map<string, string> {
   return new Map([...deal(crewOrder(probes), COATS, crewIndex)].map(([t, i]) => [t, coatOf(i)]));
 }
-// Kinds are dealt the same way: the first ten on the active list are ten different animals.
+// Kinds are dealt the same way: the first eleven on the active list are eleven different animals.
 export function crewKinds(probes: Member[]): Map<string, Species> {
   return new Map([...deal(crewOrder(probes), SPECIES.length, speciesIndex)].map(([t, i]) => [t, SPECIES[i]]));
 }

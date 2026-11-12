@@ -100,16 +100,56 @@ const KIND: Record<Species, { back?: (c: string) => ReactNode; front?: (c: strin
     back: (c) => <Both><circle cx="12" cy="17" r="11" fill={c} {...line} /><circle cx="12" cy="17" r="6" fill={PINK} opacity=".6" /></Both>,
     top: <><circle cx="32" cy="51.5" r="2.6" fill={INK} /><Whiskers /></>,
   },
+  shark: {
+    // a swept dorsal fin, pectoral fins, the pale belly sharks wear, gill slits; the jaw is drawn by
+    // CrewMark (it bites)
+    back: (c) => <><path d="M26.5 18.5Q30 4 44.5 -1.5Q38 8.5 40 18.5Z" fill={c} {...line} /><Both><path d="M13 49Q2 54.5 0.5 62Q11 61.5 18.5 55Z" fill={c} {...line} /></Both></>,
+    front: () => <path d="M9 43Q32 50.5 55 43Q53 59.5 32 61Q11 59.5 9 43Z" fill={LIGHT} />,
+    top: <Both><path d="M12.6 45q-1.5 2.7 0 5.4M15.4 46q-1.5 2.7 0 5.4" stroke={INK} strokeOpacity=".5" strokeWidth="1.3" fill="none" strokeLinecap="round" /></Both>,
+  },
   dog: {
     front: (c) => <><Both><path d="M11 21Q2 29 5 46Q9 51 14 45Q16 33 19 24Z" fill={c} {...line} /><path d="M11 21Q2 29 5 46Q9 51 14 45Q16 33 19 24Z" fill={SHADE} /></Both><Snout r={10} /></>,
     top: <path d="M30 57Q32 61.5 34 57Z" fill={PINK} />,
   },
 };
 
+// The shark's jaw: a row of teeth on each side of a dark mouth, hinged at the top lip. At rest it's
+// nearly shut (a toothy grin); open is 1.
+const TOP_TEETH = [19.5, 23.5, 27.5, 31.5, 35.5, 39.5, 43.5].map((x) => `M${x - 2} 49.6l2 4.2l2-4.2Z`).join("");
+const LOW_TEETH = ([[21.5, 58.4], [25.5, 60.4], [29.5, 61.6], [33.5, 61.7], [37.5, 60.9], [41.5, 59]] as const).map(([x, y]) => `M${x - 2} ${y}l2-4l2 4Z`).join("");
+const Jaw = ({ open }: { open: number }) => (
+  <g style={{ transformOrigin: "32px 50px", transform: `scaleY(${open})`, transition: "transform 120ms cubic-bezier(.3,1.5,.5,1)" }}>
+    <path d="M17 50Q32 47.5 47 50Q45 61 32 62Q19 61 17 50Z" fill="#2a0d10" stroke={INK} strokeOpacity=".6" strokeWidth="1.2" />
+    <path d={TOP_TEETH} fill={CREAM} /><path d={LOW_TEETH} fill={CREAM} />
+  </g>
+);
+// Easter egg: click the shark three times in a row and it bites (lunge, jaws open, snap shut). The
+// click still does whatever the row does. Reduced motion shows the two frames without the movement.
+const BITE = [
+  { jaw: 0.3, head: "none" },
+  { jaw: 1, head: "scale(1.12) rotate(-5deg)" },
+  { jaw: 0.04, head: "scale(1.18) translateY(1px)" },
+] as const;
+function useBite() {
+  const [phase, setPhase] = useState(0);
+  const timers = useRef<number[]>([]);
+  useEffect(() => () => timers.current.forEach(clearTimeout), []);
+  const bite = () => {
+    timers.current.forEach(clearTimeout);
+    setPhase(1);
+    timers.current = [window.setTimeout(() => setPhase(2), 240), window.setTimeout(() => setPhase(0), 430)];
+  };
+  return [BITE[phase], bite] as const;
+}
+
 export function CrewMark({ coat, species = "raccoon", state = "wink", unread = false, size = 22, className }: { coat: string; species?: Species; state?: "wink" | "doze"; unread?: boolean; size?: number; className?: string }) {
   const k = KIND[species];
+  const shark = species === "shark";
+  const [b, bite] = useBite();
   return (
-    <svg width={size} height={size} viewBox="0 0 64 64" aria-hidden="true" className={cn("flex-none overflow-visible", className)}>
+    <svg width={size} height={size} viewBox="0 0 64 64" aria-hidden="true" className={cn("flex-none overflow-visible", shark && "select-none", className)}
+      onClick={shark ? (e) => { if (e.detail > 0 && e.detail % 3 === 0) bite(); } : undefined}>
+      <g style={shark ? { transformOrigin: "32px 38px", transform: b.head, transition: "transform 140ms cubic-bezier(.2,.9,.3,1.3)" } : undefined}>
       {k.back?.(coat)}
       <ellipse cx="32" cy="38" rx="24" ry="22" fill={coat} {...line} />
       {k.front?.(coat)}
@@ -121,6 +161,8 @@ export function CrewMark({ coat, species = "raccoon", state = "wink", unread = f
           : <><Open x={L[0]} y={L[1]} ink={C.hl} /><Wink x={R[0]} y={R[1]} ink={C.hl} /></>}
       </g>
       {k.top}
+      {shark && <Jaw open={b.jaw} />}
+      </g>
       {unread && <circle cx="57" cy="7" r="9" fill={C.shine} stroke="var(--soot)" strokeWidth="4" />}
     </svg>
   );
