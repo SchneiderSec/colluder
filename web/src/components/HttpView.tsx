@@ -3,10 +3,12 @@
 // Display only: copies always come from the exact bytes.
 import { useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
+import { ChevronRight } from "lucide-react";
+import { isStandardHeader } from "@/lib/headers";
 import { layoutJson } from "@/lib/jsonview";
 import { decodedQuery, showControls } from "@/lib/query";
 import { decodeExfil } from "@/lib/exfil";
-import { dnsLine, mailLine, type Seg, type SegKind } from "@/lib/dnsview";
+import { dnsLine, dnsName, mailLine, type Seg, type SegKind } from "@/lib/dnsview";
 
 export const safeDecode = (s: string) => { try { return decodeURIComponent(s); } catch { return s; } };
 
@@ -167,12 +169,23 @@ function Body({ text, type }: { text: string; type: string }) {
 
 // capture: who wrote these bytes. interactsh re-serialises requests (headers sorted after Host, names
 // normalised); the edge records them exactly as they came off the socket.
+function useStdHeaders(): [boolean, (v: boolean) => void] {
+  const [v, setV] = useState<boolean>(() => { try { return JSON.parse(localStorage.getItem("colluder.stdHeaders") ?? "false"); } catch { return false; } });
+  return [v, (n) => { setV(n); try { localStorage.setItem("colluder.stdHeaders", JSON.stringify(n)); } catch { /* private mode */ } }];
+}
+
 export function HttpParsed({ p, tag, domain, capture, clientHttp2 }: { p: Parsed; tag: string | null; domain?: string; capture: "edge" | "engine"; clientHttp2?: boolean }) {
   const find = (n: string) => p.headers.find(([k]) => k.toLowerCase() === n)?.[1] ?? "";
   const type = find("content-type");
   const q = p.target?.includes("?") ? decodedQuery(p.target.slice(p.target.indexOf("?") + 1)) : [];
   const order = p.kind === "response" ? "as sent" : capture === "edge" ? "in the order received" : "as logged by interactsh: sorted, names normalised";
   const bodyBytes = new TextEncoder().encode(p.body).length;
+  // the headers every browser sends fold behind one line (remembered), so Host, User-Agent and anything
+  // unusual lead; a header the view flags never folds
+  const [std, setStd] = useStdHeaders();
+  const boiler = p.kind === "request" ? p.headers.filter(([k]) => isStandardHeader(k) && !NOTE[k.toLowerCase()]) : [];
+  const folding = boiler.length >= 3;
+  const shownHeaders = folding && !std ? p.headers.filter((h) => !boiler.includes(h)) : p.headers;
   return (
     <div className="font-mono text-body leading-[1.125rem] text-bone">
       <Section>
@@ -193,7 +206,13 @@ export function HttpParsed({ p, tag, domain, capture, clientHttp2 }: { p: Parsed
         </Section>
       )}
       <Section title="Headers" meta={`${p.headers.length}, ${order}`}>
-        <Pairs note={(k) => NOTE[k.toLowerCase()]} rows={p.headers.map(([k, v]) => [k, k.toLowerCase() === "host" ? <Host value={v} tag={tag} domain={domain} /> : v === "" ? "" : <Clamp text={v}>{(t) => t}</Clamp>])} />
+        <Pairs note={(k) => NOTE[k.toLowerCase()]} rows={shownHeaders.map(([k, v]) => [k, k.toLowerCase() === "host" ? <Host value={v} tag={tag} domain={domain} /> : v === "" ? "" : <Clamp text={v}>{(t) => t}</Clamp>])} />
+        {folding && (
+          <button type="button" onClick={() => setStd(!std)} title={std ? undefined : boiler.map(([k]) => k).join(", ")}
+            className="mt-1 flex cursor-pointer items-center gap-1 font-sans text-label text-smoke hover:text-bone">
+            <ChevronRight className={cn("size-3 transition-transform", std && "rotate-90")} />{std ? "Fold" : `+${boiler.length}`} standard browser headers
+          </button>
+        )}
       </Section>
       {(p.body || bodyBytes > 0) && (
         <Section title="Body" meta={[type.split(";")[0], `${bodyBytes} bytes`].filter(Boolean).join(" · ")}>
@@ -216,6 +235,7 @@ function Segs({ segs }: { segs: Seg[] }) {
   if (segs.length === 1 && segs[0].k === "plain") return <>{segs[0].s || "\u200b"}</>;
   return <>{segs.map((g, n) => (g.k === "tag" ? <Tag key={n}>{g.s}</Tag> : <span key={n} className={SEG[g.k] || undefined}>{g.s}</span>))}</>;
 }
+export const DnsNameMarked = ({ name, tag }: { name: string; tag: string | null }) => <Segs segs={dnsName(name, tag)} />;
 export const DnsLine = ({ ln, tag }: { ln: string; tag: string | null }) => <Segs segs={dnsLine(ln, tag)} />;
 export const MailLine = ({ ln, inHead }: { ln: string; inHead: boolean }) => <Segs segs={mailLine(ln, inHead)} />;
 

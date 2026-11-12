@@ -1,15 +1,16 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowDown, Copy, FileText, Search, Terminal } from "lucide-react";
-import { useApp, loadDetail, lookupAsn, save, chatterOf, setMine } from "@/store";
+import { ArrowDown, ChevronRight, Copy, FileText, Search, Terminal, X } from "lucide-react";
+import { useApp, loadDetail, lookupAsn, save, chatterOf, setMine, selectHit } from "@/store";
 import { dnsSteps } from "@/lib/dns";
 import { stageOf } from "@/lib/stage";
 import { decodeLabels } from "@/lib/exfil";
 import { variantOf, SECTION_LABEL } from "@/lib/kit";
 import { toCurl } from "@/lib/curl";
-import type { Enrich } from "@/lib/types";
+import type { Enrich, InteractionDetail } from "@/lib/types";
+import { uaShort } from "@/lib/headers";
 import { byteCount, lineCount } from "@/lib/format";
 import { answeredBy, decode, evidence } from "@/lib/raw";
-import { DnsLine, ExactLine, HttpParsed, MailLine, parseHttp, type Parsed } from "./HttpView";
+import { DnsLine, DnsNameMarked, ExactLine, HttpParsed, MailLine, parseHttp, type Parsed } from "./HttpView";
 import { copy, toast } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -85,6 +86,31 @@ function RawPane({ title, sub, text, exact, http, proto, p, tag, domain, capture
 }
 
 
+// What happened, in one line, before any detail: "MX lookup of x.orca-k7wq2x.oob.example",
+// "GET /d?d= HTTP/1.1" with its User-Agent, "Mail from a@b to kc5@…" with its subject. Captured values
+// stay mono and are text only.
+function What({ d }: { d: InteractionDetail }) {
+  const [head, ...rest] = (d.summary ?? "").split(" · ");
+  const tail = rest.join(" · ");
+  let lead: React.ReactNode;
+  if (d.protocol === "dns") {
+    const name = d.qType && head.startsWith(`${d.qType} `) ? head.slice(d.qType.length + 1) : head;
+    lead = <><span className="font-sans font-[650]">{d.qType || "DNS"} lookup</span> <span className="text-smoke">of</span> <DnsNameMarked name={name} tag={d.tag} /></>;
+  } else if (d.protocol === "smtp") {
+    const m = /^MAIL FROM (.*?) → (.*)$/.exec(head);
+    lead = m ? <><span className="font-sans font-[650]">Mail</span> <span className="font-sans text-smoke">from</span> {m[1]} <span className="font-sans text-smoke">to</span> {m[2]}</> : head;
+  } else lead = head.replace(/ HTTP\/[\d.]+$/, "");
+  // a web hit's tail is its User-Agent: named in a few words, the whole string on hover
+  const web = d.protocol === "http" || d.protocol === "https";
+  const short = web ? uaShort(tail) : tail;
+  return (
+    <p className="flex-none font-mono text-title leading-snug break-all text-bone">
+      {lead}
+      {short && <span className="ml-2 font-sans text-body break-normal text-ash" title={web && short !== tail ? tail : undefined}>{short}</span>}
+    </p>
+  );
+}
+
 const segCls = "h-6 rounded-none px-2.5 text-label text-smoke data-[state=on]:bg-soot-2 data-[state=on]:font-semibold data-[state=on]:text-bone";
 
 export function HitDetail({ id }: { id: number }) {
@@ -93,6 +119,9 @@ export function HitDetail({ id }: { id: number }) {
   // web hits open parsed (sections, decoded query, highlighted); the choice is remembered
   const [parsed, setParsed] = useState<boolean>(() => { try { return JSON.parse(localStorage.getItem("colluder.parsed") ?? "true"); } catch { return true; } });
   const [wrap, setWrap] = useState<boolean>(() => { try { return JSON.parse(localStorage.getItem("colluder.wrap") ?? "true"); } catch { return true; } });
+  // a DNS hit's query and answer are mostly the resolver's boilerplate: the line above them says what
+  // was asked, so the bytes stay folded until wanted (remembered)
+  const [dnsBytes, setDnsBytes] = useState<boolean>(() => { try { return JSON.parse(localStorage.getItem("colluder.dnsBytes") ?? "false"); } catch { return false; } });
   const [err, setErr] = useState<string | null>(null);
   const [asnBusy, setAsnBusy] = useState(false);
   const [peek, setPeek] = useState(0);
@@ -147,10 +176,15 @@ export function HitDetail({ id }: { id: number }) {
         <span className="text-smoke">Received <span className="text-bone">{d.timestamp.replace("T", " ").replace(/(\.\d{3})\d*Z$/, "$1 UTC")}</span></span>
         {d.tag && <span className="text-smoke">tag <span className="font-mono text-bone">{d.tag}</span>{d.tagSource === "path" ? " (from path)" : ""}</span>}
         <Button className="ml-auto" onClick={() => copy(evidence(d, e, probe, s.status?.payload?.domain), "evidence block")}><FileText />Copy as evidence</Button>
+        <Button variant="ghost" size="icon" className="-mr-2 text-smoke" aria-label={`Close hit #${d.id}`} title="Close (Esc)" onClick={() => selectHit(null)}><X /></Button>
       </div>
 
+      <What d={d} />
+
       <div className="flex flex-none flex-wrap items-center gap-x-[22px] gap-y-1 text-body whitespace-nowrap max-[820px]:whitespace-normal">
-        <span className="flex items-center gap-2"><span className="text-label font-[550] tracking-[.03em] text-ash">{d.protocol === "dns" ? "Resolver" : "Source"}</span><span className={cn("font-mono text-body", !fromBox && !mine && "font-[550] text-bone")}>{d.remoteAddress}</span>{fromBox && <span title="This is the OOB box itself: a self-test, not a target."><Chip grey>this box</Chip></span>}
+        <span className="flex items-center gap-2">{d.protocol === "dns"
+          ? <span className="cursor-help text-label font-[550] tracking-[.03em] text-ash underline decoration-rule decoration-dotted underline-offset-2" title="DNS hits come from the resolver that asked on the target's behalf. It is often a public or ISP resolver, not the target itself.">Resolver</span>
+          : <span className="text-label font-[550] tracking-[.03em] text-ash">Source</span>}<span className={cn("font-mono text-body", !fromBox && !mine && "font-[550] text-bone")}>{d.remoteAddress}</span>{fromBox && <span title="This is the OOB box itself: a self-test, not a target."><Chip grey>this box</Chip></span>}
           {d.protocol !== "dns" && !fromBox && (
             <Button variant="quiet" size="sm" title={mine ? "Hits from this address count as targets again" : "Your browser or proxy: its hits become self-tests (left out of reach and the report's first request)"}
               onClick={() => setMine(d.remoteAddress, !mine).then(() => toast(mine ? `${d.remoteAddress} is no longer marked as yours.` : `${d.remoteAddress} is marked as yours: its hits are self-tests now.`), (x) => toast((x as Error).message, true))}>
@@ -167,10 +201,9 @@ export function HitDetail({ id }: { id: number }) {
           <span className="text-label font-[550] tracking-[.03em] text-ash">ASN / owner</span>
           {e.asn ? <span className="font-mono text-body">{[e.asn, e.asnName, e.asnCc, e.asnPrefix].filter(Boolean).join(" · ")}</span> : (
             <>
-              <Button variant="quiet" size="sm" disabled={asnBusy} onClick={() => { setAsnBusy(true); lookupAsn(d.remoteAddress).catch((x) => toast((x as Error).message, true)).finally(() => setAsnBusy(false)); }}>
+              <Button variant="quiet" size="sm" disabled={asnBusy} title="Sends this IP to a third-party service (Team Cymru)" onClick={() => { setAsnBusy(true); lookupAsn(d.remoteAddress).catch((x) => toast((x as Error).message, true)).finally(() => setAsnBusy(false)); }}>
                 <Search />{asnBusy ? "Looking up…" : "Look up"}
               </Button>
-              <span className="text-label text-ash max-[820px]:basis-full">Sends this IP to a third-party service (Team Cymru).</span>
             </>
           )}
         </span>
@@ -180,7 +213,6 @@ export function HitDetail({ id }: { id: number }) {
           <b className="font-semibold text-bone">Likely resolver chatter.</b> A lookup of the bare payload id within 10 s of a hit on <span className="font-mono text-bone">{chatter}</span>: a resolver walking the name label by label (QNAME minimisation), or a client resolving the HTTPS host. Kept, but not counted as new.
         </p>
       )}
-      {d.protocol === "dns" && <p className="flex-none text-body text-ash">DNS hits come from the resolver that asked on the target's behalf. It is often a public or ISP resolver, not the target itself.</p>}
       {step && (
         <p className="flex-none text-body text-smoke">
           <b className="font-semibold text-bone">Resolver step, not data.</b> The same resolver asked for <span className="font-mono text-bone">{step}</span> within seconds. Resolvers that minimise queries ask for the name one label at a time, so the labels here are part of that longer name.
@@ -218,11 +250,18 @@ export function HitDetail({ id }: { id: number }) {
         </p>
       )}
 
+      {d.protocol === "dns" && !dnsBytes ? (
+        <button type="button" onClick={() => { setDnsBytes(true); save("colluder.dnsBytes", true); }}
+          className="mt-0.5 flex flex-none items-center gap-1.5 self-start text-body text-smoke hover:text-bone">
+          <ChevronRight className="size-3.5" />Query and answer<span className="text-ash">· exact bytes ({byteCount(d.rawRequest) + byteCount(d.rawResponse)})</span>
+        </button>
+      ) : (
+      <>
       <div className="mt-0.5 flex flex-none flex-wrap items-center gap-2">
         {web ? (
           <ToggleGroup type="single" value={parsed ? "parsed" : "exact"} onValueChange={(v) => { if (!v) return; setParsed(v === "parsed"); save("colluder.parsed", v === "parsed"); }} aria-label="View"
             className="overflow-hidden rounded-[3px] border border-rule">
-            <ToggleGroupItem value="parsed" className={segCls}>Parsed</ToggleGroupItem>
+            <ToggleGroupItem value="parsed" className={segCls} title="Display only: copies stay exact">Parsed</ToggleGroupItem>
             <ToggleGroupItem value="exact" className={cn(segCls, "border-l border-rule")}>Exact bytes</ToggleGroupItem>
           </ToggleGroup>
         ) : (
@@ -232,14 +271,15 @@ export function HitDetail({ id }: { id: number }) {
             <ToggleGroupItem value="decoded" className={cn(segCls, "border-l border-rule")}>Decoded</ToggleGroupItem>
           </ToggleGroup>
         )}
-        {web && parsed ? <span className="mr-auto ml-2.5 text-body text-ash">Display only; copies stay exact</span> : (
-          <label className="mr-auto ml-2.5 flex cursor-pointer items-center gap-[7px] text-body">
+        {web && parsed ? <span className="mr-auto" /> : (
+          <label className="mr-auto ml-2.5 flex cursor-pointer items-center gap-[7px] text-body" title="Display only: copies stay exact">
             <Switch checked={wrap} onCheckedChange={(v) => { setWrap(v); save("colluder.wrap", v); }} aria-label="Wrap long lines" />
-            <span className="text-smoke">Wrap long lines</span><span className="text-ash max-[1180px]:hidden">display only; copies stay exact</span>
+            <span className="text-smoke">Wrap long lines</span>
           </label>
         )}
         {web && curl && <Button variant="ghost" title="The request rebuilt as a curl command, for a repro" onClick={() => copy(curl, "curl command")}><Terminal />Copy as curl</Button>}
         <Button variant="ghost" onClick={() => copy(`${d.rawRequest}\n\n${d.rawResponse}`, "request and response")}><Copy />Copy both</Button>
+        {d.protocol === "dns" && <Button variant="ghost" className="text-ash" onClick={() => { setDnsBytes(false); save("colluder.dnsBytes", false); }}>Fold</Button>}
       </div>
 
       <div className="grid min-h-[220px] flex-1 grid-cols-2 gap-3 @max-[900px]:flex-none @max-[900px]:grid-cols-1 @max-[900px]:[&>*]:max-h-[360px]">
@@ -263,6 +303,8 @@ export function HitDetail({ id }: { id: number }) {
           <Button variant="ghost" size="sm" aria-label="Copy SHA-256" onClick={() => copy(d.reqSha256, "SHA-256")}><Copy /></Button>
         </span>
       </div>
+      </>
+      )}
       {!!peek && <Peek key={peek} />}
     </article>
   );

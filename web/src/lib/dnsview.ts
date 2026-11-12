@@ -11,7 +11,7 @@ const RECORD = new RegExp(`^(\\S+)(\\s+)(\\d+)(\\s+)(${CLASS})(\\s+)(\\S+)(\\s+)
 const RCODE = /(\b(?:NOERROR|NXDOMAIN|SERVFAIL|REFUSED|FORMERR|NOTIMP|YXDOMAIN|NOTAUTH|NOTZONE)\b)/;
 
 // a DNS name with the probe's tag marked: the label that is the tag, or the tag part of "<tag>-<id>"
-function name(n: string, tag: string | null): Seg[] {
+export function dnsName(n: string, tag: string | null): Seg[] {
   if (!tag) return [{ s: n, k: "name" }];
   const t = tag.toLowerCase();
   const out: Seg[] = [];
@@ -42,10 +42,10 @@ function comment(ln: string): Seg[] {
 export function dnsLine(ln: string, tag: string | null): Seg[] {
   if (/^;; .*SECTION:\s*$/.test(ln)) return [{ s: ln, k: "head" }];
   const q = QUESTION.exec(ln);
-  if (q) return [{ s: q[1], k: "ash" }, ...name(q[2], tag), { s: q[3], k: "plain" }, { s: q[4], k: "ash" }, { s: q[5], k: "plain" }, { s: q[6], k: "type" }, ...(q[7] ? [{ s: q[7], k: "plain" as const }] : [])];
+  if (q) return [{ s: q[1], k: "ash" }, ...dnsName(q[2], tag), { s: q[3], k: "plain" }, { s: q[4], k: "ash" }, { s: q[5], k: "plain" }, { s: q[6], k: "type" }, ...(q[7] ? [{ s: q[7], k: "plain" as const }] : [])];
   if (ln.startsWith(";")) return comment(ln);
   const r = RECORD.exec(ln);
-  if (r) return [...name(r[1], tag), { s: r[2], k: "plain" }, { s: r[3], k: "ash" }, { s: r[4], k: "plain" }, { s: r[5], k: "ash" }, { s: r[6], k: "plain" }, { s: r[7], k: "type" }, { s: r[8], k: "plain" }, ...(r[9] ? [{ s: r[9], k: "value" as const }] : [])];
+  if (r) return [...dnsName(r[1], tag), { s: r[2], k: "plain" }, { s: r[3], k: "ash" }, { s: r[4], k: "plain" }, { s: r[5], k: "ash" }, { s: r[6], k: "plain" }, { s: r[7], k: "type" }, { s: r[8], k: "plain" }, ...(r[9] ? [{ s: r[9], k: "value" as const }] : [])];
   return [{ s: ln, k: "plain" }];
 }
 

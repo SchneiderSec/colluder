@@ -27,6 +27,37 @@ export const SECTIONS: { id: Section | "metadata" | "gopher" | "xxe" | "xss" | "
 // HTTPS too. Plain-HTTP and DNS payloads put the variant code in a label in front; HTTPS can't (that
 // would be two labels), so its code goes in the path.
 export const tagged = (tag: string, host: string) => `${tag}-${host}`;
+
+// A payload split for display. Every payload of a probe shares the same long host, so it recedes
+// ("host") and what tells two payloads apart stays bright: the scheme, the path, the separators
+// ("plain") and the variant code ("code"); the tag is marked ("tag"). The parts always join back to
+// the text, character for character: display only, copies stay exact.
+export type PayloadPart = { s: string; k: "plain" | "tag" | "host" | "code" };
+const esc = (w: string) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+// a word starts after a non-name character, or after a %XX escape (URL-encoded copies)
+const B = "(?<=^|[^a-z0-9-]|%[0-9a-f]{2})";
+export function payloadParts(text: string, tag: string, hosts: (string | null | undefined)[] = [], code?: string): PayloadPart[] {
+  const hs = [...new Set(hosts.filter((h): h is string => !!h))].sort((a, b) => b.length - a.length).map(esc);
+  const alts = [
+    hs.length ? `(?<tag>${esc(tag)})(?<th>-(?:${hs.join("|")}))` : null, // tag-<host>
+    `${B}(?<bare>${esc(tag)})(?![a-z0-9-])`, // the tag on its own
+    hs.length ? `${B}(?<host>${hs.join("|")})` : null, // the host without the tag
+    code ? `${B}(?<code>${esc(code)})(?![a-z0-9-])` : null,
+  ].filter(Boolean);
+  const out: PayloadPart[] = [];
+  let at = 0;
+  for (const m of text.matchAll(new RegExp(alts.join("|"), "gi"))) {
+    if (m.index! > at) out.push({ s: text.slice(at, m.index), k: "plain" });
+    const g = m.groups!;
+    if (g.tag) out.push({ s: g.tag, k: "tag" }, { s: g.th, k: "host" });
+    else if (g.bare) out.push({ s: g.bare, k: "tag" });
+    else if (g.host) out.push({ s: g.host, k: "host" });
+    else out.push({ s: g.code, k: "code" });
+    at = m.index! + m[0].length;
+  }
+  if (at < text.length) out.push({ s: text.slice(at), k: "plain" });
+  return out;
+}
 // an id for display: the engine's 33 chars as "c0ffee12…", Colluder's short id whole
 export const shownId = (id: string) => (id.length > 12 ? `${id.slice(0, 8)}…` : id);
 const sub = (code: string, tag: string, host: string) => `${code}.${tagged(tag, host)}`;

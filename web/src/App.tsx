@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { useApp, select, setTab, totalUnread, unreadFor, loadState, connect, getState, PROBE_TABS, type ProbeTab } from "@/store";
+import { useApp, select, setTab, totalUnread, unreadFor, loadState, connect, getState, setPlanting, PROBE_TABS, type ProbeTab } from "@/store";
 import { UNTAGGED } from "@/lib/types";
 import { Rail, StatusBar, Banners } from "@/components/Shell";
 import { Composer } from "@/components/Composer";
@@ -38,6 +38,7 @@ export default function App() {
   const unread = useApp(totalUnread);
   const night = nightNow(useDisplay());
   const favSrc = useRef<HTMLDivElement>(null);
+  const planting = useApp((s) => s.planting);
 
   useEffect(() => { loadState(); connect(); }, []);
 
@@ -50,6 +51,28 @@ export default function App() {
     addEventListener("keydown", onKey);
     return () => removeEventListener("keydown", onKey);
   }, []);
+
+  // "p" or "/" anywhere opens the plant form (it focuses its tag field)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const typing = /^(INPUT|TEXTAREA|SELECT)$/.test((document.activeElement as HTMLElement)?.tagName) || document.querySelector("[role=dialog],[role=alertdialog],[role=menu]");
+      if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key === "p" || e.key === "/") {
+        e.preventDefault();
+        if (location.hash && !location.hash.startsWith("#probes")) location.hash = "#probes";
+        if (getState().planting) document.querySelector<HTMLInputElement>('[aria-label="Plant a probe"] input')?.focus();
+        else setPlanting(true);
+      }
+    };
+    addEventListener("keydown", onKey);
+    return () => removeEventListener("keydown", onKey);
+  }, []);
+
+  // nothing planted yet: the plant form is the first step, so it starts open
+  useEffect(() => {
+    const s = getState();
+    if (loaded && !s.probes.size && !s.untagged?.hits) setPlanting(true);
+  }, [loaded]);
 
   // route → selection (deep links like #probes/fetch); default to the most recent probe
   useEffect(() => {
@@ -80,7 +103,7 @@ export default function App() {
           <Banners />
           {route.view === "probes" ? (
             <>
-              <Composer />
+              {planting && <Composer />}
               <div className="grid min-h-0 flex-1 grid-cols-[400px_minmax(0,1fr)] max-[1180px]:grid-cols-[320px_minmax(0,1fr)] max-[820px]:block">
                 <ProbeList />
                 <ProbePane />

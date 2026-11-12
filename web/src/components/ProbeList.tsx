@@ -1,6 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
-import { Bell, BellOff, ChevronDown, ChevronRight, Redo2, Search, Trash2, X } from "lucide-react";
-import { useApp, select, unreadFor, keyOf, setDiscord, lateHit, retiredUnread, deleteProbe, type AppState } from "@/store";
+import { ArrowDownToLine, Bell, BellOff, ChevronDown, ChevronRight, Redo2, Search, Trash2, X } from "lucide-react";
+import { useApp, select, unreadFor, keyOf, setDiscord, lateHit, retiredUnread, deleteProbe, setPlanting, save, type AppState } from "@/store";
 import { probeState, quietLine } from "@/lib/probeState";
 import { Button } from "@/components/ui/button";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -8,10 +8,17 @@ import { PROTOS, UNTAGGED, type Counts, type Probe } from "@/lib/types";
 import { dayOrTime, dur, isoMs, plural, settled } from "@/lib/format";
 import { toast } from "@/lib/toast";
 import { Switch } from "@/components/ui/switch";
-import { Chip, LineForm, NewDot, NilDot, TechniqueMark, TypeChip, inkClass, useTick } from "./bits";
+import { Chip, LineForm, TechniqueMark, TypeChip, inkClass, useTick } from "./bits";
 import { cn } from "@/lib/utils";
+import { CrewMark } from "./Mark";
+import { aKind, crewOf, lookOf, STRAY_LOOK } from "@/lib/crew";
 
 const activity = (p: Probe) => Math.max(isoMs(p.lastHitAt) || 0, isoMs(p.plantedAt) || 0);
+// Armed probes that never heard anything fold into one "Silent" line, so the list leads with the
+// ones that talked. A probe planted in the last day stays up: you're still waiting on it.
+const FRESH_MS = 24 * 3600_000;
+const silent = (p: Probe, s: AppState) => !p.retiredAt && p.registered && p.hits === 0 && !unreadFor(s, p.tag) && Date.now() - (isoMs(p.plantedAt) || 0) > FRESH_MS;
+const loadOpen = () => { try { return JSON.parse(localStorage.getItem("colluder.silentOpen") ?? "false") as boolean; } catch { return false; } };
 
 function Timeline({ s, k, start }: { s: AppState; k: string; start: string | null }) {
   const hits = s.list.filter((i) => keyOf(i) === k);
@@ -67,11 +74,15 @@ function Row({ s, p, k, stop }: { s: AppState; p: Probe | (Counts & Partial<Prob
   // the selected probe stays in view (picked from the status bar, a link, or j/k)
   useEffect(() => { if (sel && settled()) ref.current?.scrollIntoView({ block: "nearest" }); }, [sel]);
   const quiet = st === "retired" || st === "unplanted";
+  const look = isU || st === "unplanted" ? STRAY_LOOK : lookOf(crewOf(s.probes), p.tag!);
   return (
     <button ref={ref} type="button" role="option" aria-selected={sel} data-key={k} onClick={() => select(k)} tabIndex={sel || stop ? 0 : -1}
-      className={cn("grid w-full cursor-pointer grid-cols-[12px_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-[3px] border-b border-rule-2 py-[11px] pr-4 pl-5 text-left hover:bg-hover",
+      className={cn("grid w-full cursor-pointer grid-cols-[30px_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-[3px] border-b border-rule py-[11px] pr-4 pl-4 text-left hover:bg-hover",
         sel && "bg-soot-2 hover:bg-soot-2", isU && "border-t border-t-rule", s.lit === k && "animate-lit")}>
-      {unread ? <NewDot title="New hits since you last looked" /> : <NilDot />}
+      {/* the probe's raccoon: its coat tells probes apart at a glance; amber eyes mean new hits */}
+      <span className="row-span-2 self-start pt-px" title={[isU || st === "unplanted" ? "A stray: nobody planted it" : `${p.tag}'s colluder: ${aKind(look.species)}`, unread && "New hits since you last looked"].filter(Boolean).join(" · ")}>
+        <CrewMark size={30} {...look} state={quiet || isU ? "doze" : "wink"} unread={!!unread} className={cn(st === "retired" && "opacity-70")} />
+      </span>
       <span className={cn("flex min-w-0 items-center gap-[9px] overflow-hidden font-mono text-title", quiet ? "text-smoke" : talking ? "font-[550] text-bone" : "text-bone", isU && "font-sans font-semibold")}>
         <span className="truncate">{isU ? "No tag" : p.tag}</span>
         {talking && <b className="font-sans text-body font-medium whitespace-nowrap text-smoke">{plural(p.hits, "hit")}</b>}
@@ -95,7 +106,7 @@ function Row({ s, p, k, stop }: { s: AppState; p: Probe | (Counts & Partial<Prob
       <span className="col-span-2 col-start-2 flex min-w-0 items-center gap-2 text-body text-smoke">
         {!isU && st !== "unplanted" && p.technique !== "callback" && <TechniqueMark technique={p.technique} />}
         {!isU && p.plantedBy === "claude" && <Chip grey>Claude</Chip>}
-        <span className={cn("truncate", !isU && st !== "unplanted" && !p.target && "text-ash")}>{isU ? "Hits that carry no tag" : st === "unplanted" ? "A request used this tag; nobody planted it" : p.target || "No target noted"}</span>
+        <span className={cn("truncate", !isU && st !== "unplanted" && !p.target && "text-ash")} title={isU ? "A hit that names a tag nobody planted gets its own row, marked “not planted”." : undefined}>{isU ? "Hits that carry no tag" : st === "unplanted" ? "A request used this tag; nobody planted it" : p.target || "No target noted"}</span>
       </span>
       {talking ? (
         <span className="col-start-2 flex min-w-0 flex-wrap gap-x-3 gap-y-1 text-label">
@@ -143,9 +154,33 @@ function DeleteRetired({ tags, hits, open, onOpenChange }: { tags: string[]; hit
   );
 }
 
+// A probe with nothing to report, in one line: silent armed probes and retired ones. Raccoon, tag,
+// target, and when; the longer story (cleared when, planted by whom, its rule) is the tooltip.
+function Brief({ s, p }: { s: AppState; p: Probe }) {
+  const sel = s.sel === p.tag;
+  const st = probeState(p);
+  const ref = useRef<HTMLButtonElement>(null);
+  useEffect(() => { if (sel && settled()) ref.current?.scrollIntoView({ block: "nearest" }); }, [sel]);
+  const retired = !!p.retiredAt;
+  const when = retired ? (p.hits ? `${plural(p.hits, "hit")} · retired ${dayOrTime(p.retiredAt)}` : `retired ${dayOrTime(p.retiredAt)}`) : `silent ${dur(Date.now() - isoMs(p.plantedAt))}`;
+  const look = st === "unplanted" ? STRAY_LOOK : lookOf(crewOf(s.probes), p.tag);
+  const tip = [st === "unplanted" ? p.tag : `${p.tag}'s colluder: ${aKind(look.species)}`, p.target, quietLine(p, s.status?.lastClear?.at), p.plantedBy === "claude" && "Planted by Claude", p.httpRule && `HTTP rule v${p.httpRule.version}: ${p.httpRule.line}`, p.muted && "Discord alerts muted"].filter(Boolean).join("\n");
+  return (
+    <button ref={ref} type="button" role="option" aria-selected={sel} data-key={p.tag} onClick={() => select(p.tag)} tabIndex={sel ? 0 : -1} title={tip}
+      className={cn("flex w-full min-w-0 cursor-pointer items-center gap-2.5 border-b border-rule-2 py-[7px] pr-4 pl-[22px] text-left hover:bg-hover max-[820px]:min-h-11", sel && "bg-soot-2 hover:bg-soot-2", s.lit === p.tag && "animate-lit")}>
+      <CrewMark size={18} {...look} state={retired || st === "unplanted" ? "doze" : "wink"} className={cn(retired && "opacity-70")} />
+      <span className={cn("flex-none font-mono text-body", retired ? "text-smoke" : "text-bone")}>{p.tag}</span>
+      <span className={cn("min-w-0 flex-1 truncate text-label", p.target ? "text-smoke" : "text-ash")}>{p.target || "No target noted"}</span>
+      {!!p.muted && <BellOff aria-label="Discord alerts muted" className="size-3 flex-none text-ash" strokeWidth={1.5} />}
+      <span className="flex-none text-label whitespace-nowrap text-ash">{when}</span>
+    </button>
+  );
+}
+
 export function ProbeList() {
   const s = useApp((x) => x);
   const [showRetired, setShowRetired] = useState(false);
+  const [silentOpen, setSilentOpen] = useState(loadOpen);
   const [q, setQ] = useState("");
   const [delAll, setDelAll] = useState(false);
   useTick(30000);
@@ -155,7 +190,11 @@ export function ProbeList() {
   const all = every.filter((p) => p.registered || p.hits > 0)
     .filter((p) => !needle || [p.tag, p.target, p.note].some((x) => (x ?? "").toLowerCase().includes(needle)));
   // a retired probe that hears something again comes back up: late hits are often the real bug
-  const active = all.filter((p) => !p.retiredAt || lateHit(p)).sort((a, b) => activity(b) - activity(a));
+  const live = all.filter((p) => !p.retiredAt || lateHit(p)).sort((a, b) => activity(b) - activity(a));
+  const quiet = live.filter((p) => silent(p, s));
+  const active = live.filter((p) => !silent(p, s));
+  // the selected probe is never hidden inside a folded group
+  const showSilent = silentOpen || !!needle || quiet.some((p) => p.tag === s.sel);
   const retired = all.filter((p) => p.retiredAt && !lateHit(p)).sort((a, b) => activity(b) - activity(a));
   const deletable = [...retired, ...every.filter((p) => !p.registered && !p.hits)];
   const deletableHits = deletable.reduce((n, p) => n + p.hits, 0);
@@ -166,7 +205,7 @@ export function ProbeList() {
   // places (FLIP) instead of teleporting, so the eye can follow what moved.
   const listRef = useRef<HTMLDivElement>(null);
   const prevTops = useRef(new Map<string, number>());
-  const order = active.map((p) => p.tag).join("|");
+  const order = live.map((p) => p.tag).join("|");
   useLayoutEffect(() => {
     const root = listRef.current;
     if (!root) return;
@@ -194,13 +233,14 @@ export function ProbeList() {
   return (
     <section aria-label="Probes" className="flex min-h-0 flex-col border-r border-rule max-[820px]:max-h-[48vh] max-[820px]:border-r-0">
       <div className="flex h-[42px] flex-none items-center gap-2 border-b border-rule pr-3 pl-5">
-        <h2 className="text-title font-[650]" title="Latest activity first">Probes</h2><span className="text-body text-smoke">{active.length}</span>
-        <label className="ml-auto flex h-7 w-[min(190px,50%)] items-center gap-1.5 rounded-[3px] border border-rule bg-soot px-2 focus-within:border-smoke">
+        <h2 className="text-title font-[650]" title="Latest activity first">Probes</h2><span className="text-body text-smoke">{live.length}</span>
+        <label className="ml-auto flex h-7 w-[min(170px,45%)] items-center gap-1.5 rounded-[3px] border border-rule bg-soot px-2 focus-within:border-smoke">
           <Search className="size-3.5 flex-none text-ash" strokeWidth={1.5} aria-hidden="true" />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Filter probes" aria-label="Filter probes by tag, target or note"
             className="min-w-0 flex-1 bg-transparent text-body text-bone outline-none placeholder:text-ash" onKeyDown={(e) => e.key === "Escape" && setQ("")} />
           {q && <button type="button" aria-label="Clear filter" className="text-ash hover:text-bone" onClick={() => setQ("")}><X className="size-3.5" /></button>}
         </label>
+        <Button variant={s.planting ? "secondary" : "default"} size="sm" title="Plant a new probe (p)" onClick={() => setPlanting(!s.planting)}><ArrowDownToLine />Plant</Button>
       </div>
       <div ref={listRef} role="listbox" aria-label="Probes" onKeyDown={onListKey} className="flex min-h-0 flex-1 flex-col overflow-auto">
         {needle && !active.length && !retired.length && (
@@ -209,10 +249,21 @@ export function ProbeList() {
         {s.loaded && !needle && !active.length && !s.untagged?.hits && !retired.length && (
           <div className="max-w-[46ch] px-5 py-[22px] text-body leading-[1.1875rem] text-smoke">
             <b className="mb-1 block text-title font-semibold text-bone">No probes yet.</b>
-            Plant one above: a tag (e.g. avatar) and where you'll put it. Then copy a payload into the target. Hits show up here the moment something calls back.
+            Plant one: a tag (e.g. avatar) and where you'll put it. Then copy a payload into the target. Hits show up here the moment something calls back.
           </div>
         )}
         {active.map((p, i) => <Row key={p.tag} s={s} p={p} k={p.tag} stop={!s.sel && i === 0} />)}
+        {!!quiet.length && (
+          <>
+            <button type="button" aria-expanded={showSilent} onClick={() => { setSilentOpen(!silentOpen); save("colluder.silentOpen", !silentOpen); }}
+              title="Armed, planted over a day ago, and no hits yet"
+              className="flex min-w-0 items-center gap-1.5 border-b border-rule-2 px-5 py-2 text-left text-body text-ash hover:text-bone max-[820px]:min-h-11">
+              {showSilent ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}<span className="flex-none whitespace-nowrap">Silent ({quiet.length})</span>
+              {!showSilent && <span className="truncate font-mono text-label text-ash">{quiet.map((p) => p.tag).join(" · ")}</span>}
+            </button>
+            {showSilent && quiet.map((p) => <Brief key={p.tag} s={s} p={p} />)}
+          </>
+        )}
         <div className="flex-1" />
         {!!retired.length && (
           <div className="flex items-center border-t border-rule-2 pr-3">
@@ -222,14 +273,9 @@ export function ProbeList() {
             {(showRetired || needle) && !needle && <Button variant="ghost" size="sm" className="text-smoke" onClick={() => setDelAll(true)}><Trash2 />Delete all…</Button>}
           </div>
         )}
-        {(showRetired || needle) && retired.map((p) => <Row key={p.tag} s={s} p={p} k={p.tag} />)}
+        {(showRetired || needle) && retired.map((p) => unreadFor(s, p.tag) ? <Row key={p.tag} s={s} p={p} k={p.tag} /> : <Brief key={p.tag} s={s} p={p} />)}
         <DeleteRetired tags={deletable.map((p) => p.tag)} hits={deletableHits} open={delAll} onOpenChange={setDelAll} />
-        {!!s.untagged?.hits && (
-          <>
-            <Row s={s} p={s.untagged} k={UNTAGGED} />
-            <p className="pr-4 pb-2.5 pl-10 text-label leading-[0.9375rem] text-ash">A hit that names a tag nobody planted gets its own row, marked “not planted”.</p>
-          </>
-        )}
+        {!!s.untagged?.hits && <Row s={s} p={s.untagged} k={UNTAGGED} />}
       </div>
       <div className="flex h-10 flex-none items-center gap-2.5 border-t border-rule pr-4 pl-5 text-smoke">
         <Bell className="size-3.5" strokeWidth={1.5} /><span>Discord alerts</span>

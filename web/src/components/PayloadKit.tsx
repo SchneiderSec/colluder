@@ -1,11 +1,11 @@
 // The Payload kit (PLAN-KIT.md): payloads for one probe, ready to copy. Generation only.
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState } from "react";
 import { Copy, CornerDownRight } from "lucide-react";
 import { useApp, setRuleDraft } from "@/store";
 import { METADATA, hostOf, pathOf, redirectable, type MetaRow } from "@/lib/metadata";
 import { parseIPv4 } from "@/lib/kit";
 import { UNTAGGED } from "@/lib/types";
-import { SECTIONS, addressForms, bypasses, callbacks, encode, formUrl, tagged, type Enc, type Payload } from "@/lib/kit";
+import { SECTIONS, addressForms, bypasses, callbacks, encode, formUrl, payloadParts, tagged, type Enc, type Payload } from "@/lib/kit";
 import { copy } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -19,19 +19,19 @@ const TARGETS: [string, string][] = [["169.254.169.254", "AWS, Azure, GCP, Oracl
 const fld = "flex h-[30px] min-w-0 items-center rounded-[3px] border border-rule bg-well px-2.5 font-mono text-body text-bone transition-colors focus-within:border-smoke";
 const seg = "h-[26px] rounded-none border-l border-rule px-[11px] text-body text-smoke first:border-l-0 data-[state=on]:bg-soot-2 data-[state=on]:font-semibold data-[state=on]:text-bone";
 
-// the payload exactly as copied, with the tag marked and the variant code in Ash
+// the payload exactly as copied: the shared host recedes, the tag is marked, and what tells payloads
+// apart (scheme, path, the variant code) stays bright
 export function Marked({ text, tag, code }: { text: string; tag: string; code?: string }) {
-  const words = [tag, code].filter(Boolean).map((w) => w!.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-  const re = new RegExp(`(?<![a-z0-9-])(${words.join("|")})(?![a-z0-9-])`, "g");
-  const out: ReactNode[] = [];
-  let at = 0;
-  for (const m of text.matchAll(re)) {
-    if (m.index! > at) out.push(text.slice(at, m.index));
-    out.push(m[0] === tag ? <em key={m.index} className="bg-mark px-px text-bone not-italic">{m[0]}</em> : <span key={m.index} className="text-ash">{m[0]}</span>);
-    at = m.index! + m[0].length;
-  }
-  out.push(text.slice(at));
-  return <>{out}</>;
+  const pl = useApp((x) => x.status?.payload);
+  return (
+    <>
+      {payloadParts(text, tag, [pl?.host, pl?.longHost, pl?.mailHost], code).map((p, i) =>
+        p.k === "tag" ? <em key={i} className="bg-mark px-px text-bone not-italic">{p.s}</em>
+        : p.k === "host" ? <span key={i} className="text-ash">{p.s}</span>
+        : p.k === "code" ? <span key={i} className="font-[650] text-bone">{p.s}</span>
+        : <span key={i}>{p.s}</span>)}
+    </>
+  );
 }
 
 function Row({ name, code, text, note, tag }: { name: string; code?: string; text: string; note?: string; tag: string }) {
@@ -92,7 +92,8 @@ export function PayloadKit({ section }: { section: string | null }) {
     const t = (p: { lastHitAt?: string | null; plantedAt: string }) => Math.max(p.lastHitAt ? Date.parse(p.lastHitAt) : 0, Date.parse(p.plantedAt) || 0);
     return [...s.probes.values()].filter((p) => !p.retiredAt).sort((a, b) => t(b) - t(a));
   }, [s.probes]);
-  const fallback = s.sel && s.sel !== UNTAGGED && s.probes.has(s.sel) ? s.sel : active[0]?.tag ?? null;
+  // a retired probe isn't offered (its payloads invite firing something you've stopped watching)
+  const fallback = s.sel && s.sel !== UNTAGGED && s.probes.has(s.sel) && !s.probes.get(s.sel)!.retiredAt ? s.sel : active[0]?.tag ?? null;
   const [picked, setPicked] = useState<string | null>(null);
   const tag = picked && s.probes.has(picked) ? picked : fallback;
   const sec: SectionId = (READY.find((x) => x.id === section)?.id ?? "callbacks") as SectionId;
@@ -139,7 +140,7 @@ export function PayloadKit({ section }: { section: string | null }) {
 
       <section aria-label={READY.find((x) => x.id === sec)!.label} className="min-h-0 overflow-auto px-8 pt-4 pb-10 max-[820px]:px-4">
         <div className="max-w-[1000px]">
-          {sec === "callbacks" && <p className="max-w-[72ch] text-body leading-[1.1875rem] text-smoke">Ways to make a target call <span className="font-mono text-bone">{tag}</span>. Each carries a short variant code, shown in grey, in the name or path, so the hit says which one fired.</p>}
+          {sec === "callbacks" && <p className="max-w-[72ch] text-body leading-[1.1875rem] text-smoke">Ways to make a target call <span className="font-mono text-bone">{tag}</span>. The probe's host is dimmed; what differs is bright, including a short variant code (<span className="font-mono font-[650] text-bone">kc1</span>…) so the hit says which one fired.</p>}
           {sec === "bypass" && (
             <>
               <p className="max-w-[72ch] text-body leading-[1.1875rem] text-smoke">For a URL field that only accepts certain hosts: the validator reads the host it expects, the fetcher connects to <span className="font-mono text-bone">{tag}</span>. Plain HTTP, so the code is a DNS label and still shows when the path is dropped.</p>

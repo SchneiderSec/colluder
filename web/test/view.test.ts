@@ -240,3 +240,83 @@ test("mail lines: field names tinted in the header block only, text kept", () =>
   assert.equal(mailLine("Subject: hi", false)[0].k, "plain");
   assert.equal(mailLine("\tfolded: line", true)[0].k, "plain", "a folded continuation isn't a field");
 });
+
+test("crew coats: stable per tag, case-blind, spread over the probes in use", async () => {
+  const { crewCoat, crewIndex } = await import("../src/lib/crew.ts");
+  assert.equal(crewCoat("orca"), crewCoat("orca"));
+  assert.equal(crewCoat("Orca"), crewCoat("orca"));
+  assert.match(crewCoat("orca"), /^oklch\(0\.(66|84) 0\.085 \d+\)$/);
+  const tags = ["orca", "orca-otp-inbox", "mailcheck", "sso-target", "import-ssrf", "healthcheck", "signup7", "avatar", "r4check", "r4xxe", "webhook"];
+  assert.ok(new Set(tags.map(crewIndex)).size >= 7, "eleven tags should wear at least seven coats");
+  // no coat sits on amber's hue (eyes and "new" own it)
+  for (const t of tags) { const h = Number(/ (\d+)\)$/.exec(crewCoat(t))![1]); assert.ok(h < 60 || h > 95, `${t}: hue ${h}`); }
+});
+
+test("crew coats: active probes never share one; earlier probes keep theirs", async () => {
+  const { crewCoats } = await import("../src/lib/crew.ts");
+  const tags = ["orca", "orca-otp-inbox", "mailcheck", "sso-target", "import-ssrf", "healthcheck", "signup7", "avatar", "r4check", "r4xxe", "webhook"];
+  const probes = tags.map((tag, n) => ({ tag, plantedAt: `2026-11-${String(n + 1).padStart(2, "0")}T00:00:00Z` }));
+  const a = crewCoats(probes);
+  assert.equal(new Set(a.values()).size, tags.length);
+  const b = crewCoats([...probes, { tag: "newcomer", plantedAt: "2026-11-30T00:00:00Z" }]);
+  for (const t of tags) assert.equal(b.get(t), a.get(t), `${t} kept its coat`);
+  const c = crewCoats([...probes, ...Array.from({ length: 30 }, (_, n) => ({ tag: `old${n}`, plantedAt: "2026-10-01T00:00:00Z", retiredAt: "2026-10-02T00:00:00Z" }))]);
+  for (const t of tags) assert.equal(c.get(t), a.get(t), `${t}: retired probes pick after the active ones`);
+});
+
+test("crew coats: a retired probe with a late hit is back on the list and picks with the active ones", async () => {
+  const { crewCoats, crewIndex } = await import("../src/lib/crew.ts");
+  // 16 retired probes that already wear every coat, then a late-hit one that must not repeat its active neighbour's
+  const filler = Array.from({ length: 40 }, (_, n) => ({ tag: `gone${n}`, plantedAt: "2026-01-01T00:00:00Z", retiredAt: "2026-01-02T00:00:00Z" }));
+  const active = { tag: "a1", plantedAt: "2026-11-01T00:00:00Z" };
+  const late = { tag: [...Array(200).keys()].map((n) => `late${n}`).find((t) => crewIndex(t) === crewIndex("a1"))!, plantedAt: "2026-11-02T00:00:00Z", retiredAt: "2026-11-03T00:00:00Z", lastHitAt: "2026-11-04T00:00:00Z" };
+  const m = crewCoats([...filler, active, late]);
+  assert.notEqual(m.get(late.tag), m.get("a1"));
+});
+
+test("payload parts: the shared host recedes, the tag and code stand out, text joins back exactly", async () => {
+  const { payloadParts } = await import("../src/lib/kit.ts");
+  const host = "c0ffee12c0ffee12c0ffr8t2vb6ny4hcs.oob.example", short = "k7wq2x.alt.example";
+  const cases = [
+    [`http://kc1.orca-${host}/`, "kc1"], [`https://orca-${host}/k/kc2`, "kc2"], [`kc5@orca-${host}`, "kc5"],
+    [`\\\\kc6.orca-${host}\\k`, "kc6"], [`http://kc1.orca-${short}/`, "kc1"], [`http%3A%2F%2Fkc1.orca-${host}%2F`, "kc1"], [`orca-${host}`, undefined],
+  ] as const;
+  for (const [text, code] of cases) {
+    const parts = payloadParts(text, "orca", [host, short], code);
+    assert.equal(parts.map((p) => p.s).join(""), text);
+    assert.deepEqual(parts.filter((p) => p.k === "tag").map((p) => p.s), ["orca"], text);
+    assert.ok(parts.some((p) => p.k === "host" && p.s.endsWith(text.includes(short) ? short : host)), text);
+    if (code) assert.deepEqual(parts.filter((p) => p.k === "code").map((p) => p.s), [code], text);
+  }
+  // a tag inside another word isn't marked; no hosts given leaves the host plain
+  assert.deepEqual(payloadParts("http://orcas.example/", "orca").map((p) => p.k), ["plain"]);
+});
+
+test("user agents in a few words; browser boilerplate headers recognised", async () => {
+  const { uaShort, isStandardHeader } = await import("../src/lib/headers.ts");
+  const cases: [string, string][] = [
+    ["Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36", "Chrome 150 on macOS"],
+    ["Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0", "Edge 131 on Windows"],
+    ["Mozilla/5.0 (X11; Linux x86_64; rv:133.0) Gecko/20100101 Firefox/133.0", "Firefox 133 on Linux"],
+    ["Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1", "Safari 18 on iOS"],
+    ["Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36", "Chrome 130 on Android"],
+    ["curl/8.5.0", "curl 8.5.0"], ["python-requests/2.32.3", "python-requests 2.32.3"], ["Go-http-client/1.1", "Go-http-client 1.1"],
+    ["colluder-verify/r4", "colluder-verify/r4"],
+    ["Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)", "Googlebot 2.1"],
+    ["", ""],
+  ];
+  for (const [ua, want] of cases) assert.equal(uaShort(ua), want, ua);
+  assert.ok(isStandardHeader("Sec-CH-UA-Platform") && isStandardHeader("accept-encoding"));
+  assert.ok(!isStandardHeader("Host") && !isStandardHeader("User-Agent") && !isStandardHeader("Authorization") && !isStandardHeader("X-Forwarded-For"));
+});
+
+test("crew kinds: the first ten on the list are ten different animals, and keep them as the crew grows", async () => {
+  const { crewKinds, crew, SPECIES } = await import("../src/lib/crew.ts");
+  const tags = ["orca", "orca-otp-inbox", "mailcheck", "sso-target", "import-ssrf", "healthcheck", "signup7", "avatar", "r4check", "r4xxe"];
+  const probes = tags.map((tag, n) => ({ tag, plantedAt: `2026-11-${String(n + 1).padStart(2, "0")}T00:00:00Z` }));
+  const a = crewKinds(probes);
+  assert.equal(new Set(a.values()).size, SPECIES.length);
+  const b = crewKinds([...probes, { tag: "newcomer", plantedAt: "2026-11-30T00:00:00Z" }]);
+  for (const t of tags) assert.equal(b.get(t), a.get(t), `${t} kept its kind`);
+  for (const [, look] of crew(probes)) { assert.ok(SPECIES.includes(look.species)); assert.match(look.coat, /^oklch\(/); }
+});

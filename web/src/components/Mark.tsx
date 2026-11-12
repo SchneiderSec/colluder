@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import type { Species } from "@/lib/crew";
 import { cn } from "@/lib/utils";
 
 // The Colluder mark: a raccoon's bandit mask (Domino), one eye open, one winking.
@@ -8,11 +9,11 @@ const C = { fur: "#9a9084", mask: "#0f0c09", shine: "#f2b33d", hl: "#fff4d6", di
 const MASK = "M4 30C4 22 14 19 24 21C28 22 30 24 32 24C34 24 36 22 40 21C50 19 60 22 60 30C60 39 52 44 44 43C38 42 35 38 32 38C29 38 26 42 20 43C12 44 4 39 4 30Z";
 const L: [number, number] = [19, 31], R: [number, number] = [45, 31], r = 5;
 
-const Open = ({ x, y, k = 1 }: { x: number; y: number; k?: number }) => (
-  <g className="eye"><circle cx={x} cy={y} r={r * k} fill={C.shine} /><circle cx={x + r * 0.35} cy={y - r * 0.38} r={r * 0.3} fill={C.hl} /></g>
+const Open = ({ x, y, k = 1, ink = C.shine }: { x: number; y: number; k?: number; ink?: string }) => (
+  <g className="eye"><circle cx={x} cy={y} r={r * k} fill={ink} /><circle cx={x + r * 0.35} cy={y - r * 0.38} r={r * 0.3} fill={C.hl} /></g>
 );
-const Wink = ({ x, y }: { x: number; y: number }) => (
-  <path className="eye" d={`M${x - r} ${y + 1.5}Q${x} ${y - r * 1.3} ${x + r} ${y + 1.5}`} stroke={C.shine} strokeWidth={r * 0.6} strokeLinecap="round" fill="none" />
+const Wink = ({ x, y, ink = C.shine }: { x: number; y: number; ink?: string }) => (
+  <path className="eye" d={`M${x - r} ${y + 1.5}Q${x} ${y - r * 1.3} ${x + r} ${y + 1.5}`} stroke={ink} strokeWidth={r * 0.6} strokeLinecap="round" fill="none" />
 );
 const Shut = ({ x, y }: { x: number; y: number }) => (
   <path className="eye" d={`M${x - r} ${y - 1}Q${x} ${y + r * 1.1} ${x + r} ${y - 1}`} stroke={C.dim} strokeWidth={r * 0.55} strokeLinecap="round" fill="none" />
@@ -35,6 +36,92 @@ export function MarkSvg({ state = "wink", size = 36, badge = false }: { state?: 
         <g className="paws"><circle cx="24" cy="52" r="5" fill={C.fur} stroke={C.mask} strokeWidth="2" /><circle cx="40" cy="52" r="5" fill={C.fur} stroke={C.mask} strokeWidth="2" /></g>
       )}
       {badge && <circle cx="54" cy="10" r="10" fill={C.shine} stroke="var(--soot)" strokeWidth="3" />}
+    </svg>
+  );
+}
+
+// The crew: every probe is an animal wearing the Colluder's bandit mask (lib/crew.ts deals its kind and
+// coat). One head, one mask, one pair of eyes for all of them; the kind is in the ears, the muzzle and
+// the beak, drawn to still read at 18px. A dark outline keeps light coats clear on light themes.
+// Eyes: a cream wink while armed, shut once retired, and amber (with the badge) only for hits you
+// haven't seen: amber stays the colour of "new".
+const INK = C.mask;
+const LIGHT = "rgba(255,248,235,.55)"; // muzzles, cheeks, faces: lighter fur of the same coat
+const SHADE = "rgba(15,12,9,.3)"; // inner ears
+const CREAM = "#f3ead9"; // beaks and teeth
+const PINK = "#e7a3ad"; // noses and inner ears of the small ones
+const line = { stroke: "rgba(15,12,9,.6)", strokeWidth: 2.5, strokeLinejoin: "round" as const };
+// draw a part, then its mirror image across the face
+const Both = ({ children }: { children: ReactNode }) => <>{children}<g transform="translate(64 0) scale(-1 1)">{children}</g></>;
+const Whiskers = () => <Both><path d="M22 51L7 48M22 54L7 56" stroke={INK} strokeOpacity=".55" strokeWidth="1.6" strokeLinecap="round" /></Both>;
+const Snout = ({ r = 10 }: { r?: number }) => <><ellipse cx="32" cy="52" rx={r} ry={r * 0.72} fill={LIGHT} /><ellipse cx="32" cy="48.5" rx="4.2" ry="3" fill={INK} /></>;
+
+// behind the head (ears, crests) and in front of it (faces, muzzles); the mask and eyes go on top
+const KIND: Record<Species, { back?: (c: string) => ReactNode; front?: (c: string) => ReactNode; top?: ReactNode }> = {
+  raccoon: {
+    // rounded ears, the white brow above the mask, a pale muzzle
+    back: (c) => <Both><path d="M11 28Q7 11 17 9Q25 9 28 18Z" fill={c} {...line} /><path d="M14.5 24Q12.5 14 17.5 13Q22 13.5 23.5 18.5Z" fill={SHADE} /></Both>,
+    front: () => <><path d="M11 31Q32 13 53 31Q32 22.5 11 31Z" fill={LIGHT} /><Snout r={9} /></>,
+  },
+  cat: {
+    back: (c) => <Both><path d="M10 30L12 3L29 17Z" fill={c} {...line} /><path d="M14 23L14.8 10L23 17Z" fill={SHADE} /></Both>,
+    top: <><path d="M28.5 48h7L32 52Z" fill={PINK} /><Whiskers /></>,
+  },
+  fox: {
+    back: (c) => <Both><path d="M9 32L10 0L31 17Z" fill={c} {...line} /><path d="M10.2 13L10 0L17.5 6.5Z" fill={INK} /></Both>,
+    front: () => <path d="M8.5 40Q22 45 32 60Q42 45 55.5 40Q53 57 32 61Q11 57 8.5 40Z" fill={LIGHT} />,
+    top: <circle cx="32" cy="56" r="3.2" fill={INK} />,
+  },
+  bear: {
+    back: (c) => <Both><circle cx="13" cy="18" r="9" fill={c} {...line} /><circle cx="13" cy="18" r="4.5" fill={SHADE} /></Both>,
+    front: () => <Snout r={11} />,
+  },
+  rabbit: {
+    back: (c) => <Both><ellipse cx="23" cy="10" rx="6" ry="13" transform="rotate(-10 23 10)" fill={c} {...line} /><ellipse cx="23" cy="11" rx="2.6" ry="9" transform="rotate(-10 23 11)" fill={PINK} opacity=".75" /></Both>,
+    front: () => <><rect x="29" y="53" width="6" height="5.5" rx="1" fill={CREAM} stroke={INK} strokeOpacity=".5" strokeWidth="1" /><path d="M32 53v5.5" stroke={INK} strokeOpacity=".5" strokeWidth="1" /></>,
+    top: <path d="M29.5 48.5h5L32 51.5Z" fill={PINK} />,
+  },
+  bird: {
+    back: (c) => <><path d="M29 18Q20 8 22 2Q29 7 32 16Z" fill={c} {...line} /><path d="M31 17Q30 5 34 0Q38 7 35 17Z" fill={c} {...line} /><path d="M35 18Q40 7 46 5Q44 13 38 19Z" fill={c} {...line} /></>,
+    top: <path d="M25.5 46h13L32 58Z" fill={CREAM} stroke={INK} strokeOpacity=".6" strokeWidth="1.8" strokeLinejoin="round" />,
+  },
+  monkey: {
+    back: (c) => <Both><circle cx="7" cy="37" r="8" fill={c} {...line} /><circle cx="7" cy="37" r="4.2" fill={LIGHT} /></Both>,
+    front: () => <path d="M14 39Q14 27 26 28.5Q32 30.5 38 28.5Q50 27 50 39Q50 58 32 59.5Q14 58 14 39Z" fill={LIGHT} />,
+    top: <><circle cx="29.6" cy="50.5" r="1.6" fill={INK} /><circle cx="34.4" cy="50.5" r="1.6" fill={INK} /><path d="M27 54.5Q32 57.5 37 54.5" stroke={INK} strokeOpacity=".6" strokeWidth="1.6" fill="none" strokeLinecap="round" /></>,
+  },
+  owl: {
+    // tufts that flare outward, pale discs round the eyes, a short beak and chest feathers
+    back: (c) => <Both><path d="M14 22L1 9L24 15Z" fill={c} {...line} /></Both>,
+    front: () => <><Both><circle cx="21" cy="36" r="12.5" fill={LIGHT} /></Both><Both><path d="M21 54l3.5 3.5L28 54" stroke={LIGHT} strokeWidth="2.2" fill="none" strokeLinecap="round" /></Both></>,
+    top: <path d="M28.5 44h7L32 51.5Z" fill={CREAM} stroke={INK} strokeOpacity=".6" strokeWidth="1.4" strokeLinejoin="round" />,
+  },
+  mouse: {
+    back: (c) => <Both><circle cx="12" cy="17" r="11" fill={c} {...line} /><circle cx="12" cy="17" r="6" fill={PINK} opacity=".6" /></Both>,
+    top: <><circle cx="32" cy="51.5" r="2.6" fill={INK} /><Whiskers /></>,
+  },
+  dog: {
+    front: (c) => <><Both><path d="M11 21Q2 29 5 46Q9 51 14 45Q16 33 19 24Z" fill={c} {...line} /><path d="M11 21Q2 29 5 46Q9 51 14 45Q16 33 19 24Z" fill={SHADE} /></Both><Snout r={10} /></>,
+    top: <path d="M30 57Q32 61.5 34 57Z" fill={PINK} />,
+  },
+};
+
+export function CrewMark({ coat, species = "raccoon", state = "wink", unread = false, size = 22, className }: { coat: string; species?: Species; state?: "wink" | "doze"; unread?: boolean; size?: number; className?: string }) {
+  const k = KIND[species];
+  return (
+    <svg width={size} height={size} viewBox="0 0 64 64" aria-hidden="true" className={cn("flex-none overflow-visible", className)}>
+      {k.back?.(coat)}
+      <ellipse cx="32" cy="38" rx="24" ry="22" fill={coat} {...line} />
+      {k.front?.(coat)}
+      {/* the Colluder's mask and eyes, a size down so the face shows around them */}
+      <g transform="translate(32 36) scale(.8) translate(-32 -31)">
+        <path d={MASK} fill={C.mask} />
+        {unread ? <><Open x={L[0]} y={L[1]} k={1.1} /><Open x={R[0]} y={R[1]} k={1.1} /></>
+          : state === "doze" ? <><Shut x={L[0]} y={L[1]} /><Shut x={R[0]} y={R[1]} /></>
+          : <><Open x={L[0]} y={L[1]} ink={C.hl} /><Wink x={R[0]} y={R[1]} ink={C.hl} /></>}
+      </g>
+      {k.top}
+      {unread && <circle cx="57" cy="7" r="9" fill={C.shine} stroke="var(--soot)" strokeWidth="4" />}
     </svg>
   );
 }

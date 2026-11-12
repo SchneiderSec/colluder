@@ -34,6 +34,7 @@ export interface AppState {
   arrived: number | null; // id that just arrived (row flash)
   lit: string | null; // probe that just got a hit (list flash)
   pulse: number; // increments on every new hit (mark animation)
+  planting: boolean; // the plant form is open (it folds away once a probe is planted)
 }
 
 function load<T>(k: string, d: T): T {
@@ -46,7 +47,7 @@ export function save(k: string, v: unknown) {
 let state: AppState = {
   loaded: false, loadError: null, status: null, probes: new Map(), untagged: null, list: [], details: new Map(), enrich: new Map(),
   seen: load<Record<string, number> | null>("colluder.seen", null) ?? {}, openSeen: {}, sel: null, hit: null, hitPicked: false, older: {}, olderDone: {}, tab: "hits", ruleDrafts: {}, ruleSeed: null,
-  stream: { state: "connecting", since: Date.now(), lastEventAt: 0 }, arrived: null, lit: null, pulse: 0,
+  stream: { state: "connecting", since: Date.now(), lastEventAt: 0 }, arrived: null, lit: null, pulse: 0, planting: false,
 };
 const firstVisit = load("colluder.seen", null) == null;
 const subs = new Set<() => void>();
@@ -179,6 +180,8 @@ export function setTab(tab: ProbeTab, push = true) {
   if (push) writeHash();
 }
 export const selectHit = (id: number | null, picked = true) => set({ hit: id, hitPicked: picked && id != null });
+// the plant form: opened from the Plant button (or p, /), folded again once the probe is planted
+export const setPlanting = (planting: boolean) => { if (state.planting !== planting) set({ planting }); };
 
 export async function loadDetail(id: number) {
   if (state.details.has(id)) return;
@@ -198,8 +201,8 @@ export async function plant(tag: string, target: string, technique: string, rule
   set({ ruleSeed: seed && !p.httpRule ? { tag: p.tag, mode: seed } : null });
   if (seed) setTab("http", false);
   select(p.tag);
-  if (rule) { toast(`Planted ${tag}: it now serves ${served ?? "its rule"}. Copy a payload above.`); return; }
-  toast(existed ? `${tag} already planted: target updated` : seed ? `Planted ${tag}: set up its ${seed === "file" ? "hosted file" : "redirect"}, then copy a payload` : `Planted ${tag}: copy a payload above`);
+  if (rule) { toast(`Planted ${tag}: it now serves ${served ?? "its rule"}. Copy a payload from its header.`); return; }
+  toast(existed ? `${tag} already planted: target updated` : seed ? `Planted ${tag}: set up its ${seed === "file" ? "hosted file" : "redirect"}, then copy a payload` : `Planted ${tag}: copy a payload`);
 }
 export async function patchProbe(tag: string, body: { target?: string; note?: string; trigger?: string; retired?: boolean; muted?: boolean }) {
   const p = await api<Probe>(`/api/probes/${tag}`, { method: "PATCH", body });

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Bell, BellOff, ChevronRight, Download, Eraser, FileText, RotateCcw, Search, Trash2, X } from "lucide-react";
-import { useApp, keyOf, markSeen, selectHit, patchProbe, saveRule, fetchTrigger, fetchReport, chatterOf, setTab, unreadFor, loadOlder, searchHits, exportUrl, deleteProbe, clearProbe, restoreProbe, PROBE_TABS, type AppState, type ProbeTab } from "@/store";
+import { Bell, BellOff, ChevronRight, Download, Ellipsis, Eraser, FileText, Pencil, RotateCcw, Search, Trash2, Archive, X } from "lucide-react";
+import { useApp, getState, keyOf, markSeen, selectHit, patchProbe, saveRule, fetchTrigger, fetchReport, chatterOf, setTab, unreadFor, loadOlder, searchHits, exportUrl, deleteProbe, clearProbe, restoreProbe, PROBE_TABS, type AppState, type ProbeTab } from "@/store";
 import { lastClearFor, probeState } from "@/lib/probeState";
 import { dnsSteps, mostSpecific } from "@/lib/dns";
 import { stageOf } from "@/lib/stage";
@@ -17,6 +17,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Chip, LineForm, NewDot, NilDot, TechniqueMark, TypeChip } from "./bits";
 import { HitDetail } from "./HitDetail";
 import { HttpRuleTab } from "./HttpRule";
+import { CrewMark } from "./Mark";
+import { aKind, crewOf, lookOf, STRAY_LOOK } from "@/lib/crew";
+import { PayloadCopy, PayloadRows } from "./Composer";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { shownId } from "@/lib/kit";
 import { useDisplay, type HitsHeight } from "@/lib/display";
@@ -64,7 +68,7 @@ function Head({ s }: { s: AppState }) {
   const [del, setDel] = useState(false);
   const [clr, setClr] = useState(false);
   const [resetRule, setResetRule] = useState(true);
-  const cls = "flex min-w-0 items-center gap-3.5 border-b border-rule pr-5 pl-6 max-[820px]:flex-wrap max-[820px]:gap-2 max-[820px]:px-3.5 max-[820px]:py-2.5";
+  const cls = "flex min-h-[52px] min-w-0 items-center gap-3.5 border-b border-rule pr-5 pl-6 max-[820px]:flex-wrap max-[820px]:gap-2 max-[820px]:px-3.5 max-[820px]:py-2.5";
   if (s.sel === UNTAGGED) {
     return (
       <div className={cls}>
@@ -78,34 +82,41 @@ function Head({ s }: { s: AppState }) {
   const p = s.probes.get(s.sel!)!;
   const st = probeState(p);
   const canDelete = st === "retired" || st === "late" || st === "unplanted";
+  const fail = (e: unknown) => toast((e as Error).message, true);
+  const mute = () => patchProbe(p.tag, { muted: !p.muted }).then(() => toast(p.muted ? `Alerts on for ${p.tag}` : `Muted ${p.tag}: no Discord posts, hits still recorded`), fail);
   return (
+    <div className="min-w-0">
+    {/* the probe in one line: what it is and whether it listens, the payloads to copy, the report;
+        everything else is in the menu */}
     <div className={cn(cls, "border-b-0")}>
-      <span className="font-mono text-headline whitespace-nowrap">{p.tag}</span>
+      <span className="flex items-center gap-2.5 font-mono text-headline whitespace-nowrap">
+        <span title={st === "unplanted" ? undefined : `${p.tag}'s colluder: ${aKind(lookOf(crewOf(s.probes), p.tag).species)}`} className="flex">
+          <CrewMark size={26} {...(st === "unplanted" ? STRAY_LOOK : lookOf(crewOf(s.probes), p.tag))} state={p.retiredAt || st === "unplanted" ? "doze" : "wink"} />
+        </span>{p.tag}
+      </span>
       {st === "unplanted" ? <Chip grey>not planted</Chip>
         : p.retiredAt ? <span className="flex items-center gap-1.5 text-body whitespace-nowrap text-ash" title="Out of the active list. New hits on this tag are still recorded."><LineForm kind="off" className="w-4" />{st === "late" ? "Retired · late hit" : "Retired"}</span>
-        : <span className="flex items-center gap-1.5 text-body font-[550] whitespace-nowrap text-bone" title="Planted and listening: a callback shows up here within seconds"><LineForm kind="live" signal="listen" seed={p.tag} className="w-4" />Armed</span>}
-      {st !== "unplanted" && <TechniqueMark technique={p.technique} className="text-body font-[550]" />}
-      <div className="flex min-w-0 gap-3.5 overflow-hidden text-body whitespace-nowrap text-smoke">
-        <span className="truncate" title={p.note || undefined}>{p.target || "No target noted"}</span>
-        <span className="text-ash">Planted <span className="text-smoke">{dayOrTime(p.plantedAt)}</span></span>
-        {p.note && <span className="truncate text-ash" title={p.note}>Note: {p.note}</span>}
-      </div>
-      <div className="ml-auto flex gap-1.5">
-        {s.status?.discord.available && (
-          <Button variant="ghost" size="icon" aria-pressed={!!p.muted} aria-label={p.muted ? `Unmute Discord alerts for ${p.tag}` : `Mute Discord alerts for ${p.tag}`}
-            title={p.muted ? "Alerts muted: hits are recorded and shown, but not posted to Discord. Click to unmute." : "Mute Discord alerts for this probe (hits are still recorded)"}
-            className={cn(p.muted && "text-ash")}
-            onClick={() => patchProbe(p.tag, { muted: !p.muted }).then(() => toast(p.muted ? `Alerts on for ${p.tag}` : `Muted ${p.tag}: no Discord posts, hits still recorded`), (e) => toast((e as Error).message, true))}>
-            {p.muted ? <BellOff /> : <Bell />}
-          </Button>
-        )}
+        : <span className="flex items-center gap-1.5 text-body font-[550] whitespace-nowrap text-bone" title={`Planted ${dayOrTime(p.plantedAt)} UTC and listening: a callback shows up here within seconds`}><LineForm kind="live" signal="listen" seed={p.tag} className="w-4" />Armed</span>}
+      {st !== "unplanted" && p.technique !== "callback" && <TechniqueMark technique={p.technique} className="text-body font-[550]" />}
+      {!!p.muted && <BellOff aria-label="Discord alerts muted" className="size-3.5 flex-none text-ash" strokeWidth={1.5} />}
+      <span className={cn("min-w-0 truncate text-body", p.target ? "text-smoke" : "text-ash")} title={[p.target, p.note && `Note: ${p.note}`].filter(Boolean).join("\n") || undefined}>{p.target || "No target noted"}</span>
+      <div className="ml-auto flex flex-none items-center gap-1.5 max-[820px]:ml-0 max-[820px]:flex-1 max-[820px]:basis-full max-[820px]:flex-wrap">
+        <PayloadCopy tag={p.tag} />
         <Button variant="quiet" title={`Markdown for a bug report: summary, ${p.triggerBytes ? "the triggering request, " : ""}timeline, sources, decoded exfil and the first web request`}
-          onClick={() => fetchReport(p.tag).then((md) => copy(md, `${p.tag} report`), (e) => toast((e as Error).message, true))}><FileText />Copy report</Button>
-        {!!p.hits && <Button variant="quiet" title="Hide this probe's hits so it starts clean. Restore brings them back." onClick={() => setClr(true)}><Eraser />Clear hits…</Button>}
-        <Button variant="quiet" onClick={() => setEdit(true)}>Edit</Button>
-        {st !== "unplanted" && <Button variant="quiet" onClick={() => (p.retiredAt ? patchProbe(p.tag, { retired: false }).then(() => toast(`Restored ${p.tag}`), (e) => toast((e as Error).message, true)) : setRetire(true))}>{p.retiredAt ? "Restore" : "Retire…"}</Button>}
-        {canDelete && <Button variant="destructive" onClick={() => setDel(true)}><Trash2 />Delete…</Button>}
+          onClick={() => fetchReport(p.tag).then((md) => copy(md, `${p.tag} report`), fail)}><FileText />Copy report</Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" aria-label={`More for ${p.tag}`} title="Edit, mute, clear, retire"><Ellipsis /></Button></DropdownMenuTrigger>
+          <DropdownMenuContent>
+            <DropdownMenuItem onSelect={() => setEdit(true)}><Pencil />Edit target, note, trigger…</DropdownMenuItem>
+            {s.status?.discord.available && <DropdownMenuItem onSelect={mute}>{p.muted ? <><Bell />Unmute Discord alerts</> : <><BellOff />Mute Discord alerts</>}</DropdownMenuItem>}
+            {!!p.hits && <DropdownMenuItem onSelect={() => setClr(true)}><Eraser />Clear hits…</DropdownMenuItem>}
+            {st !== "unplanted" && <DropdownMenuItem onSelect={() => (p.retiredAt ? patchProbe(p.tag, { retired: false }).then(() => toast(`Restored ${p.tag}`), fail) : setRetire(true))}>{p.retiredAt ? <><RotateCcw />Restore</> : <><Archive />Retire…</>}</DropdownMenuItem>}
+            {canDelete && <><DropdownMenuSeparator /><DropdownMenuItem destructive onSelect={() => setDel(true)}><Trash2 />Delete…</DropdownMenuItem></>}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
+    </div>
+    <PayloadRows compact tag={p.tag} className="px-6 pb-2.5 max-[820px]:px-3.5" />
       <AlertDialog open={del} onOpenChange={setDel}>
         <AlertDialogContent className="max-w-[460px] border-rule bg-soot-1">
           <AlertDialogHeader>
@@ -277,13 +288,6 @@ function ProbeTabs({ s, p, right }: { s: AppState; p: Probe; right?: React.React
   );
 }
 
-function autoHit(hits: Interaction[]) {
-  const top = hits[0];
-  if (!top) return null;
-  const near = hits.filter((i) => isoMs(top.timestamp) - isoMs(i.timestamp) < 5000);
-  return (near.find((i) => i.protocol !== "dns") ?? top).id;
-}
-
 export function ProbePane() {
   const s = useApp((x) => x);
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
@@ -336,10 +340,19 @@ export function ProbePane() {
 
   // until the researcher picks a hit, the selection follows the newest one, preferring a web hit over
   // the DNS lookups that arrive around it (a fetch usually lands a moment after its lookup)
-  const hitId = s.hitPicked && hits.some((i) => i.id === s.hit) ? s.hit : autoHit(hits.filter((i) => !chatterAll.has(i.id) && !steps.has(i.id)).concat(hits.slice(0, 1)));
-  useEffect(() => { if (hitId !== s.hit && hitId != null) selectHit(hitId, false); }, [hitId, s.hit]);
+  // a hit's detail opens only when you pick one; picking it again, Esc or its close button folds it
+  const hitId = s.hit != null && hits.some((i) => i.id === s.hit) ? s.hit : null;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || getState().hit == null) return;
+      if (/^(INPUT|TEXTAREA|SELECT)$/.test((document.activeElement as HTMLElement)?.tagName) || document.querySelector("[role=dialog],[role=alertdialog],[role=menu]")) return;
+      selectHit(null);
+    };
+    addEventListener("keydown", onKey);
+    return () => removeEventListener("keydown", onKey);
+  }, []);
 
-  const wrap = "@container/probe grid min-h-0 min-w-0 grid-rows-[52px_minmax(0,auto)_minmax(0,1fr)] max-[820px]:grid-rows-[auto_auto_auto]";
+  const wrap = "@container/probe grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,auto)_minmax(0,1fr)] max-[820px]:grid-rows-[auto_auto_auto]";
   if (!s.sel) {
     return (
       <section className={wrap}>
@@ -353,10 +366,10 @@ export function ProbePane() {
   const p = s.probes.get(s.sel);
   // a tagged probe gets the tab strip; Unregistered only has hits
   const tabs = p ? <ProbeTabs s={s} p={p} /> : null;
-  const tabbed = p ? "grid-rows-[52px_35px_minmax(0,auto)_minmax(0,1fr)]" : "";
+  const tabbed = p ? "grid-rows-[auto_35px_minmax(0,auto)_minmax(0,1fr)]" : "";
   if (p && s.tab !== "hits") {
     return (
-      <section className={cn(wrap, "grid-rows-[52px_35px_minmax(0,1fr)]")} aria-label={`Probe ${s.sel}`}>
+      <section className={cn(wrap, "grid-rows-[auto_35px_minmax(0,1fr)]")} aria-label={`Probe ${s.sel}`}>
         <Head s={s} />{tabs}<HttpRuleTab p={p} />
       </section>
     );
@@ -376,13 +389,13 @@ export function ProbePane() {
           {!!own?.clearedCount && <p className="mb-2.5 flex flex-wrap items-center gap-x-2 text-bone">Cleared {plural(own.clearedCount, "hit")} at {dayOrTime(own.clearedAt)} UTC.<Button variant="quiet" size="sm" onClick={() => restoreProbe(p?.tag ?? null).catch((e) => toast((e as Error).message, true))}><RotateCcw />Restore them</Button></p>}
           {/* one sentence for the probe's actual state: retired and never-planted probes aren't "waiting" */}
           {st === "retired" ? (
-            <p><b className="font-semibold text-bone">Retired {dayOrTime(p!.retiredAt)} UTC · {cleared ? `no hits since the clear at ${dayOrTime(cleared)}` : "no hits stored"}.</b> New hits on this tag are still recorded and bring it back to the list. Restore it to use its payloads again, or delete it if you're done with it.</p>
+            <p><b className="font-semibold text-bone">Retired {dayOrTime(p!.retiredAt)} UTC · {cleared ? `no hits since the clear at ${dayOrTime(cleared)}` : "no hits stored"}.</b> New hits on this tag are still recorded and bring it back to the list. Delete it from the ⋯ menu if you're done with it.</p>
           ) : st === "unplanted" ? (
-            <p><b className="font-semibold text-bone">Nobody planted {p!.tag}.</b> A request named it{cleared ? `, and its hits went in the clear at ${dayOrTime(cleared)}` : ""}. Delete it, or plant it above to keep its hits under a target.</p>
+            <p><b className="font-semibold text-bone">Nobody planted {p!.tag}.</b> A request named it{cleared ? `, and its hits went in the clear at ${dayOrTime(cleared)}` : ""}. Delete it, or plant it to keep its hits under a target.</p>
           ) : (
           <>
           <p>
-            <b className="font-semibold text-bone">Armed since {dayOrTime(p?.plantedAt)} UTC · {cleared ? `no hits since the clear at ${dayOrTime(cleared)}` : "no hits yet"}.</b> Waiting for the target to reach any payload above.{" "}
+            <b className="font-semibold text-bone">Armed since {dayOrTime(p?.plantedAt)} UTC · {cleared ? `no hits since the clear at ${dayOrTime(cleared)}` : "no hits yet"}.</b> Waiting for the target to reach one of its payloads.{" "}
             {!capturing ? null : pathBroken
               ? <b className="font-semibold text-bone">But the outside check is failing (see the banner above): callbacks may not be reaching Colluder, so this silence proves nothing yet.</b>
               : pathOk ? `The engine is capturing and the outside check passed ${ago(Date.now() - isoMs(chk!.last!.finishedAt))}, so a callback will show up here within seconds.`
@@ -413,7 +426,7 @@ export function ProbePane() {
   let stopGiven = selShown;
   const takeStop = () => { if (stopGiven) return false; stopGiven = true; return true; };
   const row = (i: Interaction, child?: boolean) => (
-    <HitRow key={i.id} stop={takeStop()} child={child} i={i} chatter={chatter.get(i.id)} inProbe={s.sel !== UNTAGGED} step={steps.get(i.id)} self={selfOf(i.remoteAddress)} open={open} sel={i.id === hitId} arrived={i.id === s.arrived} onClick={() => selectHit(i.id)} />
+    <HitRow key={i.id} stop={takeStop()} child={child} i={i} chatter={chatter.get(i.id)} inProbe={s.sel !== UNTAGGED} step={steps.get(i.id)} self={selfOf(i.remoteAddress)} open={open} sel={i.id === hitId} arrived={i.id === s.arrived} onClick={() => selectHit(i.id === hitId ? null : i.id)} />
   );
   const rows: React.ReactNode[] = [];
   for (const g of groupHits(hits)) {
@@ -432,7 +445,7 @@ export function ProbePane() {
     const sel = !exp && items.some((i) => i.id === hitId);
     // the burst's own lookups; resolver chatter shown alongside isn't this probe's, so it isn't counted
     const own = items.filter((i) => !chatter.has(i.id));
-    const toggle = () => { const n = new Set(expanded); if (exp) n.delete(first.id); else n.add(first.id); setExpanded(n); selectHit((own.at(-1) ?? first).id); };
+    const toggle = () => { const n = new Set(expanded); if (exp) n.delete(first.id); else n.add(first.id); setExpanded(n); };
     rows.push(
       <tr key={`g${first.id}`} tabIndex={sel || takeStop() ? 0 : -1} aria-selected={sel} aria-expanded={exp} aria-label={`${items.length} DNS queries, ${exp ? "expanded" : "collapsed"}`} onClick={toggle} onKeyDown={rowKeys(toggle)} className={cn("group cursor-pointer", items.some((i) => i.id === s.arrived) && "[&>td]:animate-lit")}>
         <Td sel={sel} first>
@@ -477,12 +490,12 @@ export function ProbePane() {
   const firstHit = all[all.length - 1];
   const ownCount = all.filter((i) => keyOf(i) === s.sel).length;
   return (
-    <section className={cn(wrap, tabbed)} aria-label={`Probe ${s.sel === UNTAGGED ? "No tag" : s.sel}`}>
+    <section className={cn(wrap, tabbed, hitId == null && (p ? "grid-rows-[auto_35px_minmax(0,1fr)]" : "grid-rows-[auto_minmax(0,1fr)]"))} aria-label={`Probe ${s.sel === UNTAGGED ? "No tag" : s.sel}`}>
       <Head s={s} />{p && <ProbeTabs s={s} p={p} right={<div className="ml-auto hidden min-w-0 flex-1 items-center justify-end gap-2.5 pl-6 @min-[900px]/probe:flex">{filterBar("tabs")}</div>} />}
       <div id={p ? "probe-panel" : undefined} role={p ? "tabpanel" : undefined} aria-labelledby={p ? "probe-tab-hits" : undefined} className="flex min-h-0 flex-col">
       {/* the filters sit in the tab strip when the pane is wide; below it otherwise (and on Unregistered) */}
       <div className={cn("flex flex-none flex-wrap items-center gap-x-2.5 gap-y-1.5 border-b border-rule-2 py-1.5 pr-5 pl-6 max-[820px]:px-3.5", p && "@min-[900px]/probe:hidden")}>{filterBar("bar")}</div>
-      <div className={cn("min-h-0 overflow-auto max-[820px]:max-h-none", HITS_HEIGHT[hitsHeight])}>
+      <div className={cn("min-h-0 overflow-auto max-[820px]:max-h-none", hitId != null && HITS_HEIGHT[hitsHeight])}>
         <table className="w-full table-fixed border-collapse">
           <colgroup><col className="w-[112px] max-[820px]:w-[84px]" /><col className="w-[116px] max-[820px]:w-[96px]" /><col className="w-[106px] max-[820px]:w-[96px]" /><col className="w-[218px] max-[820px]:w-auto" /><col className="max-[820px]:w-0" /></colgroup>
           <thead>
@@ -512,6 +525,7 @@ export function ProbePane() {
         <div className="flex items-center gap-2.5 px-6 py-1.5 text-label text-ash">
           <hr className="flex-1 border-0 border-t border-rule-2" />
           {p ? `Planted ${dayOrTime(p.plantedAt)} UTC · first hit ${hmsms(firstHit.timestamp)}` : `First hit ${dayOrTime(firstHit.timestamp)} UTC · ${plural(hits.length, "hit")}`}
+          {hitId == null && <span className="text-smoke">· pick a hit to read it</span>}
           {(() => { const o = p ?? s.untagged; return o?.clearedCount ? <RestoreLink tag={p?.tag ?? null} count={o.clearedCount} at={o.clearedAt!} /> : null; })()}
           <hr className="flex-1 border-0 border-t border-rule-2" />
         </div>

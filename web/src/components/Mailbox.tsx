@@ -10,7 +10,9 @@ import { ago, dayOrTime, isoMs, plural } from "@/lib/format";
 import { copy, toast } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { LineForm, NewDot, NilDot, useTick } from "./bits";
+import { LineForm, useTick } from "./bits";
+import { CrewMark } from "./Mark";
+import { aKind, crew, STRAY_LOOK } from "@/lib/crew";
 import { cn } from "@/lib/utils";
 import { MailLine } from "./HttpView";
 
@@ -51,6 +53,12 @@ export function Mailbox({ arg }: { arg: string | null }) {
     const f = filter.trim().toLowerCase();
     return (rows ?? []).filter((r) => !f || r.localPart.includes(f) || (r.subject ?? "").toLowerCase().includes(f) || (r.mailFrom ?? "").toLowerCase().includes(f));
   }, [rows, filter]);
+  // each address is a member of the crew: its coat comes from its local part (first one here picks first)
+  const coats = useMemo(() => {
+    const first = new Map<string, string>();
+    for (const r of rows ?? []) if (!first.has(r.localPart) || r.receivedAt < first.get(r.localPart)!) first.set(r.localPart, r.receivedAt);
+    return crew([...first].map(([tag, plantedAt]) => ({ tag, plantedAt })));
+  }, [rows]);
   const sel = arg && /^\d+$/.test(arg) ? Number(arg) : shown[0]?.id ?? null;
 
   return (
@@ -70,13 +78,14 @@ export function Mailbox({ arg }: { arg: string | null }) {
           </label>
         </div>
         {mb && (
-          <p className="mt-2 flex flex-wrap items-center gap-x-2 text-body text-smoke">
+          <p className="mt-2 flex flex-wrap items-center gap-x-2 text-body text-smoke"
+            title={[mb.live && `Receiving on ${mb.smtp!.join(", ")}`, mb.hosts.length > 1 && `Also @${mb.hosts.filter((h) => h !== mb.host).join(", @")}`,
+              mb.lastLookup && `Last looked up ${ago(Date.now() - isoMs(mb.lastLookup.at))} (${mb.lastLookup.protocol.toUpperCase()})`].filter(Boolean).join("\n") || undefined}>
             <LineForm kind={mb.live ? "live" : "down"} signal="sparse" className={mb.live ? "text-bone" : "text-bad"} />
             {mb.live
-              ? <span>Receiving on <span className="font-mono text-bone">{mb.smtp!.join(", ")}</span></span>
+              ? <span>Receiving</span>
               : <span className="text-bad">Not receiving yet: mail for this box still goes to interactsh. The operator runs <code className="font-mono text-bone">sudo ~/tools/colluder/deploy/smtp-front.sh</code></span>}
-            <span className="text-ash">· kept {plural(mb.retentionDays, "day")} · {plural(mb.count, "message")}{mb.hosts.length > 1 ? ` · also @${mb.hosts.filter((h) => h !== mb.host).join(", @")}` : ""}
-              {mb.lastLookup ? ` · last looked up ${ago(Date.now() - isoMs(mb.lastLookup.at))} ago (${mb.lastLookup.protocol.toUpperCase()})` : ""}</span>
+            <span className="text-ash">· {plural(mb.count, "message")}, kept {plural(mb.retentionDays, "day")}</span>
           </p>
         )}
       </header>
@@ -89,8 +98,8 @@ export function Mailbox({ arg }: { arg: string | null }) {
               {shown.map((r) => (
                 <li key={r.id}>
                   <a href={`#mailbox/${r.id}`} aria-current={r.id === sel ? "true" : undefined}
-                    className={cn("grid grid-cols-[6px_minmax(0,1fr)_auto] items-start gap-x-2.5 border-b border-rule-2 px-5 py-[11px] no-underline hover:bg-soot-1", r.id === sel && "bg-soot-2 hover:bg-soot-2")}>
-                    <span className="pt-1.5">{r.id > seenAtOpen ? <NewDot title="Arrived since your last visit" /> : <NilDot />}</span>
+                    className={cn("grid grid-cols-[30px_minmax(0,1fr)_auto] items-start gap-x-2.5 border-b border-rule px-4 py-[11px] no-underline hover:bg-soot-1", r.id === sel && "bg-soot-2 hover:bg-soot-2")}>
+                    <span className="pt-px" title={[`${r.localPart}: ${aKind((coats.get(r.localPart) ?? STRAY_LOOK).species)}`, r.id > seenAtOpen && "Arrived since your last visit"].filter(Boolean).join(" · ")}><CrewMark size={30} {...(coats.get(r.localPart) ?? STRAY_LOOK)} unread={r.id > seenAtOpen} /></span>
                     <span className="min-w-0">
                       <span className="block truncate font-mono text-title font-[650] text-bone">{r.localPart}</span>
                       <span className="block truncate text-body text-bone">{r.subject || <span className="text-ash">(no subject)</span>}</span>
@@ -148,7 +157,7 @@ function Message({ id }: { id: number }) {
         <h2 className="text-title font-[650] break-words text-bone">{m.subject || <span className="text-ash">(no subject)</span>}</h2>
         <dl className="mt-2 grid grid-cols-[88px_minmax(0,1fr)] gap-x-4 gap-y-1 text-body">
           <dt className="text-smoke">To</dt><dd className="min-w-0 font-mono break-all text-bone">{m.rcpt}</dd>
-          <dt className="text-smoke">From</dt><dd className="min-w-0 break-words text-bone">{m.from || <span className="text-ash">none</span>}{m.mailFrom !== null && <span className="text-ash"> · envelope <span className="font-mono">{m.mailFrom || "<>"}</span></span>}</dd>
+          <dt className="text-smoke">From</dt><dd className="min-w-0 break-words text-bone" title={m.mailFrom !== null ? `Envelope sender (MAIL FROM): ${m.mailFrom || "<>"}` : undefined}>{m.from || <span className="text-ash">none</span>}</dd>
           <dt className="text-smoke">Received</dt><dd className="text-bone"><time dateTime={m.receivedAt}>{m.receivedAt.replace("T", " ").slice(0, 19)} UTC</time>
             <span className="text-ash"> · from <span className="font-mono">{m.remoteAddress}</span>{m.helo ? <> (<span className="font-mono">{m.helo}</span>)</> : null} · {m.tls ? m.tls : "no TLS"} · {plural(m.size, "byte")}</span></dd>
           {m.attachments.length > 0 && <><dt className="text-smoke">Attached</dt><dd className="text-bone">{m.attachments.map((a) => `${a.filename ?? "unnamed"} (${a.contentType}, ${plural(a.size, "byte")})`).join(" · ")}</dd></>}
@@ -196,10 +205,9 @@ function Message({ id }: { id: number }) {
       </div>
 
       <div className="mt-4 flex flex-wrap items-center gap-3">
-        <ToggleGroup type="single" value={view} onValueChange={(v) => v && setView(v as View)} aria-label="Show" className="overflow-hidden rounded-[3px] border border-rule">
+        <ToggleGroup type="single" value={view} onValueChange={(v) => v && setView(v as View)} aria-label="Show" title="Shown as text; links aren't live" className="overflow-hidden rounded-[3px] border border-rule">
           {([["text", "Text"], ["html", "HTML source"], ["headers", "Headers"], ["raw", "Exact bytes"]] as [View, string][]).map(([v, l]) => <ToggleGroupItem key={v} value={v} className={seg}>{l}</ToggleGroupItem>)}
         </ToggleGroup>
-        <span className="text-label text-ash">Shown as text; links aren't live</span>
         <span className="ml-auto flex items-center gap-1">
           <Button variant="ghost" size="sm" onClick={() => copy(body, view === "raw" ? "Message" : "Text")}><Copy />Copy</Button>
           <Button variant="quiet" size="sm" asChild><a href={`/api/mail/${id}/raw`} download><Download />.eml</a></Button>
