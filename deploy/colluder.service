@@ -8,7 +8,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 UMask=0077
-WorkingDirectory=%h/work/tools/oob-dashboard
+WorkingDirectory=%h/tools/colluder
 EnvironmentFile=-%h/.config/colluder/colluder.env
 ExecStart=%h/.nvm/versions/node/v26.1.0/bin/node server.mjs
 # the tailnet address may not exist yet at boot; keep retrying until it binds

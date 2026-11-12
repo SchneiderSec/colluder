@@ -10,7 +10,7 @@ Type=simple
 User=user
 Group=user
 UMask=0077
-WorkingDirectory=/home/user/work/tools/oob-dashboard
+WorkingDirectory=/home/user/tools/colluder
 # written by the cutover script: upstream addresses interactsh actually bound
 EnvironmentFile=-/home/user/.config/colluder/edge.env
 ExecStart=/home/user/.nvm/versions/node/v26.1.0/bin/node edge.mjs

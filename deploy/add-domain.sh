@@ -3,14 +3,14 @@
 # Payloads keep using the current domain; this makes the new one answer, get its own wildcard
 # certificate, and pass the outside check, so the switch later is one setting.
 #   Run as root, after pointing the domain's nameservers at ns1/ns2.<domain> (glue: this box's IP):
-#     sudo tools/oob-dashboard/deploy/add-domain.sh alt.example [--force]
-#   Undo:  sudo tools/oob-dashboard/deploy/add-domain.sh --rollback
+#     sudo ~/tools/colluder/deploy/add-domain.sh alt.example [--force]
+#   Undo:  sudo ~/tools/colluder/deploy/add-domain.sh --rollback
 # interactsh restarts once (DNS for the domains is down for a few seconds). No token is read or printed.
 set -euo pipefail
 umask 077
 
 U=user; H=/home/$U; UID_U=$(id -u $U)
-APP=$H/work/tools/oob-dashboard
+APP=$H/tools/colluder
 DATA=$H/.local/share/colluder
 NODE=$H/.nvm/versions/node/v26.1.0/bin/node
 PUB=203.0.113.10

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Undo the phase 2 cutover: stop colluder-edge and put interactsh back on :80/:443.
 # Keeps the rotated token and the systemd-managed interactsh (no hand-started server needed).
-# Run as root:   sudo tools/oob-dashboard/deploy/rollback-phase2.sh
+# Run as root:   sudo ~/tools/colluder/deploy/rollback-phase2.sh
 set -euo pipefail
 [[ $EUID -eq 0 ]] || { echo "run with sudo" >&2; exit 1; }
 PUB=203.0.113.10

@@ -96,7 +96,7 @@ function errorField(msg?: string) {
     [/^Body/, "body"], [/^(File must|Preset)/, "preset"], [/^Delay/, "delay"], [/^Content type/, "contentType"], [/HTTP, HTTPS or both/, "schemes"]] as [RegExp, string][]) if (re.test(msg)) return f;
   return null;
 }
-const CUTOVER = "sudo ~/work/tools/oob-dashboard/deploy/cutover-phase2.sh";
+const CUTOVER = "sudo ~/tools/colluder/deploy/cutover-phase2.sh";
 const fld = "flex h-[30px] min-w-0 items-center gap-2 rounded-[3px] border border-rule bg-well px-2.5 font-mono text-body text-bone transition-colors focus-within:border-smoke";
 const inputCls = "min-w-0 flex-1 bg-transparent outline-none placeholder:text-ash";
 const seg = "h-[26px] rounded-none border-l border-rule px-[11px] text-body text-smoke first:border-l-0 data-[state=on]:bg-soot-2 data-[state=on]:font-semibold data-[state=on]:text-bone";

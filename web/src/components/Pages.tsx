@@ -16,7 +16,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import type { Status } from "@/lib/types";
 
 function edgeRows(e: Status["edge"]): [string, ReactNode][] {
-  if (!e || e.state === "absent") return [["State", <span className="text-smoke">Not installed yet (before the cutover). HTTP rules are saved, but interactsh still answers the internet. To go live: <code className="font-mono">sudo ~/work/tools/oob-dashboard/deploy/cutover-phase2.sh</code> (see PHASE2.md).</span>]];
+  if (!e || e.state === "absent") return [["State", <span className="text-smoke">Not installed yet (before the cutover). HTTP rules are saved, but interactsh still answers the internet. To go live: <code className="font-mono">sudo ~/tools/colluder/deploy/cutover-phase2.sh</code> (see PHASE2.md).</span>]];
   const word = { running: "answering", stale: "silent (no heartbeat for 20 s)", stopped: "stopped", unreadable: `status unreadable: ${e.detail ?? ""}`, absent: "" }[e.state];
   const rows: [string, ReactNode][] = [["State", <span className={e.state === "running" ? "text-bone" : "font-semibold text-bad"}>{word}</span>]];
   if (e.listen) rows.push(["Listening", <code className="font-mono text-bone">{[e.listen.http, e.listen.https, e.listen.dns && `${e.listen.dns} (DNS)`].filter(Boolean).join(" · ")}</code>]);

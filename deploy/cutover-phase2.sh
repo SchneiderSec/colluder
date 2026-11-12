@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Phase 2 cutover (PHASE2.md): put colluder-edge in front of interactsh on :80/:443 and rotate the
-# interactsh auth token. Run as root:   sudo tools/oob-dashboard/deploy/cutover-phase2.sh [--force]
-# Rollback:                            sudo tools/oob-dashboard/deploy/rollback-phase2.sh
+# interactsh auth token. Run as root:   sudo ~/tools/colluder/deploy/cutover-phase2.sh [--force]
+# Rollback:                            sudo ~/tools/colluder/deploy/rollback-phase2.sh
 # The token is never printed and never placed on a command line.
 set -euo pipefail
 umask 077
 
 U=user; H=/home/$U; UID_U=$(id -u $U)
-APP=$H/work/tools/oob-dashboard
+APP=$H/tools/colluder
 DATA=$H/.local/share/colluder
 NODE=$H/.nvm/versions/node/v26.1.0/bin/node
 BIN=$H/go/bin/interactsh-server
