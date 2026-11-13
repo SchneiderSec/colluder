@@ -1,4 +1,4 @@
-// Query decoding for the Parsed view (PLAN-REVIEW3.md A4). Percent-escapes are decoded, but "+" stays
+// Query decoding for the Parsed view. Percent-escapes are decoded, but "+" stays
 // "+" (only form bodies mean a space by it), a value that decoding changed says so, and control
 // characters are shown as escapes so "%0A" never looks like a space.
 

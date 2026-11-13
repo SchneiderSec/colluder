@@ -1,4 +1,4 @@
-// The MCP server (PLAN-MCP.md M1): protocol, tool arguments, and the untrusted envelope.
+// The MCP server: protocol, tool arguments, and the untrusted envelope.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer, hitRow, hitDetail, visible, checkArgs, checkRule, TOOLS } from "../lib/mcp.mjs";
@@ -257,7 +257,7 @@ test("reset_rule, record_trigger, retire_probe", async () => {
   assert.match(r.still_answers_http_with, /rule v1/);
 });
 
-// ---------- PLAN-MCP.md feedback round (a bug bounty run through the MCP) ----------
+// ---------- feedback from a bug bounty run through the MCP ----------
 const b64 = (t) => Buffer.from(t).toString("base64");
 const xxeHit = (value) => listHit({ id: 20, fullId: "kx0.mcpt.cxyz", summary: `GET /d?d=${value} HTTP/1.1 · Java/1.8`, answerMode: "default", hop: null, hopCode: null });
 

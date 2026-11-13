@@ -1,4 +1,4 @@
-// The Payload kit (PLAN-KIT.md): payloads for one probe, ready to copy. Generation only.
+// The Payload kit: payloads for one probe, ready to copy. Generation only.
 import { useMemo, useState } from "react";
 import { Copy, CornerDownRight } from "lucide-react";
 import { useApp, setRuleDraft } from "@/store";

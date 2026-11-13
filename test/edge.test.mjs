@@ -393,7 +393,7 @@ test("edge: status file reports listeners and counts", () => {
   assert.ok(st.cert.notAfter);
 });
 
-test("rules: a base64 body must be whole base64 (PLAN-MCP.md feedback)", () => {
+test("rules: a base64 body must be whole base64", () => {
   for (const body of ["x", "a=b", "aGVsbG8=x", "aGVsbG8=="]) assert.match(validateHttpRule({ mode: "file", body, bodyEncoding: "base64" }).error ?? "", /not valid base64/, body);
   for (const body of ["", "aGVsbG8=", "aGVsbG8", "aGVs\nbG8=", "aGk="]) assert.equal(validateHttpRule({ mode: "file", body, bodyEncoding: "base64" }).error, undefined, body);
 });

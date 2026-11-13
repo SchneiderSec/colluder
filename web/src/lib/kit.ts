@@ -1,4 +1,4 @@
-// Payload kit generators (PLAN-KIT.md). Pure string building: nothing here sends anything.
+// Payload kit generators. Pure string building: nothing here sends anything.
 //
 // Every callback carries a variant code, written as the DNS label right before the probe's tag
 // (ka1.fetch.<id>.<domain>) or, where only a path survives, as /k/<code>. The code shows up in the DNS
@@ -143,7 +143,7 @@ export function addressForms(ip: string): Form[] | null {
 
 export const formUrl = (f: Form, path: string, scheme = "http") => `${scheme}://${f.host}${path.startsWith("/") ? path : "/" + path}`;
 
-// ---------- plant presets (PLAN-PRESETS.md) ----------
+// ---------- plant presets ----------
 // SSRF → cloud metadata: plain HTTP first (Java HttpURLConnection and Ruby open-uri won't follow an
 // https → http redirect, and metadata is http).
 export function ssrfPayloads(tag: string, host: string): Payload[] {

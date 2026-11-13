@@ -1,4 +1,4 @@
-// The edge's DNS front (lib/dns.mjs) and the short id (PLAN-SHORTID.md). Everything listens on
+// The edge's DNS front (lib/dns.mjs) and the short id. Everything listens on
 // 127.0.0.1 with ports the OS picks, and closes when the test ends.
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -46,15 +46,15 @@ test("dns: messages read back in interactsh-client's text", () => {
 
 test("short id: owned only right under the domain, alone or with a tag joined by a dash", () => {
   const own = (h) => ownership(h, [CID], [SHORT], DOMAIN);
-  assert.deepEqual(own(`signup7-${SHORT}.${DOMAIN}`), { uniqueId: SHORT, fullId: `signup7-${SHORT}` });
-  assert.deepEqual(own(`kc1.signup7-${SHORT}.${DOMAIN}:443`), { uniqueId: SHORT, fullId: `kc1.signup7-${SHORT}` });
+  assert.deepEqual(own(`avatar-${SHORT}.${DOMAIN}`), { uniqueId: SHORT, fullId: `avatar-${SHORT}` });
+  assert.deepEqual(own(`kc1.avatar-${SHORT}.${DOMAIN}:443`), { uniqueId: SHORT, fullId: `kc1.avatar-${SHORT}` });
   assert.deepEqual(own(`${SHORT}.${DOMAIN}.`), { uniqueId: SHORT, fullId: SHORT });
-  assert.equal(own(`signup7-${SHORT}.other.example`), null, "someone else's domain");
+  assert.equal(own(`avatar-${SHORT}.other.example`), null, "someone else's domain");
   assert.equal(own(`${SHORT}.x.${DOMAIN}`), null, "not the label under the domain");
-  assert.equal(own(`signup7-${SHORT}x.${DOMAIN}`), null);
+  assert.equal(own(`avatar-${SHORT}x.${DOMAIN}`), null);
   assert.deepEqual(own(`fetch-${ID}.${DOMAIN}`), { uniqueId: ID, fullId: `fetch-${ID}` }, "long ids still work");
-  const it = parseInteraction({ protocol: "dns", "unique-id": SHORT, "full-id": `kc1.signup7-${SHORT}` }, DOMAIN);
-  assert.deepEqual([it.tag, it.extraLabels], ["signup7", ["kc1"]]);
+  const it = parseInteraction({ protocol: "dns", "unique-id": SHORT, "full-id": `kc1.avatar-${SHORT}` }, DOMAIN);
+  assert.deepEqual([it.tag, it.extraLabels], ["avatar", ["kc1"]]);
 });
 
 test("dns front: relays every query unchanged and records only Colluder's names, over UDP and TCP", async (t) => {

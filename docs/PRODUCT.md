@@ -11,7 +11,7 @@ web
 - **Collector:** one small Node (v26, via nvm) service using plain `http`, an `fs` tail, Server-Sent Events and `node:sqlite`. No runtime npm dependencies.
 - **UI (operator decision, 2026-11-05):** React + TypeScript + Tailwind CSS + shadcn/ui (Radix primitives), built with Vite into a static bundle that the collector serves. Dev-only dependencies, nothing extra at runtime.
 - **Engine:** the existing `interactsh-client` v1.4.1 CLI, run as a `systemd --user` service writing JSON lines. The dashboard never speaks the interactsh protocol itself.
-- **Binding:** directly on the tailnet IP 100.64.0.10:8090 (no `tailscale serve`, no tailnet HTTPS).
+- **Binding:** directly on a private address, typically the box's tailnet IP (`dashboard.host` in config.yaml), with no login: the network is the access boundary.
 
 ## Users
 
@@ -19,7 +19,7 @@ The operator, a security researcher doing bug-bounty work, fires blind/SSRF/OOB 
 
 ## Product Purpose
 
-Replaces the flaky OmniOAST and the protocol-incompatible interactsh-web with a dashboard that is easy to trust. Success means that at a glance the operator knows (1) the engine is alive and capturing, (2) the live stream is connected, (3) which payload to use, and (4) what activity arrived, with complete, copy-exact detail for any interaction.
+An alternative to OmniOAST and to interactsh-web (which no longer speaks the current client protocol): a dashboard that is easy to trust. Success means that at a glance the operator knows (1) the engine is alive and capturing, (2) the live stream is connected, (3) which payload to use, and (4) what activity arrived, with complete, copy-exact detail for any interaction.
 
 ## Positioning
 
@@ -27,8 +27,8 @@ Built on the matched v1.4.1 CLI client that is known to capture DNS/HTTP/HTTPS f
 
 ## Operating Context
 
-- Server: interactsh-server v1.4.1 at oob.example (203.0.113.10, 53/80/443), `-auth` token, wildcard LE cert `*.oob.example`.
-- One engine client = one correlation id = one base payload. Probes are told apart by a tag: a subdomain prefix label (`fetch.<id>…`, DNS/HTTP only) or, for HTTPS, joined to the id by a dash in the same label (`https://xff-<id>.oob.example/`), because the cert is a single-label wildcard. The older path form (`https://<id>.oob.example/xff/`) is still read.
+- Server: interactsh-server v1.4.1 on the operator's own domain and public IP (53/80/443), `-auth` token, wildcard Let's Encrypt certificate `*.<domain>`.
+- One engine client = one correlation id = one base payload. Probes are told apart by a tag: a subdomain prefix label (`fetch.<id>…`, DNS/HTTP only) or, for HTTPS, joined to the id by a dash in the same label (`https://xff-<id>.<domain>/`), because the cert is a single-label wildcard. The older path form (`https://<id>.<domain>/xff/`) is still read.
 - Real traffic: DNS hits usually outnumber HTTP heavily (sample: 25 DNS to 2 HTTP from one SSRF), often from third-party resolvers rather than the target itself.
 - Evidence feeds reports. The quality bar is captured requests and responses, so raw data must copy out exactly.
 - Multiple base payloads / multiple engine clients are out of MVP scope (later extension). A Caido plugin front-end on the same engine+collector is a possible later extension.
@@ -41,7 +41,7 @@ Built on the matched v1.4.1 CLI client that is known to capture DNS/HTTP/HTTPS f
 - Persistence in SQLite (survives restarts), with clear-all behind a confirm. JSONL from the engine stays the raw source of truth.
 - Attention: unread count in tab title + favicon; optional Discord webhook (`DISCORD_WEBHOOK_URL`) posting the first hit per probe tag, the first HTTP hit and new sources after it, and late hits on retired probes; everything else rolled into a once-a-minute count, never dropped.
 - Access: the tailnet is the auth boundary; no login; every viewer has full access.
-- Secrets (`NUCLEI_INTERACTSH_TOKEN`, `DISCORD_WEBHOOK_URL`) are read from env at runtime, never printed, never in source, never sent to the browser.
+- Secrets (the interactsh token, `DISCORD_WEBHOOK_URL`) are read from env at runtime, never printed, never in source, never sent to the browser.
 - Undecided: whether HTTPS is distinguishable from HTTP in v1.4.1 client output (to verify empirically); which enrichments (rDNS, ASN/owner of source) ship by default vs opt-in.
 
 ## Brand Commitments

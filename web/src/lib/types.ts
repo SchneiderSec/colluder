@@ -81,7 +81,7 @@ export interface HttpRule {
   bodyEncoding?: "text" | "base64";
   contentType?: string;
   template?: string;
-  kind?: "xxe"; // preset: answers by path (PLAN-PRESETS.md)
+  kind?: "xxe"; // preset: answers by path
   params?: { host: string; file: string };
 }
 // who gets interactsh's harmless default reply instead of the rule (sources: a string while typed)
@@ -122,7 +122,7 @@ export interface Probe extends Counts {
   note: string;
   technique: string;
   plantedAt: string;
-  plantedBy?: "you" | "claude"; // "claude": planted through the MCP (PLAN-MCP.md)
+  plantedBy?: "you" | "claude"; // "claude": planted through the MCP
   registered: number;
   retiredAt: string | null;
   triggerBytes?: number;
@@ -133,6 +133,7 @@ export interface Probe extends Counts {
 export type EngineState = "capturing" | "starting" | "degraded" | "down" | "missing" | "unknown";
 
 export interface Status {
+  app?: string; // the server's checkout, for deploy commands (deployCmd)
   engine: { state: EngineState; detail: string; fix?: string; since?: string | null; unit: string; restarts: number; version: string | null; check?: EngineCheck | null };
   // host: what payloads are built on (the short host once the edge records its DNS); longHost: the engine's
   payload: { host: string; longHost?: string; mailHost?: string; shortId?: string; shortHost?: string; short?: boolean; correlationId: string; domain: string; writtenAt: string } | null;
@@ -155,7 +156,7 @@ export interface Status {
 // the engine check (lib/enginecheck.mjs): a lookup of the engine's own id reached its log, or didn't
 export interface EngineCheck { state: "ok" | "failing" | "restarted"; at: string; detail: string | null; tookMs?: number; failures?: number; restartedAt?: string; restartError?: string | null }
 
-// the mailbox (PLAN-MAILBOX.md): mail to <local>@mailbox-<short>.<domain>, kept apart from hits
+// the mailbox: mail to <local>@mailbox-<short>.<domain>, kept apart from hits
 export interface Mailbox {
   tag: string; host: string; hosts: string[]; live: boolean; smtp: string[] | null; retentionDays: number;
   count: number; lastAt: string | null; lastLookup: { at: string; protocol: string; count: number } | null;

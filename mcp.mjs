@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Colluder's MCP server over stdio (PLAN-MCP.md). Claude Code starts it per session; it exits when
+// Colluder's MCP server over stdio. Claude Code starts it per session; it exits when
 // stdin closes and listens on nothing. It talks to the collector's HTTP API like the dashboard does.
 //
 //   claude mcp add --scope user colluder -- node <this file>

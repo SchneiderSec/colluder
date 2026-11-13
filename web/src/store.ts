@@ -295,7 +295,7 @@ const scopePath = (tag: string | null) => (tag ? `/api/probes/${encodeURICompone
 export const clearProbe = (tag: string | null) => api<{ cleared: number }>(`${scopePath(tag)}/clear`, { method: "POST", body: {} });
 export const restoreProbe = (tag: string | null) => api<{ restored: number }>(`${scopePath(tag)}/restore`, { method: "POST", body: {} });
 
-// ---------- the mailbox (PLAN-MAILBOX.md): its own list, fed by the stream while the page is open ----------
+// ---------- the mailbox: its own list, fed by the stream while the page is open ----------
 export type MailEvent = { type: "mail"; row: MailRow } | { type: "deleted"; id: number };
 const mailSubs = new Set<(e: MailEvent) => void>();
 export function onMail(fn: (e: MailEvent) => void) { mailSubs.add(fn); return () => { mailSubs.delete(fn); }; }

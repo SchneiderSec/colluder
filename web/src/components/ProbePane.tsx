@@ -26,7 +26,7 @@ import { shownId } from "@/lib/kit";
 import { useDisplay, type HitsHeight } from "@/lib/display";
 import { Ultra } from "@/components/Ultra";
 
-// Settings > Display > Hits list. Short keeps the open hit's detail in view on a laptop (DESIGN.md);
+// Settings > Display > Hits list. Short keeps the open hit's detail in view on a laptop (docs/DESIGN.md);
 // taller sizes are for reviewing a session's hits later.
 const HITS_HEIGHT: Record<HitsHeight, string> = {
   short: "max-h-[min(28vh,212px)] [@media(max-height:900px)]:max-h-[min(22vh,160px)]",

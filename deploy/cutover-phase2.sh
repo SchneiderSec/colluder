@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Phase 2 cutover (PHASE2.md): put colluder-edge in front of interactsh on :80/:443 and rotate the
-# interactsh auth token. Run as root:   sudo ~/tools/colluder/deploy/cutover-phase2.sh [--force]
-# Rollback:                            sudo ~/tools/colluder/deploy/rollback-phase2.sh
+# Phase 2 cutover: put colluder-edge in front of interactsh on :80/:443 and rotate the
+# interactsh auth token. Run as root:   sudo deploy/cutover-phase2.sh [--force]
+# Rollback:                            sudo deploy/rollback-phase2.sh
 # The token is never printed and never placed on a command line.
 set -euo pipefail
 umask 077

@@ -1,4 +1,4 @@
-// Lossless JSON layout for the Parsed view (PLAN-REVIEW3.md A3). Unlike JSON.parse/stringify it keeps
+// Lossless JSON layout for the Parsed view. Unlike JSON.parse/stringify it keeps
 // every token byte for byte: big integers stay exact, escapes stay escaped, and a key that repeats
 // inside one object is kept and flagged. Only whitespace between tokens is re-laid out.
 // Returns null for anything that isn't a single valid JSON value, so the caller shows the plain body.

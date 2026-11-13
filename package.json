@@ -3,6 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "description": "Colluder: self-hosted OOB interaction dashboard. Your insider on the wire.",
+  "license": "MIT",
   "type": "module",
   "engines": { "node": ">=26" },
   "scripts": {

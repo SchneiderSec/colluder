@@ -1,4 +1,4 @@
-// Plant presets (PLAN-PRESETS.md): the rule a preset probe is planted with. Shared by the composer and
+// Plant presets: the rule a preset probe is planted with. Shared by the composer and
 // the MCP (Node runs this file there, so its imports carry the .ts extension).
 
 import { METADATA, redirectable, type MetaRow } from "./metadata.ts";

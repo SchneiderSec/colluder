@@ -1,4 +1,8 @@
-# regenerated review captures and impeccable internal state (seeds)
-.impeccable/review/
-.impeccable/questions/
 node_modules/
+
+# working documents kept locally, not published: planning notes and the impeccable design
+# workspace (mockups, surface briefs, review captures). docs/ holds the product and design records.
+/PLAN-*.md
+/PHASE2.md
+/ROADMAP.md
+/.impeccable/

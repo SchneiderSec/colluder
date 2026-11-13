@@ -1,4 +1,4 @@
-// "Copy as curl" (PLAN-REVIEW3.md C4): a captured HTTP request rebuilt as a curl command, for a repro
+// "Copy as curl": a captured HTTP request rebuilt as a curl command, for a repro
 // in a report. Every captured value is single-quoted for the shell, so nothing in it runs.
 
 export const sq = (s: string) => "'" + s.replace(/'/g, "'\\''") + "'";

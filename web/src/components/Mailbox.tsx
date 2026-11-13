@@ -1,4 +1,4 @@
-// The mailbox (PLAN-MAILBOX.md): mail to <anyone>@mailbox-<short>.<domain>, kept apart from hits.
+// The mailbox: mail to <anyone>@mailbox-<short>.<domain>, kept apart from hits.
 // No alerts, no probe, kept a few days. The local part names the account a message was sent for; the
 // one-time code and the magic link found in it are what you came for, so they come first.
 // Everything in a message was written by its sender: it is shown as text only, links are never live.
@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Copy, Download } from "lucide-react";
 import { api, fetchMail, onMail, save, useApp } from "@/store";
 import type { MailDetail, MailRow } from "@/lib/types";
-import { ago, dayOrTime, isoMs, plural } from "@/lib/format";
+import { ago, dayOrTime, isoMs, plural, deployCmd } from "@/lib/format";
 import { copy, toast } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -84,7 +84,7 @@ export function Mailbox({ arg }: { arg: string | null }) {
             <LineForm kind={mb.live ? "live" : "down"} signal="sparse" className={mb.live ? "text-bone" : "text-bad"} />
             {mb.live
               ? <span>Receiving</span>
-              : <span className="text-bad">Not receiving yet: mail for this box still goes to interactsh. The operator runs <code className="font-mono text-bone">sudo ~/tools/colluder/deploy/smtp-front.sh</code></span>}
+              : <span className="text-bad">Not receiving yet: mail for this box still goes to interactsh. The operator runs <code className="font-mono text-bone">{deployCmd(st?.app, "smtp-front.sh")}</code></span>}
             <span className="text-ash">· {plural(mb.count, "message")}, kept {plural(mb.retentionDays, "day")}</span>
           </p>
         )}

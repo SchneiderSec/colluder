@@ -318,7 +318,7 @@ test("report: what the edge served, the XXE file data, payloads that fired, quer
   assert.match(md, /`cm9vdDp4OjA6MA==` decodes as base64url to `root:x:0:0`/, "padding kept");
 });
 
-test("store: who planted a probe and who saved each rule version (PLAN-MCP.md M2)", () => {
+test("store: who planted a probe and who saved each rule version", () => {
   const s = new Store(":memory:");
   s.plant("mine", "app.example", "callback", "2026-11-06T10:00:00Z");
   s.plant("bot", "app.example", "callback", "2026-11-06T10:00:00Z", "claude");
@@ -390,13 +390,13 @@ test("clear one probe: hides only its hits, restores on its own, and a delete dr
 
 test("discord: hits post as embeds, protocol colour, request in inline code that can't break out", () => {
   const { d } = fakeDiscord();
-  d.onHit({ id: 899, protocol: "https", tag: "signup7", remoteAddress: "198.51.100.7", summary: "GET /a`b HTTP/1.1 · Mozilla/5.0 @everyone", timestamp: "2026-11-07T15:38:00.000Z", fullId: "signup7-x", uniqueId: "x" }, { rdns: "host-7.isp.example" });
+  d.onHit({ id: 899, protocol: "https", tag: "avatar", remoteAddress: "198.51.100.7", summary: "GET /a`b HTTP/1.1 · Mozilla/5.0 @everyone", timestamp: "2026-11-07T15:38:00.000Z", fullId: "avatar-x", uniqueId: "x" }, { rdns: "host-7.isp.example" });
   const m = d.sent[0];
-  assert.equal(m.content, "**HTTPS** hit on **signup7**");
+  assert.equal(m.content, "**HTTPS** hit on **avatar**");
   const e = m.embeds[0];
   assert.equal(e.color, 0x8aa2ea);
-  assert.equal(e.title, "signup7 · hit #899");
-  assert.match(e.url, /#probes\/signup7\/hits$/);
+  assert.equal(e.title, "avatar · hit #899");
+  assert.match(e.url, /#probes\/avatar\/hits$/);
   assert.equal(e.timestamp, "2026-11-07T15:38:00.000Z");
   assert.deepEqual(e.fields.map((f) => f.name), ["Source", "Reverse DNS", "Request", "User-Agent"]);
   assert.equal(e.fields[2].value, "`GET /a\u02cbb HTTP/1.1`", "a backtick can't close the span");

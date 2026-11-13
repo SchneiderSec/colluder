@@ -56,7 +56,7 @@ const CFG = {
   engineConfig: env.COLLUDER_ENGINE_CONFIG || join(homedir(), ".config/colluder/engine.yaml"),
   nucleiConfig: C["nuclei.config"],
   spool: env.COLLUDER_MAIL_SPOOL || join(DATA, "mail-spool"),
-  // the mailbox keeps mail this many days (PLAN-MAILBOX.md)
+  // the mailbox keeps mail this many days
   mailDays: Math.max(C.mail_days || 7, 1),
   extraHosts: C["dashboard.allowed_hosts"],
 };
@@ -75,7 +75,7 @@ const store = new Store(CFG.db);
 // v2: HTTP(S) summaries carry the User-Agent
 store.resummarize("2", (r) => (r.protocol === "http" || r.protocol === "https")
   ? summarize(r.protocol, { "raw-request": r.rawRequest }, CFG.domain) : null);
-// Colluder's own short id (PLAN-SHORTID.md): signup7-<short>.domain instead of the engine's 33-char
+// Colluder's own short id: avatar-<short>.domain instead of the engine's 33-char
 // id. interactsh never sees it registered; the edge answers it over HTTP(S) and records its DNS.
 // Made once and kept: payloads already sent with it go on working.
 if (!/^[a-z][a-z0-9]{5}$/.test(store.meta("short_id") || "")) {
@@ -163,7 +163,7 @@ function ingest(line, source = "engine") {
   });
 }
 
-// ---------- the mailbox (PLAN-MAILBOX.md) ----------
+// ---------- the mailbox ----------
 // The edge leaves each message in the spool, named in its log line; it moves into the database here
 // and the file goes. A file whose line never arrived (the box dropped in between) is swept after
 // MAIL_DAYS like the mail itself.
@@ -423,6 +423,7 @@ async function statusTick() {
 function statusPayload() {
   return {
     engine: engine.status,
+    app: HERE, // this checkout: the UI names deploy scripts by their real path
     payload: payloadOut(),
     correlationChangedAt: store.meta("correlation_changed_at"),
     lastHitAt: store.lastHitAt(),
@@ -481,7 +482,7 @@ function decorate(p, rules = activeRules()) {
 }
 const probeOut = (tag) => decorate(store.probe(tag));
 
-// what a probe was planted for: the plain ones, then presets that plant with a rule (PLAN-PRESETS.md)
+// what a probe was planted for: the plain ones, then presets that plant with a rule
 const TECHNIQUES = ["callback", "redirect", "file", "ssrf-metadata", "xxe"];
 
 function previewRequest(tag, scheme, hop) {
@@ -520,7 +521,7 @@ async function sendFile(res, path, type, extra, transform) {
   let buf;
   try { buf = await readFile(path); } catch (e) {
     if (e.code !== "ENOENT") throw e;
-    return json(res, 404, { error: path.endsWith("index.html") ? "UI not built: run npm run build in ~/tools/colluder" : "not found" });
+    return json(res, 404, { error: path.endsWith("index.html") ? `UI not built: run npm run build in ${HERE}` : "not found" });
   }
   head(res, 200, type, extra);
   res.end(transform ? transform(buf) : buf);
@@ -598,7 +599,7 @@ const server = http.createServer(async (req, res) => {
       return pl ? json(res, 200, pl) : json(res, 503, { error: engine.status.detail, engine: engine.status });
     }
     let m;
-    // Claude (the MCP, PLAN-MCP.md) labels its requests. A label, not auth: anyone on the tailnet can
+    // Claude (the MCP) labels its requests. A label, not auth: anyone on the tailnet can
     // already do all of this. It keeps Claude's mistakes, or a hit's prompt injection, off what's yours.
     const actor = req.headers["x-colluder-actor"] === "claude" ? "claude" : "you";
     if (actor === "claude" && req.method !== "GET" && req.method !== "HEAD") {

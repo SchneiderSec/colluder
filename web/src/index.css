@@ -4,7 +4,7 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* Colluder tokens: Strip Bay (DESIGN.md). A neutral graphite bay (the rail, the status bar and the
+/* Colluder tokens: Strip Bay (docs/DESIGN.md). A neutral graphite bay (the rail, the status bar and the
    gaps between regions) holds strips: each region, probe row and detail block is its own object one
    tonal step up, with a hard 1px edge. Warmth lives only in the accents: amber = new/unread, the crew's
    coats and the mask. Token names are the original ones (soot = a strip, soot-2 = selected). */
@@ -34,7 +34,7 @@
   --hover: #232529;
   --child: #17181b;
   --mark: #3a3e46;
-  /* status pairs (DESIGN.md: Alarm, Caution) */
+  /* status pairs (docs/DESIGN.md: Alarm, Caution) */
   --alarm-ground: #2e1b1a;
   --alarm-ink: #f6b8ae;
   --alarm-banner-ink: #f8c9c1;
@@ -47,7 +47,7 @@
   --syn-name: oklch(0.78 0.06 240);
   --syn-value: oklch(0.83 0.075 135);
   --selection: #3d4b60;
-  --bone-night: #dfe1e4; /* night shift (DESIGN.md) */
+  --bone-night: #dfe1e4; /* night shift (docs/DESIGN.md) */
   --lit-flash: #3a2f17;
   color-scheme: dark;
 
@@ -189,7 +189,7 @@
 :root[data-inks="safe"][data-theme="light"] { --ink-dns: #933d70; --ink-http: #7c4f00; --ink-https: #195f8f; --ink-smtp: #00704f; }
 
 @theme inline {
-  /* The four sizes (DESIGN.md), in rem so a browser's default font size carries through, times
+  /* The four sizes (docs/DESIGN.md), in rem so a browser's default font size carries through, times
      --type-scale (1, or 1.08 for "Comfortable" in Settings). The label size is thin light-on-dark at
      400, so it defaults to 450 with a touch of tracking; an explicit font-/tracking- class still wins. */
   --text-label: calc(0.6875rem * var(--type-scale));

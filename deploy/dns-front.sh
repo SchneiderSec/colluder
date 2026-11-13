@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# DNS front (PLAN-SHORTID.md): move interactsh-server's DNS from :53 to :8053 and put colluder-edge on
+# DNS front: move interactsh-server's DNS from :53 to :8053 and put colluder-edge on
 # :53 in front of it. The edge relays every query and answer unchanged and records the ones for
-# Colluder's names, so Colluder's short payloads (signup7-<short>.domain) show up as DNS hits.
-#   Run as root:  sudo ~/tools/colluder/deploy/dns-front.sh [--force]
-#   Undo:         sudo ~/tools/colluder/deploy/dns-front.sh --rollback
+# Colluder's names, so Colluder's short payloads (avatar-<short>.domain) show up as DNS hits.
+#   Run as root:  sudo deploy/dns-front.sh [--force]
+#   Undo:         sudo deploy/dns-front.sh --rollback
 # DNS for the domain is down for a few seconds during the switch. No token is read or printed.
 set -euo pipefail
 umask 077
@@ -97,5 +97,5 @@ grep -q "dns-front-check-$SHORT" <(tail -n +$((before + 1)) "$DATA/edge.jsonl") 
 if (( FAILED )); then
   echo; echo "Some checks failed. Undo with: sudo $APP/deploy/dns-front.sh --rollback"; exit 1
 fi
-echo; echo "Done. Payloads now use $SHORT.$DOMAIN (e.g. https://signup7-$SHORT.$DOMAIN/)."
+echo; echo "Done. Payloads now use $SHORT.$DOMAIN (e.g. https://avatar-$SHORT.$DOMAIN/)."
 echo "The check left a 'dns-front-check' tag under Probes: delete it there."

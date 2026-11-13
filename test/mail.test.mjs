@@ -1,4 +1,4 @@
-// The mailbox (PLAN-MAILBOX.md): reading messages, finding codes and links, the SMTP receiver, the
+// The mailbox: reading messages, finding codes and links, the SMTP receiver, the
 // edge writing mail durably, the store, the API's query, the engine check, and the MCP's mail tools.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";

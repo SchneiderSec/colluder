@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Colluder edge: the public HTTP/HTTPS front door (see PHASE2.md).
+// Colluder edge: the public HTTP/HTTPS front door.
 //   - Requests whose Host carries Colluder's correlation id are answered here, by the probe's rule or
 //     interactsh's default reply, and recorded byte-for-byte in edge.jsonl.
 //   - Everything else is relayed to interactsh-server on its internal ports, with the real client IP
@@ -35,10 +35,10 @@ const CFG = {
   https: env.COLLUDER_EDGE_HTTPS === "off" ? null : addr(env.COLLUDER_EDGE_HTTPS || `${C.public_ip}:443`),
   upHttp: addr(env.COLLUDER_UPSTREAM_HTTP || "127.0.0.1:8081"),
   upHttps: addr(env.COLLUDER_UPSTREAM_HTTPS || "127.0.0.1:8444"),
-  // DNS front (PLAN-SHORTID.md): off until deploy/dns-front.sh moves interactsh's DNS off :53
+  // DNS front: off until deploy/dns-front.sh moves interactsh's DNS off :53
   dns: env.COLLUDER_EDGE_DNS && env.COLLUDER_EDGE_DNS !== "off" ? addr(env.COLLUDER_EDGE_DNS) : null,
   upDns: addr(env.COLLUDER_UPSTREAM_DNS || "127.0.0.1:8053"),
-  // SMTP (PLAN-MAILBOX.md): off until deploy/smtp-front.sh moves interactsh's SMTP off :25/:587/:465.
+  // SMTP: off until deploy/smtp-front.sh moves interactsh's SMTP off :25/:587/:465.
   // COLLUDER_EDGE_SMTP: plain ports with STARTTLS (25, 587); COLLUDER_EDGE_SMTPS: implicit TLS (465)
   smtp: [...listOf(env.COLLUDER_EDGE_SMTP).map((a) => ({ ...addr(a), implicitTls: false })),
     ...listOf(env.COLLUDER_EDGE_SMTPS).map((a) => ({ ...addr(a), implicitTls: true }))],
@@ -179,7 +179,7 @@ function record(o) {
   writeSync(logFd, JSON.stringify(o) + "\n"); // one write per line; O_APPEND keeps lines whole
 }
 
-// ---------- mail (PLAN-MAILBOX.md) ----------
+// ---------- mail ----------
 // Each accepted recipient gets the message as a file in the spool (with its own Received line) and a
 // line in edge.jsonl naming it; both are fsynced before the sender hears 250. The dashboard reads the
 // file into its database and removes it. The log line carries no body, so mail doesn't pile up in it.

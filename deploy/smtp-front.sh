@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# SMTP front (PLAN-MAILBOX.md): move interactsh-server's SMTP from :25/:587/:465 to internal ports and
+# SMTP front: move interactsh-server's SMTP from :25/:587/:465 to internal ports and
 # put colluder-edge on them. The edge receives mail for Colluder's names itself (probes and the
 # mailbox), writes each message to disk before it answers 250, and refuses everything else. Nothing
 # is relayed or sent.
-#   Run as root:  sudo ~/tools/colluder/deploy/smtp-front.sh [--force]
-#   Undo:         sudo ~/tools/colluder/deploy/smtp-front.sh --rollback
+#   Run as root:  sudo deploy/smtp-front.sh [--force]
+#   Undo:         sudo deploy/smtp-front.sh --rollback
 # Mail to the domain is refused for a few seconds during the switch (senders retry). No token is read
 # or printed. interactsh restarts, which makes it forget the engine's registration: the engine is
 # restarted after it, so it registers again.

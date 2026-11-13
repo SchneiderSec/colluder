@@ -1,4 +1,4 @@
-// Exfil decoding (PLAN-REVIEW3.md C3): labels and query values that look encoded, decoded for display
+// Exfil decoding: labels and query values that look encoded, decoded for display
 // only when the result is printable text. Shared by the UI and the server's probe report (Node runs
 // this file directly with type stripping, so it uses only erasable TypeScript).
 //

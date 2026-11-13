@@ -15,8 +15,8 @@ const CID = "abcdefghij0123456789", ID = CID + "klmnopqrstuvw", SHORT = "k3x9q2"
 
 test("domains: a short id is ours right under either domain, and only there", () => {
   const own = (h) => ownership(h, [CID], [SHORT], BOTH);
-  assert.deepEqual(own(`signup7-${SHORT}.${NEW}`), { uniqueId: SHORT, fullId: `signup7-${SHORT}` });
-  assert.deepEqual(own(`kc1.signup7-${SHORT}.${OLD}`), { uniqueId: SHORT, fullId: `kc1.signup7-${SHORT}` });
+  assert.deepEqual(own(`avatar-${SHORT}.${NEW}`), { uniqueId: SHORT, fullId: `avatar-${SHORT}` });
+  assert.deepEqual(own(`kc1.avatar-${SHORT}.${OLD}`), { uniqueId: SHORT, fullId: `kc1.avatar-${SHORT}` });
   assert.equal(own(`${SHORT}.x.${NEW}`), null, "not the label under the domain");
   assert.equal(own(`${SHORT}.net`), null, "the bare TLD is not ours");
   assert.equal(own(`${SHORT}.evil-${NEW}`), null, "a lookalike domain");

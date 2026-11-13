@@ -1,4 +1,4 @@
-// What the edge did with a hit, in words (PLAN-PRESETS.md: labels say what the edge saw, never what
+// What the edge did with a hit, in words (labels say what the edge saw, never what
 // the target did). A redirect we sent is not proof the target followed it; a later hop is.
 
 import { decodeExfil } from "./exfil.ts"; // with the extension: Node runs this file in tests and the report

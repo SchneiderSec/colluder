@@ -6,7 +6,7 @@ import { useApp, getState, fetchRule, previewRule, saveRule, setRuleDraft, takeR
 import type { Decoy, HttpRule, Probe, RuleMode, RuleState, RuleVersion } from "@/lib/types";
 import { reachOf } from "@/lib/reach";
 import { METADATA, redirectable } from "@/lib/metadata";
-import { dayOrTime, plural } from "@/lib/format";
+import { dayOrTime, plural, deployCmd } from "@/lib/format";
 import { copy, toast } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -96,7 +96,6 @@ function errorField(msg?: string) {
     [/^Body/, "body"], [/^(File must|Preset)/, "preset"], [/^Delay/, "delay"], [/^Content type/, "contentType"], [/HTTP, HTTPS or both/, "schemes"]] as [RegExp, string][]) if (re.test(msg)) return f;
   return null;
 }
-const CUTOVER = "sudo ~/tools/colluder/deploy/cutover-phase2.sh";
 const fld = "flex h-[30px] min-w-0 items-center gap-2 rounded-[3px] border border-rule bg-well px-2.5 font-mono text-body text-bone transition-colors focus-within:border-smoke";
 const inputCls = "min-w-0 flex-1 bg-transparent outline-none placeholder:text-ash";
 const seg = "h-[26px] rounded-none border-l border-rule px-[11px] text-body text-smoke first:border-l-0 data-[state=on]:bg-soot-2 data-[state=on]:font-semibold data-[state=on]:text-bone";
@@ -133,6 +132,7 @@ function Num({ value, onChange, label, max, w = "w-[64px]", invalid }: { value: 
 export function HttpRuleTab({ p }: { p: Probe }) {
   const host = useApp((s) => s.status?.payload?.host) || "<id>.<your domain>";
   const edge = useApp((s) => s.status?.edge);
+  const CUTOVER = deployCmd(useApp((s) => s.status?.app), "cutover-phase2.sh");
   const live = edge?.state === "running";
   const [rs, setRs] = useState<RuleState | null>(null);
   const [loadErr, setLoadErr] = useState<string | null>(null);

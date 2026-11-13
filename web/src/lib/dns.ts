@@ -1,4 +1,4 @@
-// DNS signal helpers (PLAN-REVIEW3.md B1/B2). Pure, so they can be tested without the app.
+// DNS signal helpers. Pure, so they can be tested without the app.
 // QNAME minimisation: a resolver asks for root.bbop.<id> before ip-10-0-3-17.root.bbop.<id>, so the
 // partial name looks like exfil data. A lookup whose name is a proper suffix of a longer name asked by
 // the same resolver within STEP_MS is a "step" toward that longer name.

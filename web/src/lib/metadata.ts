@@ -1,4 +1,4 @@
-// Cloud metadata catalog (PLAN-KIT.md K2). One list for the Payload kit and the HTTP response
+// Cloud metadata catalog. One list for the Payload kit and the HTTP response
 // editor's "Targets", so they can't drift apart. Read-only GETs only.
 //
 // header: what the endpoint insists on. A redirect can't add request headers, so only rows without

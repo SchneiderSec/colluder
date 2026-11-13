@@ -13,7 +13,7 @@ export type Chime = "off" | "firings" | "hidden";
 export type HitsHeight = "short" | "tall" | "half";
 export type Display = { theme: Theme; dark: DarkTheme; inks: Inks; motion: Motion; night: Night; chime: Chime; hits: HitsHeight };
 
-// the default follows the system: Strip Bay is a matched dark and light pair (DESIGN.md)
+// the default follows the system: Strip Bay is a matched dark and light pair (docs/DESIGN.md)
 const DEFAULTS: Display = { theme: "system", dark: "dark", inks: "colluder", motion: "full", night: "auto", chime: "off", hits: "short" };
 const ALLOWED: { [K in keyof Display]: readonly Display[K][] } = {
   theme: [...DARK_THEMES, "light", "system"], dark: DARK_THEMES, inks: ["colluder", "safe"], motion: ["full", "still", "none"],
@@ -64,7 +64,7 @@ export const getDisplay = () => current;
 const subscribe = (f: () => void) => { subs.add(f); return () => subs.delete(f); };
 export const useDisplay = () => useSyncExternalStore(subscribe, getDisplay);
 
-// night shift (DESIGN.md): midnight to 05:00 local, on the dark grounds only, unless switched off
+// night shift (docs/DESIGN.md): midnight to 05:00 local, on the dark grounds only, unless switched off
 export const nightNow = (d: Display, at = new Date()) => d.night === "auto" && shownTheme(d) !== "light" && at.getHours() < 5;
 
 apply();

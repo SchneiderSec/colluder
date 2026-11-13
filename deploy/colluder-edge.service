@@ -1,4 +1,4 @@
-# Colluder edge: the public front door (PHASE2.md). System unit, runs as the operator with only the
+# Colluder edge: the public front door. System unit, runs as the operator with only the
 # capability to bind low ports. Its domain, address and certificate paths come from the operator's
 # ~/.config/colluder/config.yaml. A template: deploy/cutover-phase2.sh fills in the @...@ values.
 [Unit]

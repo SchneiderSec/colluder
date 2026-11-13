@@ -1,4 +1,4 @@
-// How far clients followed a redirect loop (PLAN-REVIEW3.md D, per client since review 4): where a
+// How far clients followed a redirect loop (per client): where a
 // client's run of hops stops says how many redirects its HTTP library follows, and with odd codes in
 // the loop, which code it refused. Per source and User-Agent, because a probe pasted in one place is
 // often fetched by more than one client (a link checker, then the real fetcher), and self-tests and
