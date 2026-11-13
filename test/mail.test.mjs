@@ -282,7 +282,11 @@ test("edge: a message is in the spool and the log, fsynced, before 250", async (
     const st = JSON.parse(readFileSync(join(d, "edge.status.json"), "utf8"));
     assert.deepEqual(st.listen.smtp, [`127.0.0.1:${port}`]);
     c.sock.end();
-  } finally { edge.kill("SIGTERM"); rmSync(d, { recursive: true, force: true }); }
+  } finally {
+    // wait for the edge to exit: on SIGTERM it writes a last status file, which would race the rm
+    if (edge.exitCode === null) { const gone = new Promise((ok) => edge.once("exit", ok)); edge.kill("SIGTERM"); await gone; }
+    rmSync(d, { recursive: true, force: true });
+  }
 });
 
 test("edge: the Received line can't be split by a hostile HELO", () => {
