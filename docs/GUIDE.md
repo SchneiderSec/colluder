@@ -204,7 +204,7 @@ file that way (`deploy/lib.sh`), and the unit files in `deploy/` are templates t
 | `dashboard.public_url` | `COLLUDER_PUBLIC_URL` | `http://host:port/` (the link Discord alerts carry) |
 | `paths.data` | `COLLUDER_DATA` | `~/.local/share/colluder` |
 | `paths.node` | `COLLUDER_NODE` | the node install.sh ran with (the units run it) |
-| `paths.interactsh_client` / `_server` | `COLLUDER_CLIENT_BIN` / `COLLUDER_SERVER_BIN` | `~/go/bin/interactsh-client` / `-server` |
+| `paths.interactsh_client` / `_server` | `COLLUDER_CLIENT_BIN` / `COLLUDER_SERVER_BIN` | `~/go/bin/interactsh-client` / `-server` (the installer records `~/.local/bin/…` when `get-interactsh.sh` put them there) |
 | `tls.cert` / `tls.key` | `COLLUDER_EDGE_CERT` / `COLLUDER_EDGE_KEY` | `~/.local/share/colluder/tls/{fullchain,privkey}.pem` (kept fresh by `colluder-cert-sync.timer`) |
 | `tls.cert_dir` | `COLLUDER_EDGE_CERT_DIR` | `~/.local/share/colluder/tls/domains` (one `<domain>/` per extra domain) |
 | `nuclei.config` | `COLLUDER_NUCLEI_CONFIG` | none (another interactsh client's config, such as nuclei's; Settings shows its server) |
@@ -236,9 +236,10 @@ Then switch payloads to it in Settings → Domains.
 
 ## Updating
 
-After changing UI code, run `npm run build` and reload the browser. After changing
-server code: `systemctl --user restart colluder`. After changing `edge.mjs` or `lib/`, also run
-`sudo systemctl restart colluder-edge`.
+To update, run `git pull && deploy/install.sh`. It rebuilds the UI (reinstalling its packages when
+the lockfile changed) and restarts the dashboard. If `edge.mjs` or `lib/` changed, also run
+`sudo systemctl restart colluder-edge`. When working on the code yourself, `npm run build`
+rebuilds the UI and `systemctl --user restart colluder` restarts the dashboard.
 
 ## Security model
 

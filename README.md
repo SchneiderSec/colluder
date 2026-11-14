@@ -74,7 +74,7 @@ Colluder runs on your own domain and server.
 
 You need:
 
-- a Linux server with a public IPv4 address, systemd and sudo
+- a Linux server with a public IPv4 address, systemd and sudo (tested on a fresh Ubuntu 24.04)
 - a domain you can point at it
 - **Node 26 or later** (with [nvm](https://github.com/nvm-sh/nvm): `nvm install 26`; on a minimal Ubuntu image, `sudo apt install libatomic1` first)
 - these ports open in the server's firewall and your cloud provider's: **53** (UDP and TCP), **80** and **443**, plus **25**, **465** and **587** for mail
@@ -83,7 +83,7 @@ The dashboard has no login, so keep it private. With Tailscale, the installer of
 
 In the commands below, replace `oob.example` with your domain and `203.0.113.10` with your server's IP.
 
-**1. Point your domain at the server.** At your registrar, create glue records `ns1.oob.example` and `ns2.oob.example` → `203.0.113.10`, then make them the domain's nameservers.
+**1. Point your domain at the server.** At your registrar, create glue records `ns1.oob.example` and `ns2.oob.example` → `203.0.113.10`, then make them the domain's nameservers. To use a subdomain of a domain you already have instead, add just two records where its DNS is hosted: an `A` record `ns-oob` → `203.0.113.10` and an `NS` record `oob` → `ns-oob.<your domain>`, then use `oob.<your domain>` as your Colluder domain. The installer checks the delegation for you.
 
 **2. Download Colluder and interactsh** as your normal user. interactsh comes as a checksum-verified release binary, so you don't need Go.
 
@@ -99,7 +99,7 @@ deploy/get-interactsh.sh
 deploy/install.sh
 ```
 
-**4. Start interactsh and put Colluder's edge in front.** This runs interactsh under systemd with a fresh token, waits for its Let's Encrypt certificate, puts the edge on :80 and :443, and ends with live checks.
+**4. Start interactsh and put Colluder's edge in front.** This runs interactsh under systemd with a fresh token, waits for its Let's Encrypt certificate, puts the edge on :80 and :443, and ends with live checks. On a fresh server it takes under a minute.
 
 ```sh
 sudo deploy/cutover-phase2.sh
