@@ -37,6 +37,14 @@ cfg() { "$NODE" "$ROOT/lib/config.mjs" get "$1" 2>/dev/null; }
 not_root() { [[ $EUID -ne 0 ]] || die "run this as your normal user, not root: it asks for sudo when it needs it"; }
 edge_env() { grep -q "^$1=" "$CONF/edge.env" 2>/dev/null; }
 edge_live() { systemctl is-active -q colluder-edge 2>/dev/null && edge_env COLLUDER_EDGE_HTTP; }
+# the edge runs the code it loaded at start; it writes that code's hash to edge.status.json (the same
+# check that drives the dashboard's "the edge runs older code" warning). Stale when they differ or unknown.
+edge_stale() {
+  local running disk
+  running=$("$NODE" -e 'try{process.stdout.write(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).code||"")}catch{}' "$(cfg paths.data)/edge.status.json")
+  disk=$("$NODE" -e 'import(require("url").pathToFileURL(process.argv[1]).href).then((m) => process.stdout.write(m.edgeCodeHash()))' "$ROOT/lib/codehash.mjs" 2>/dev/null || true)
+  [[ -z "$running" || -z "$disk" || "$running" != "$disk" ]]
+}
 get_sudo() {
   sudo -n true 2>/dev/null && return 0
   echo "   The next steps run as root (ports 53, 80, 443 and system services): sudo asks for your password."
@@ -121,7 +129,8 @@ cmd_update() {
   need_node
   COLLUDER_NODE=$NODE "$ROOT/deploy/install.sh"
   if systemctl is-active -q colluder-edge 2>/dev/null; then
-    get_sudo; sudo systemctl restart colluder-edge; ok "edge restarted"
+    if edge_stale; then get_sudo; sudo systemctl restart colluder-edge; ok "edge restarted: its code changed"
+    else ok "edge code unchanged: no restart needed"; fi
   fi
 }
 

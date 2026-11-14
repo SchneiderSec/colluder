@@ -117,7 +117,7 @@ The dashboard has no login, so keep it private: setup offers your Tailscale addr
 ## Afterwards
 
 ```sh
-./colluder update      # pull the latest version, rebuild and restart
+./colluder update      # pull the latest version, rebuild and restart (sudo only if the edge changed)
 ./colluder check       # what's wrong with this server and how to fix it
 ./colluder uninstall   # remove Colluder's services (keeps your data unless --purge)
 ```

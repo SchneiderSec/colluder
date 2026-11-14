@@ -220,7 +220,8 @@ Then switch payloads to it in Settings → Domains.
 ## Updating
 
 `./colluder update` pulls the latest version, rebuilds the UI (reinstalling its packages when the
-lockfile changed), restarts the dashboard and restarts the edge. When working on the code yourself,
+lockfile changed) and restarts the dashboard. It restarts the edge only when the edge's code changed,
+so most updates don't ask for sudo. When working on the code yourself,
 `npm run build` rebuilds the UI and `systemctl --user restart colluder` restarts the dashboard.
 
 ## Security model
