@@ -9,10 +9,15 @@ set -euo pipefail
 systemctl disable --now colluder-edge.service 2>/dev/null || true
 printf 'INTERACTSH_PORT_FLAGS=\n' > /etc/interactsh/ports.env
 systemctl restart interactsh.service
-for _ in $(seq 1 40); do ss -ltnH "sport = :443" | grep -q "$PUB" && break; sleep 0.5; done
+# interactsh listens only after it has tried for its certificate (a first try can take minutes)
+for _ in $(seq 1 180); do ss -ltnH "sport = :80" | grep -q "$PUB" && break; sleep 1; done
+for _ in $(seq 1 10); do ss -ltnH "sport = :443" | grep -q "$PUB" && break; sleep 0.5; done
 if ss -ltnH "sport = :443" | grep -q "$PUB" && ss -ltnH "sport = :80" | grep -q "$PUB"; then
   echo "Rolled back: interactsh answers :80/:443 again; colluder-edge is stopped and disabled."
   echo "HTTP rules in the dashboard are kept but not served until the next cutover."
+elif ss -ltnH "sport = :80" | grep -q "$PUB" && ! compgen -G "/root/.local/share/certmagic/certificates/*/wildcard_.$DOMAIN" >/dev/null; then
+  echo "Rolled back: interactsh answers :80 again; colluder-edge is stopped and disabled."
+  echo "It has no certificate for *.$DOMAIN yet, so no HTTPS: once deploy/check.sh passes, run the cutover again."
 else
   echo "interactsh did not come back on :80/:443: journalctl -u interactsh" >&2; exit 1
 fi

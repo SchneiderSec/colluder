@@ -23,12 +23,15 @@ FAILED=0
 
 say "1/6 preflight"
 if pgrep -x nuclei >/dev/null && (( ! FORCE )); then die "a nuclei scan is running; it would lose callbacks during the switch and its token would stop working. Re-run with --force to go ahead anyway."; fi
-[[ -f $APP/web/dist/index.html ]] || die "UI not built: run npm run build in $APP as $U"
+[[ -f $APP/web/dist/index.html ]] || die "UI not built: run deploy/install.sh in $APP as $U"
+if ! as_user "$APP/deploy/check.sh"; then (( FORCE )) || die "the preflight check failed (above): fix it first, or re-run with --force"; fi
 as_user "$NODE" --test "$APP/test/edge.test.mjs" >/dev/null 2>&1 || die "edge tests fail: run npm test in $APP"
 ok "edge tests pass"
 install -D -m 755 "$APP/deploy/cert-sync.sh" /usr/local/libexec/colluder-cert-sync
 write_cert_defaults
-/usr/local/libexec/colluder-cert-sync | sed 's/^/   /'
+STORE=/root/.local/share/certmagic/certificates
+have_cert() { compgen -G "$STORE/*/wildcard_.$DOMAIN/wildcard_.$DOMAIN.crt" >/dev/null; }
+if have_cert; then /usr/local/libexec/colluder-cert-sync | sed 's/^/   /'; else ok "no certificate yet: interactsh requests it when it starts (step 4)"; fi
 for p in 8081 8444; do
   if ss -ltnH "sport = :$p" | grep -q . && ! systemctl is-active -q interactsh; then die "port $p is already in use"; fi
 done
@@ -59,6 +62,8 @@ if os.environ.get("TOKEN_FILE") and os.environ.get("TOKEN_VAR"):
     assert re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", v)
     edits.insert(0, (os.environ["TOKEN_FILE"], rf"^(export )?{v}=.*$", f"{v}={tok}"))
 for path, pat, line in edits:
+    if path.endswith("session.yaml") and not os.path.exists(path):
+        continue  # no session yet: the engine registers with the new token when it starts
     s = open(path).read()
     n, k = re.subn(pat, lambda m: line, s, count=1, flags=re.M)
     if k != 1: sys.exit(f"token line not found in {path}")
@@ -85,12 +90,19 @@ if ! systemctl is-active -q interactsh; then
 fi
 systemctl enable --now interactsh.service
 systemctl restart interactsh.service
-for _ in $(seq 1 40); do ss -ltnH "sport = :8081" | grep -q . && ss -lunH "sport = :53" | grep -q "$PUB" && break; sleep 0.5; done
+# interactsh gets its certificate before it listens on anything (a first start: up to a few minutes),
+# and without one it never opens HTTPS: it doesn't retry until it restarts
+have_cert || printf '   ...   interactsh is getting the *.%s certificate from Let'"'"'s Encrypt (up to 3 minutes)\n' "$DOMAIN"
+for _ in $(seq 1 180); do ss -ltnH "sport = :8081" | grep -q . && ss -lunH "sport = :53" | grep -q "$PUB" && break; sleep 1; done
+for _ in $(seq 1 10); do ss -ltnH "sport = :8444" | grep -q . && break; sleep 0.5; done
 UP_HTTP=$(ss -ltnH "sport = :8081" | awk '{print $4}' | head -1); UP_HTTPS=$(ss -ltnH "sport = :8444" | awk '{print $4}' | head -1)
-[[ -n "$UP_HTTP" && -n "$UP_HTTPS" ]] || die "interactsh did not come up on 8081/8444 (journalctl -u interactsh); run rollback-phase2.sh"
+[[ -n "$UP_HTTP" ]] || die "interactsh did not come up on 8081 (journalctl -u interactsh); run rollback-phase2.sh"
+[[ -n "$UP_HTTPS" ]] && have_cert || die "interactsh couldn't get a certificate for *.$DOMAIN, so it has no HTTPS (journalctl -u interactsh shows why). Check the delegation with deploy/check.sh, run rollback-phase2.sh, then run this again"
 UP_HTTP=${UP_HTTP/#\*:/127.0.0.1:}; UP_HTTP=${UP_HTTP/#0.0.0.0:/127.0.0.1:}; UP_HTTP=${UP_HTTP/#\[::\]:/127.0.0.1:}
 UP_HTTPS=${UP_HTTPS/#\*:/127.0.0.1:}; UP_HTTPS=${UP_HTTPS/#0.0.0.0:/127.0.0.1:}; UP_HTTPS=${UP_HTTPS/#\[::\]:/127.0.0.1:}
 ok "interactsh on $UP_HTTP (http) and $UP_HTTPS (https); DNS, SMTP, LDAP unchanged"
+/usr/local/libexec/colluder-cert-sync | sed 's/^/   /'
+ok "certificate copied for the edge"
 install -o $U -g $U -m 600 /dev/null $H/.config/colluder/edge.env
 printf 'COLLUDER_EDGE_HTTP=%s:80\nCOLLUDER_EDGE_HTTPS=%s:443\nCOLLUDER_UPSTREAM_HTTP=%s\nCOLLUDER_UPSTREAM_HTTPS=%s\n' "$PUB" "$PUB" "$UP_HTTP" "$UP_HTTPS" > $H/.config/colluder/edge.env
 
@@ -100,10 +112,15 @@ systemctl enable --now colluder-edge.service
 systemctl restart colluder-edge.service
 for _ in $(seq 1 20); do ss -ltnH "sport = :443" | grep -q "$PUB" && break; sleep 0.5; done
 as_user systemctl --user restart colluder.service
-as_user systemctl --user start colluder-engine.service
+loginctl enable-linger "$U"   # the dashboard and engine are user services: keep them up after logout
+as_user systemctl --user reset-failed colluder-engine.service 2>/dev/null || true
+as_user systemctl --user enable --now colluder-engine.service
 ok "edge, timer, dashboard and engine started"
 
 say "6/6 verify"
+for _ in $(seq 1 30); do [[ -s "$DATA/payload.txt" && -f "$DATA/interactions.jsonl" ]] && break; sleep 1; done
+[[ -s "$DATA/payload.txt" ]] || die "the engine didn't register with interactsh in 30 s (journalctl --user -u colluder-engine)"
+touch "$DATA/interactions.jsonl"
 ID=$(cut -d. -f1 "$DATA/payload.txt")
 sleep 3
 # unauthenticated registration must be refused (the token config was read)

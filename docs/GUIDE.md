@@ -32,52 +32,56 @@ colluder.service           node server.mjs → SQLite, live updates (SSE), JSON 
 
 - A Linux server with a public IPv4 address, systemd and sudo.
 - A domain you can delegate to that server (glue records for `ns1`/`ns2`).
-- Node 26 or later, and Go to install interactsh.
-- A private network to reach the dashboard on, such as Tailscale. Don't expose it to the internet.
+- Node 26 or later.
+- Ports 53 (UDP and TCP), 80 and 443 open, plus 25, 465 and 587 for mail, in the server's firewall
+  and any cloud firewall in front of it.
+- A private network to reach the dashboard on, such as Tailscale, or an SSH tunnel
+  (`ssh -L 8090:127.0.0.1:8090 you@your-server`). Don't expose it to the internet.
 
 The steps run in this order because each script checks for the one before it. Replace
-`oob.example` and `203.0.113.10` with your domain and IP.
+`oob.example` and `203.0.113.10` with your domain and IP. `deploy/check.sh` checks the server at any
+point and changes nothing: tools, Node, interactsh, the domain's delegation (read from the parent
+zone's own servers, so it works before anything answers), ports, firewall and lingering.
 
 1. **DNS.** At your registrar, create glue records `ns1.oob.example` and `ns2.oob.example` pointing
    to `203.0.113.10`, then set the domain's nameservers to those two.
 
-2. **interactsh v1.4.1.** Install both binaries (Colluder expects them in `~/go/bin`):
+2. **Download** Colluder and interactsh v1.4.1 (as your own user):
 
    ```sh
-   go install -v github.com/projectdiscovery/interactsh/cmd/interactsh-server@v1.4.1
-   go install -v github.com/projectdiscovery/interactsh/cmd/interactsh-client@v1.4.1
+   git clone https://github.com/SchneiderSec/colluder.git && cd colluder
+   deploy/get-interactsh.sh
    ```
 
-   Start the server once by hand with authentication on, and note the client token it prints. It
-   requests the wildcard certificate for your domain on first start:
-
-   ```sh
-   sudo ~/go/bin/interactsh-server -d oob.example -auth
-   ```
-
-   Leave it running; step 4 moves it under systemd and rotates the token.
+   `get-interactsh.sh` downloads the release binaries for this machine, checks them against the
+   release's checksums and installs them in `~/.local/bin` (`--dir` picks another place). If you
+   build interactsh with `go install` instead, Colluder finds it in `~/go/bin`.
 
 3. **Colluder** (as your own user, from the checkout):
 
    ```sh
    deploy/install.sh
-   systemctl --user enable --now colluder-engine.service colluder.service
    ```
 
-   The first run writes `~/.config/colluder/config.yaml`: it asks for the domain, detects the
-   public IP and a tailnet address, and asks for the interactsh token (stored in
-   `~/.config/colluder/engine.yaml`, mode 600, never printed). It never overwrites the config
-   afterwards. Unattended:
+   The first run writes `~/.config/colluder/config.yaml`: it asks for the domain and detects the
+   public IP and a tailnet address. It never overwrites the config afterwards. Unattended:
    `deploy/install.sh --domain oob.example --public-ip 203.0.113.10 --dashboard-host 100.64.0.10 --yes`.
-   Open the dashboard at the address it prints. Payloads work now, but HTTP answers aren't served
-   yet, and the dashboard says so.
+   It then runs `deploy/check.sh`, builds the UI, installs the user units, turns on lingering (so the
+   dashboard and engine keep running after you log out) and starts the dashboard. Running it again
+   after an update rebuilds and restarts the dashboard.
 
-4. **Put the edge in front** (once, as root). The edge takes :80/:443, interactsh moves to internal
-   ports under systemd, and the token is rotated:
+4. **Start interactsh and put the edge in front** (once, as root):
 
    ```sh
    sudo deploy/cutover-phase2.sh     # undo: sudo deploy/rollback-phase2.sh
    ```
+
+   It runs the preflight check and stops if it fails (`--force` goes ahead anyway). Then it writes
+   a fresh interactsh token (`/etc/interactsh/server.yaml`, root, 600, and the engine's
+   `engine.yaml`; never printed), starts interactsh under systemd on internal HTTP ports, waits for
+   its Let's Encrypt wildcard certificate and copies it for the edge, puts the edge on :80/:443,
+   starts the engine, and ends with live checks. An interactsh you started by hand earlier is stopped
+   first.
 
 5. **Short payloads and DNS hits** (optional). The edge takes :53 in front of interactsh, so
    Colluder's 6-character short id resolves and its lookups are recorded:

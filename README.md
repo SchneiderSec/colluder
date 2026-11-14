@@ -72,30 +72,34 @@ Colluder runs on your own domain and server.
 
 ## Get started
 
-You need a Linux server with a public IPv4 address (systemd, sudo), a domain you can point at it, **Node 26+** and **Go**. The dashboard has no login, so reach it over a private network such as Tailscale.
+You need:
+
+- a Linux server with a public IPv4 address, systemd and sudo
+- a domain you can point at it
+- **Node 26 or later** (with [nvm](https://github.com/nvm-sh/nvm): `nvm install 26`; on a minimal Ubuntu image, `sudo apt install libatomic1` first)
+- these ports open in the server's firewall and your cloud provider's: **53** (UDP and TCP), **80** and **443**, plus **25**, **465** and **587** for mail
+
+The dashboard has no login, so keep it private. With Tailscale, the installer offers your tailnet address. Without it, the dashboard listens on `127.0.0.1` and you reach it through SSH: `ssh -L 8090:127.0.0.1:8090 you@your-server`, then open http://localhost:8090.
 
 In the commands below, replace `oob.example` with your domain and `203.0.113.10` with your server's IP.
 
 **1. Point your domain at the server.** At your registrar, create glue records `ns1.oob.example` and `ns2.oob.example` → `203.0.113.10`, then make them the domain's nameservers.
 
-**2. Install interactsh** and start its server once with auth on. Note the token it prints and leave it running.
-
-```sh
-go install github.com/projectdiscovery/interactsh/cmd/interactsh-server@v1.4.1
-go install github.com/projectdiscovery/interactsh/cmd/interactsh-client@v1.4.1
-sudo ~/go/bin/interactsh-server -d oob.example -auth
-```
-
-**3. Download and install Colluder** as your normal user. The installer asks for your domain and that token, then prints the dashboard address.
+**2. Download Colluder and interactsh** as your normal user. interactsh comes as a checksum-verified release binary, so you don't need Go.
 
 ```sh
 git clone https://github.com/SchneiderSec/colluder.git
 cd colluder
-deploy/install.sh
-systemctl --user enable --now colluder-engine.service colluder.service
+deploy/get-interactsh.sh
 ```
 
-**4. Put Colluder's edge in front**, so probes can answer HTTP. This moves interactsh under systemd and rotates its token.
+**3. Install.** The installer asks for your domain, checks the server (DNS delegation, ports, firewall), builds the dashboard and starts it.
+
+```sh
+deploy/install.sh
+```
+
+**4. Start interactsh and put Colluder's edge in front.** This runs interactsh under systemd with a fresh token, waits for its Let's Encrypt certificate, puts the edge on :80 and :443, and ends with live checks.
 
 ```sh
 sudo deploy/cutover-phase2.sh
@@ -108,13 +112,12 @@ sudo deploy/dns-front.sh     # short payloads (avatar-k7wq2x.oob.example) and DN
 sudo deploy/smtp-front.sh    # receive mail: the mailbox and email payloads
 ```
 
-Every script checks before it changes anything and can be undone (`deploy/rollback-phase2.sh`, or `--rollback`).
+Every script checks before it changes anything and can be undone (`deploy/rollback-phase2.sh`, or `--rollback`). If something isn't working, `deploy/check.sh` says what to fix.
 
 ## Update
 
 ```sh
-git pull && deploy/install.sh
-systemctl --user restart colluder
+git pull && deploy/install.sh        # rebuilds and restarts the dashboard
 sudo systemctl restart colluder-edge
 ```
 
