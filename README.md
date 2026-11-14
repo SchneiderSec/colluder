@@ -1,293 +1,144 @@
-# Colluder
+<p align="center">
+  <img src="assets/colluder-mark.svg" width="112" height="112" alt="The Colluder mark: a raccoon's bandit mask, one eye open, one winking">
+</p>
 
-Your insider on the wire. Colluder is a self-hosted dashboard for out-of-band (OOB) testing: plant
-a payload in a target, and see whether, when, from where and how it called back, over DNS, HTTP,
-HTTPS and SMTP. It runs on your own domain and server, next to
-[interactsh](https://github.com/projectdiscovery/interactsh), and is built for bug-bounty and
-pentest work where a callback is evidence.
+<h1 align="center">Colluder</h1>
 
-- **Probes, not ids.** Every payload carries a tag you choose (`avatar`, `pdf-render`), so hits
-  group by where you planted them. DNS bursts roll up into one event, and resolver chatter is labelled.
-- **Evidence-grade capture.** Requests are kept byte-for-byte, raw and parsed, with a one-click
-  Markdown report and "copy as curl".
-- **Answers, not just logs.** Each probe can answer HTTP with interactsh's default, a redirect
-  (with loops through the probe), a custom response, or a hosted file (XXE DTDs, SVG, JWKS,
-  headless-browser pages).
-- **A mailbox.** Sign test accounts up with `anyone@mailbox-<id>.<your domain>`; one-time codes and
-  magic links are pulled out of each message.
-- **Short payloads.** `https://avatar-k7wq2x.oob.example/`, for fields with a length limit.
-- **An outside check.** Every 10 minutes Colluder proves the real internet path still reaches it
-  (public DNS, HTTP, HTTPS, certificate and domain expiry), so a quiet probe means "no callback", not
-  "the box was down".
-- **Claude Code.** An MCP server lets a Claude Code session plant probes, wait for callbacks and
-  read hits, with everything a target sent marked untrusted.
-- **Discord alerts**, per probe and rate-limited.
+<p align="center">
+  <strong>Your insider on the wire.</strong><br>
+  A self-hosted dashboard for out-of-band testing. Plant a payload in a target, and see whether,<br>
+  when, from where and how it called back, over DNS, HTTP, HTTPS and SMTP.
+</p>
 
-The dashboard has no login: it binds to a private address (a tailnet IP, typically), and the
-network is the access boundary.
+---
 
-## How it fits together
+## Why not just interactsh?
 
-```
-internet ── :80 :443 ──── colluder-edge   answers Colluder's probes itself, records them → edge.jsonl
-          ── :53 ───────┤                 relays DNS to interactsh, records Colluder's names
-          ── :25 :587 :465                receives mail for Colluder's names → mail spool
-                          └─ everything else → interactsh-server (internal ports, the client's real IP in a header)
-                                   ▲ polls every 2 s
-colluder-engine.service    the stock interactsh-client, appending JSON lines → interactions.jsonl
-                                   │ tails both files
-colluder.service           node server.mjs → SQLite, live updates (SSE), JSON API, the UI
-                                   ▼
-                           your browser, on the private network
-```
+[interactsh](https://github.com/projectdiscovery/interactsh) is excellent at catching callbacks, and Colluder keeps it as the engine. On its own, though, it gives you a stream of interactions against random IDs, and its answers are set for the whole server or encoded in the payload URL. Colluder adds the layer you'd otherwise script yourself.
 
-- **Engine:** the stock `interactsh-client` CLI (v1.4.1). Colluder never speaks the interactsh
-  protocol itself. `-sf session.yaml` keeps the correlation id across restarts, so planted payloads
-  stay valid.
-- **Collector** (`server.mjs`, `lib/`): Node 26 with no runtime npm dependencies (`node:http`,
-  `node:sqlite`). Every JSON line is stored once, matched to its probe and pushed to browsers.
-- **Edge** (`edge.mjs`): the only internet-facing Colluder process. It answers probes by their
-  rules and passes everything else to interactsh untouched.
-- **UI** (`web/`): React, TypeScript, Tailwind CSS v4 and shadcn/ui, built by Vite into `web/dist`,
-  which the collector serves.
+**Customise every probe.**
 
-## Requirements
-
-- A Linux server with a public IPv4 address, systemd and sudo.
-- A domain you can delegate to that server (glue records for `ns1`/`ns2`).
-- Node 26 or later, and Go to install interactsh.
-- A private network to reach the dashboard on, such as Tailscale. Don't expose it to the internet.
-
-## Setup
-
-The steps run in this order because each script checks for the one before it. Replace
-`oob.example` and `203.0.113.10` with your domain and IP.
-
-1. **DNS.** At your registrar, create glue records `ns1.oob.example` and `ns2.oob.example` pointing
-   to `203.0.113.10`, then set the domain's nameservers to those two.
-
-2. **interactsh v1.4.1.** Install both binaries (Colluder expects them in `~/go/bin`):
-
-   ```sh
-   go install -v github.com/projectdiscovery/interactsh/cmd/interactsh-server@v1.4.1
-   go install -v github.com/projectdiscovery/interactsh/cmd/interactsh-client@v1.4.1
-   ```
-
-   Start the server once by hand with authentication on, and note the client token it prints. It
-   requests the wildcard certificate for your domain on first start:
-
-   ```sh
-   sudo ~/go/bin/interactsh-server -d oob.example -auth
-   ```
-
-   Leave it running; step 4 moves it under systemd and rotates the token.
-
-3. **Colluder** (as your own user, from the checkout):
-
-   ```sh
-   deploy/install.sh
-   systemctl --user enable --now colluder-engine.service colluder.service
-   ```
-
-   The first run writes `~/.config/colluder/config.yaml`: it asks for the domain, detects the
-   public IP and a tailnet address, and asks for the interactsh token (stored in
-   `~/.config/colluder/engine.yaml`, mode 600, never printed). It never overwrites the config
-   afterwards. Unattended:
-   `deploy/install.sh --domain oob.example --public-ip 203.0.113.10 --dashboard-host 100.64.0.10 --yes`.
-   Open the dashboard at the address it prints. Payloads work now, but HTTP answers aren't served
-   yet, and the dashboard says so.
-
-4. **Put the edge in front** (once, as root). The edge takes :80/:443, interactsh moves to internal
-   ports under systemd, and the token is rotated:
-
-   ```sh
-   sudo deploy/cutover-phase2.sh     # undo: sudo deploy/rollback-phase2.sh
-   ```
-
-5. **Short payloads and DNS hits** (optional). The edge takes :53 in front of interactsh, so
-   Colluder's 6-character short id resolves and its lookups are recorded:
-
-   ```sh
-   sudo deploy/dns-front.sh          # undo: --rollback
-   ```
-
-   The outside check runs from this step on.
-
-6. **Mail** (optional). The edge takes :25, :587 and :465 and receives mail for Colluder's names:
-
-   ```sh
-   sudo deploy/smtp-front.sh         # undo: --rollback
-   ```
-
-Every script checks its preconditions before changing anything, never prints a token, and ends
-with live checks. The cutover refuses to run if the edge tests fail.
-
-**Updating.** After changing UI code, run `npm run build` and reload the browser. After changing
-server code: `systemctl --user restart colluder`. After changing `edge.mjs` or `lib/`, also run
-`sudo systemctl restart colluder-edge`.
-
-## Probes and tags
-
-A probe is a tag you plant somewhere. The plant form gives payloads per tag:
-
-| Variant | Shape | Use |
+| | interactsh | Colluder |
 |---|---|---|
-| DNS | `tag-<id>.oob.example` | hostname fields, resolve-only targets |
-| HTTP | `http://tag-<id>.oob.example/` | URL fields |
-| HTTPS | `https://tag-<id>.oob.example/` | the tag is joined to the id with a dash, because a wildcard certificate covers one label only |
-| Email | `x@tag-<id>.oob.example` | arrives as an SMTP hit with the whole message (after setup step 6) |
+| Payloads | Random IDs; you track where each one went | A name per probe (`avatar`, `pdf-render`), with hits grouped under it |
+| HTTP answers | A default reply, server-wide static files, or a response spelled out in the URL's query string | Set per probe from the dashboard and changed any time without replanting: redirect chains, custom responses, hosted files, SSRF and XXE presets, decoys for link-preview bots, delays |
+| Evidence | JSON lines | Raw and parsed requests, which rule version answered, a Markdown report, "copy as curl" |
+| Email | SMTP interactions | A mailbox that pulls out one-time codes and magic links |
+| Uptime | You find out when payloads go quiet | An outside check every 10 minutes, so a quiet probe means "no callback", not "the box was down" |
 
-`<id>` is Colluder's 6-character short id once the edge fronts DNS (step 5), and the engine's
-33-character id before that. The **Payload kit** builds more forms for one probe: allowlist
-bypasses, address encodings, cloud metadata URLs, UNC paths and more, each with a short variant code
-so a hit says which one fired.
+Plus per-probe Discord alerts and short payloads (`avatar-k7wq2x.oob.example`) for fields with a length limit.
 
-Hits are matched to probes by the label just before the id, or (HTTP/S) by the first path
-segment. Labels further left are kept as exfil data and decoded when they look encoded. A hit for a
-tag you never planted gets its own "not planted" row; hits with no tag are listed apart.
+**Let an AI run the OOB test.** Colluder ships an MCP server, so Claude Code can work through an out-of-band technique end to end:
 
-**Resolver chatter.** Public resolvers using QNAME minimisation (Cloudflare, Google) look up the
-bare payload id before the tagged name. An untagged lookup of the bare id within 10 s of a tagged
-hit is labelled "resolver chatter" and never counts as new.
+```
+plant_probe → set_rule → record_trigger → wait_for_hits → get_report
+```
 
-**HTTP responses.** Each probe's HTTP response tab sets what it answers: interactsh's default reply,
-a redirect (optionally looping back through the probe first), a custom response, or a hosted file.
-Rules are versioned, and every hit records which version answered it.
+It plants a probe for the technique, shapes the answer (a redirect to cloud metadata for SSRF, a DTD for blind XXE), sends the payload with its own tools, records what it sent, waits for the callback and writes up the evidence. It can also sign up test accounts with the mailbox and read the code with `wait_for_mail`. The guardrails are built in:
 
-**Restarts.** The engine keeps its correlation id in `session.yaml`, so planted payloads survive
-restarts. systemd stops it with SIGINT because the client saves its session only from its interrupt
-handler.
+- Claude can change only the probes it planted; yours are read-only to it.
+- Everything it does shows in the dashboard as by Claude.
+- Whatever a target sent comes back marked untrusted, so text injected into a hit is treated as evidence, never as instructions.
+- Colluder never sends requests itself.
 
-## The outside check
+Colluder runs on your own domain and server.
 
-The edge's heartbeat only says the edge process is running. Behind it, interactsh can stop answering
-DNS, and the delegation, the certificate or the domain can lapse. Any of these turns every payload
-dark while the dashboard looks healthy. So every 10 minutes (`lib/selfcheck.mjs`) the collector:
+## Gallery
 
-- asks Cloudflare (1.1.1.1) and Google (8.8.8.8) to resolve a fresh, never-cached name on the short
-  host and expects the box's IP back *and* the edge's record of the lookup;
-- requests a fresh path over HTTP and HTTPS (certificate verified) and expects the edge's record.
-  These run from the box itself, so they cover the edge and the certificate, not a firewall in front
-  of it;
-- reads the certificate's end date, and the domain's registration end date from RDAP once a day. It
-  warns under 21 days for the certificate (interactsh renews at about 30) and under 30 for the domain.
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <a href="docs/screenshots/claude-ssrf-probe.png"><img src="docs/screenshots/claude-ssrf-probe.png" alt="An SSRF probe Claude planted over MCP: the target's fetcher follows two redirects through the probe, then is sent to the AWS metadata address"></a>
+      <br><strong>Planted by Claude over MCP.</strong> An SSRF probe loops the target's fetcher through two redirects, then hands it to cloud metadata. Every hop is recorded, with what Colluder answered.
+    </td>
+    <td width="50%" valign="top">
+      <a href="docs/screenshots/custom-response.png"><img src="docs/screenshots/custom-response.png" alt="The HTTP response editor for a probe: status 200, custom headers and an HTML body with a script"></a>
+      <br><strong>Your answer, per probe.</strong> Here a PDF renderer gets an HTML page whose script reports what the headless browser can see. Change it at any time without replanting.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <a href="docs/screenshots/xxe-evidence.png"><img src="docs/screenshots/xxe-evidence.png" alt="A blind XXE hit: the file the parser read arrives through the DTD and is decoded"></a>
+      <br><strong>Evidence you can submit.</strong> A blind XXE probe serves its DTD, and the file the parser read comes back decoded, with the raw request, Colluder's response and a custody record.
+    </td>
+    <td width="50%" valign="top">
+      <a href="docs/screenshots/mailbox.png"><img src="docs/screenshots/mailbox.png" alt="The mailbox: a sign-up email with its one-time code and magic link pulled out"></a>
+      <br><strong>A mailbox for test accounts.</strong> Sign up as anyone@mailbox-&lt;id&gt;; the one-time code and magic link are pulled out of each message.
+    </td>
+  </tr>
+</table>
 
-A failed step is retried once a minute later before it counts. A failure shows a red banner and
-posts to Discord. Settings → Outside check shows every step and has **Check now**.
+<sub>Screenshots show invented data.</sub>
 
-**Engine check.** interactsh keeps registrations in memory: when it restarts it forgets the
-engine's id, and the engine keeps polling silently. Every 3 minutes the dashboard looks up its own
-engine id through public DNS and expects the engine to log it; after two misses it restarts the
-engine, which registers again.
+## Get started
 
-## Mailbox
+You need a Linux server with a public IPv4 address (systemd, sudo), a domain you can point at it, **Node 26+** and **Go**. The dashboard has no login, so reach it over a private network such as Tailscale.
 
-Mail to `<anyone>@mailbox-<id>.oob.example` is kept as mail, not hits: no alerts, not in the probe
-views, kept 7 days (`mail_days`). The local part names the account (`orca-attacker@…`). The edge
-writes each message to disk before it answers 250 and refuses mail for any other name; nothing is
-relayed or sent. Read it in the Mailbox tool, through the API
-(`GET /api/mail/latest?local=orca-attacker&since=<time>&wait=30` returns the newest message with
-the one-time code and magic link found in it), or with the MCP's `wait_for_mail`.
+In the commands below, replace `oob.example` with your domain and `203.0.113.10` with your server's IP.
 
-## Discord alerts
+**1. Point your domain at the server.** At your registrar, create glue records `ns1.oob.example` and `ns2.oob.example` → `203.0.113.10`, then make them the domain's nameservers.
 
-Paste a webhook URL in Settings → Alerts. Per probe, Colluder posts the first hit of an episode, the
-first HTTP hit after DNS-only traffic, an HTTP hit from a new source, and late hits on retired
-probes; everything else goes into a once-a-minute count, never dropped. Each kind can be switched off.
-Posts are neutralised (no mentions, no markdown, no links), since hits carry attacker-controlled text.
-
-## Claude Code (MCP)
-
-`mcp.mjs` lets a Claude Code session plant probes, set what they answer, wait for callbacks, read
-hits and fetch reports. Claude can change only the probes it planted; yours are read-only to it.
-It runs over stdio (Claude Code starts it per session), listens on nothing, and uses the
-collector's API like the dashboard does. Register it once:
+**2. Install interactsh** and start its server once with auth on. Note the token it prints and leave it running.
 
 ```sh
-claude mcp add --scope user colluder -- node /path/to/colluder/mcp.mjs
+go install github.com/projectdiscovery/interactsh/cmd/interactsh-server@v1.4.1
+go install github.com/projectdiscovery/interactsh/cmd/interactsh-client@v1.4.1
+sudo ~/go/bin/interactsh-server -d oob.example -auth
 ```
 
-`COLLUDER_URL` points it at a collector on another machine (default: `dashboard.host:port` from
-config.yaml). Everything a hit carries comes back under an `untrusted` key, and Claude is told it is
-evidence, never instructions.
-
-## Configuration
-
-Everything about the box lives in `~/.config/colluder/config.yaml` (`COLLUDER_CONFIG` moves it),
-written once by install.sh and commented key by key. Each key has an environment variable that
-overrides it. `node lib/config.mjs get <key>` prints a resolved value; the deploy scripts read the
-file that way (`deploy/lib.sh`), and the unit files in `deploy/` are templates they fill in.
-
-| Key | Variable | Default |
-|---|---|---|
-| `domain` | `COLLUDER_DOMAIN` | none: required (the payload domain) |
-| `extra_domains` | `COLLUDER_EXTRA_DOMAINS` | none (other domains served; see below) |
-| `public_ip` | `COLLUDER_PUBLIC_IP` | none: required (where payload names resolve; the edge listens here) |
-| `self_ips` | `COLLUDER_SELF_IPS` | `public_ip` (hits from these read "this box") |
-| `dashboard.host` / `.port` | `COLLUDER_HOST` / `COLLUDER_PORT` | `127.0.0.1` / `8090` |
-| `dashboard.allowed_hosts` | `COLLUDER_ALLOWED_HOSTS` | none (other names you open it by, besides host:port) |
-| `dashboard.public_url` | `COLLUDER_PUBLIC_URL` | `http://host:port/` (the link Discord alerts carry) |
-| `paths.data` | `COLLUDER_DATA` | `~/.local/share/colluder` |
-| `paths.node` | `COLLUDER_NODE` | the node install.sh ran with (the units run it) |
-| `paths.interactsh_client` / `_server` | `COLLUDER_CLIENT_BIN` / `COLLUDER_SERVER_BIN` | `~/go/bin/interactsh-client` / `-server` |
-| `tls.cert` / `tls.key` | `COLLUDER_EDGE_CERT` / `COLLUDER_EDGE_KEY` | `~/.local/share/colluder/tls/{fullchain,privkey}.pem` (kept fresh by `colluder-cert-sync.timer`) |
-| `tls.cert_dir` | `COLLUDER_EDGE_CERT_DIR` | `~/.local/share/colluder/tls/domains` (one `<domain>/` per extra domain) |
-| `nuclei.config` | `COLLUDER_NUCLEI_CONFIG` | none (another interactsh client's config, such as nuclei's; Settings shows its server) |
-| `nuclei.token_file` / `token_var` | | none (an env file whose token the cutover's rotation also updates) |
-| `mail_days` | `COLLUDER_MAIL_DAYS` | `7` |
-
-Secrets stay out of it. `~/.config/colluder/colluder.env` (600) holds `DISCORD_WEBHOOK_URL` and
-`COLLUDER_CHECK_MINUTES` (Settings writes both); `engine.yaml` (600) holds the interactsh server and
-token. The edge's listeners come from `~/.config/colluder/edge.env`, which the deploy scripts write.
-
-**Settings** saves each change where it already lives, so a restart, a deploy script and a hand edit
-agree with it: the payload domain (config.yaml and engine.yaml, then the engine restarts), the
-outside check's interval, the Discord webhook and which alerts post, and per-browser display options
-(theme, colour-blind-safe protocol colours, text size, motion, night shift, an arrival chime).
-
-## Moving to a new domain
-
-Colluder can serve a second domain next to the payload domain, so a new one is answering, has its
-own certificate and passes the outside check before any payload uses it, while the old one keeps
-working until it lapses.
+**3. Download and install Colluder** as your normal user. The installer asks for your domain and that token, then prints the dashboard address.
 
 ```sh
-# at the registrar first: glue records ns1/ns2.new.example -> your IP, then nameservers ns1/ns2.new.example
-sudo deploy/add-domain.sh new.example         # checks the delegation first; adds it to extra_domains
-sudo deploy/add-domain.sh --rollback          # undo
+git clone https://github.com/SchneiderSec/colluder.git
+cd colluder
+deploy/install.sh
+systemctl --user enable --now colluder-engine.service colluder.service
 ```
 
-Then switch payloads to it in Settings → Domains.
+**4. Put Colluder's edge in front**, so probes can answer HTTP. This moves interactsh under systemd and rotates its token.
 
-## Security model
+```sh
+sudo deploy/cutover-phase2.sh
+```
 
-- The dashboard binds to a private address only and has no login: anyone who can reach it has full
-  access. It checks the Host header against an allowlist (DNS-rebinding defence), and
-  state-changing requests need a JSON body and a same-origin `Origin` (CSRF defence).
-- Strict CSP: scripts from self only; styles from self plus a per-page-load nonce.
-- Captured requests are attacker-controlled. They are rendered as text only, never as HTML.
-- The interactsh token lives only in files with mode 600, never on a command line and never in
-  this repo.
-- The edge is the only internet-facing Colluder process: no API, no database, only
-  `CAP_NET_BIND_SERVICE`, `ProtectSystem=strict`, and it writes only the data directory. Its HTTP/1.1
-  reader caps heads at 32 KB and recorded bodies at 1 MB, and every wait has a deadline. Rules can
-  only be written from the dashboard, and only probes you configured redirect anywhere.
-- TLS for the apex (interactsh's polling API) passes through without decryption; Colluder's own
-  probes are terminated with the wildcard certificate and recorded byte-for-byte.
-- Reverse DNS of sources runs automatically; the ASN lookup (Team Cymru, a third party) runs only
-  when you click "Look up".
+Open the dashboard and plant your first probe. Two optional extras:
+
+```sh
+sudo deploy/dns-front.sh     # short payloads (avatar-k7wq2x.oob.example) and DNS hits
+sudo deploy/smtp-front.sh    # receive mail: the mailbox and email payloads
+```
+
+Every script checks before it changes anything and can be undone (`deploy/rollback-phase2.sh`, or `--rollback`).
+
+## Update
+
+```sh
+git pull && deploy/install.sh
+systemctl --user restart colluder
+sudo systemctl restart colluder-edge
+```
+
+## Connect Claude Code
+
+From the checkout:
+
+```sh
+claude mcp add --scope user colluder -- node "$PWD/mcp.mjs"
+```
+
+Then ask Claude to test a target for blind SSRF or XXE, and watch its probes appear in the dashboard.
+
+## Learn more
+
+The [guide](docs/GUIDE.md) covers how the pieces fit together, what each setup step does, payload forms, the outside check, the mailbox, alerts, configuration, moving to a new domain and the security model.
 
 Only test targets you're authorised to test.
 
 ## Development
 
 ```sh
-npm test                           # collector, edge, MCP and UI tests (node:test; servers run on loopback)
+npm test
 npm run typecheck && npm run build
 ```
-
-`docs/PRODUCT.md` is the product brief and `docs/DESIGN.md` the visual system.
-
-## License
 
 [MIT](LICENSE)
