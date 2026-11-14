@@ -74,17 +74,21 @@ Colluder runs on your own domain and server.
 
 You need:
 
-- a Linux server with a public IPv4 address, systemd and sudo (tested on a fresh Ubuntu 24.04)
-- a domain you can point at it
-- **Node 26 or later** (with [nvm](https://github.com/nvm-sh/nvm): `nvm install 26`; on a minimal Ubuntu image, `sudo apt install libatomic1` first)
-- these ports open in the server's firewall and your cloud provider's: **53** (UDP and TCP), **80** and **443**, plus **25**, **465** and **587** for mail
+- a Linux server with a public IPv4 address, systemd and sudo (tested on Ubuntu 24.04)
+- a domain, or a subdomain of one you have
+- **Node 26 or later** ([nvm](https://github.com/nvm-sh/nvm): `nvm install 26`; setup says how if it's missing)
+- ports **53** (UDP and TCP), **80**, **443**, and for mail **25**, **465** and **587**, open in the server's firewall and your cloud provider's
 
-The dashboard has no login, so keep it private. With Tailscale, setup offers your tailnet address. Without it, the dashboard listens on `127.0.0.1` and you reach it through SSH: `ssh -L 8090:127.0.0.1:8090 you@your-server`, then open http://localhost:8090.
+**1. Point the domain at your server.** Colluder answers DNS for its domain itself. In these examples the server's IP is `203.0.113.10`.
 
-**1. Point a domain at the server.** Colluder answers DNS for its domain, so the domain's nameservers must be your server. Use a whole domain, or a subdomain of one you already have:
+- **A subdomain** (the rest of your domain is untouched): where `example.com`'s DNS is hosted, add two records, then use `oob.example.com` as Colluder's domain.
 
-- **Subdomain** (your other records stay as they are): where the domain's DNS is hosted, add an `A` record `ns-oob` → your server's IP and an `NS` record `oob` → `ns-oob.yourdomain.com`. Colluder's domain is then `oob.yourdomain.com`.
-- **Whole domain:** at the registrar, create glue records `ns1` and `ns2` → your server's IP, then make them the domain's nameservers.
+  | Type | Name | Value |
+  |---|---|---|
+  | A | `ns-oob` | `203.0.113.10` |
+  | NS | `oob` | `ns-oob.example.com` |
+
+- **A whole domain:** at the registrar, create glue records `ns1` and `ns2` → `203.0.113.10`, then make them the domain's nameservers.
 
 **2. Run setup** on the server, as your normal user:
 
@@ -94,25 +98,33 @@ cd colluder
 ./colluder setup
 ```
 
-It asks for your domain, checks the server (the delegation, ports and firewall), then sets up interactsh, the dashboard, HTTPS with a Let's Encrypt certificate, DNS and the mailbox. It asks for sudo when it needs it and ends by printing your dashboard address. If a check fails, it says what to fix; run it again and it picks up where it stopped. Add `--no-mail` if you can't open the mail ports.
+It asks for your domain, checks the server, and sets up interactsh, the dashboard, HTTPS with a Let's Encrypt certificate, DNS and the mailbox, asking for sudo when it needs it. It takes about two minutes and ends like this:
+
+```
+Colluder is live on oob.example.com
+   Dashboard     http://127.0.0.1:8090
+                 it listens only on this server: from your computer, run
+                 ssh -L 8090:127.0.0.1:8090 you@203.0.113.10   then open http://localhost:8090
+   Payloads      <tag>-k7wq2x.oob.example.com   (plant a probe in the dashboard to get one)
+   Mailbox       <anyone>@mailbox-k7wq2x.oob.example.com
+   Claude Code   claude mcp add --scope user colluder -- node "/home/you/colluder/mcp.mjs"
+```
+
+If a check fails, setup says what to fix; run it again and it picks up where it stopped. Use `--no-mail` if you can't open the mail ports.
+
+The dashboard has no login, so keep it private: setup offers your Tailscale address if you have one, and otherwise keeps it on `127.0.0.1` for an SSH tunnel.
 
 ## Afterwards
 
 ```sh
 ./colluder update      # pull the latest version, rebuild and restart
 ./colluder check       # what's wrong with this server and how to fix it
-./colluder uninstall   # stop Colluder and remove its services (keeps your data unless --purge)
+./colluder uninstall   # remove Colluder's services (keeps your data unless --purge)
 ```
 
 ## Connect Claude Code
 
-From the checkout:
-
-```sh
-claude mcp add --scope user colluder -- node "$PWD/mcp.mjs"
-```
-
-Then ask Claude to test a target for blind SSRF or XXE, and watch its probes appear in the dashboard.
+Run Claude Code on the server and add Colluder with the `claude mcp add` line setup printed. Then ask Claude to test a target for blind SSRF or XXE, and watch its probes appear in the dashboard.
 
 ## Learn more
 
