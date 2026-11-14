@@ -24,7 +24,8 @@ FAILED=0
 say "1/6 preflight"
 if pgrep -x nuclei >/dev/null && (( ! FORCE )); then die "a nuclei scan is running; it would lose callbacks during the switch and its token would stop working. Re-run with --force to go ahead anyway."; fi
 [[ -f $APP/web/dist/index.html ]] || die "UI not built: run deploy/install.sh in $APP as $U"
-if ! as_user "$APP/deploy/check.sh"; then (( FORCE )) || die "the preflight check failed (above): fix it first, or re-run with --force"; fi
+# COLLUDER_NODE: sudo drops an nvm-installed node from PATH
+if ! as_user env COLLUDER_NODE="$NODE" "$APP/deploy/check.sh"; then (( FORCE )) || die "the preflight check failed (above): fix it first, or re-run with --force"; fi
 as_user "$NODE" --test "$APP/test/edge.test.mjs" >/dev/null 2>&1 || die "edge tests fail: run npm test in $APP"
 ok "edge tests pass"
 install -D -m 755 "$APP/deploy/cert-sync.sh" /usr/local/libexec/colluder-cert-sync
@@ -122,7 +123,11 @@ for _ in $(seq 1 30); do [[ -s "$DATA/payload.txt" && -f "$DATA/interactions.jso
 [[ -s "$DATA/payload.txt" ]] || die "the engine didn't register with interactsh in 30 s (journalctl --user -u colluder-engine)"
 touch "$DATA/interactions.jsonl"
 ID=$(cut -d. -f1 "$DATA/payload.txt")
-sleep 3
+# the edge answers a probe only once the dashboard has published the engine's correlation id to rules.json;
+# before that, interactsh answers (and its reply also echoes the id), so wait for it
+for _ in $(seq 1 30); do grep -q "\"${ID:0:20}\"" "$DATA/rules.json" 2>/dev/null && break; sleep 1; done
+grep -q "\"${ID:0:20}\"" "$DATA/rules.json" 2>/dev/null || bad "the dashboard hasn't published the engine's id to rules.json in 30 s (journalctl --user -u colluder)"
+sleep 2
 # unauthenticated registration must be refused (the token config was read)
 code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 -X POST -H 'content-type: application/json' -d '{}' "http://${UP_HTTP}/register" || true)
 [[ "$code" == "401" ]] && ok "interactsh refuses unauthenticated clients (401)" || bad "interactsh /register answered $code, expected 401: the token may not be loaded"
