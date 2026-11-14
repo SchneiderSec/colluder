@@ -296,10 +296,13 @@ export const clearProbe = (tag: string | null) => api<{ cleared: number }>(`${sc
 export const restoreProbe = (tag: string | null) => api<{ restored: number }>(`${scopePath(tag)}/restore`, { method: "POST", body: {} });
 
 // ---------- the mailbox: its own list, fed by the stream while the page is open ----------
-export type MailEvent = { type: "mail"; row: MailRow } | { type: "deleted"; id: number };
+export type MailEvent = { type: "mail"; row: MailRow } | { type: "deleted"; id: number } | { type: "deleted"; ids?: number[]; upTo?: number };
 const mailSubs = new Set<(e: MailEvent) => void>();
 export function onMail(fn: (e: MailEvent) => void) { mailSubs.add(fn); return () => { mailSubs.delete(fn); }; }
 export const fetchMail = () => api<{ messages: MailRow[]; mailbox: Mailbox }>("/api/mail?limit=200");
+// gone for good: the messages given, or everything up to the newest one (mail arriving meanwhile stays)
+export const deleteMail = (what: { ids: number[] } | { upTo: number }) =>
+  api<{ deleted: number }>("/api/mail/delete", { method: "POST", body: "ids" in what ? { ids: what.ids } : { all: true, upTo: what.upTo } });
 
 // ---------- SSE ----------
 let es: EventSource | null = null;
@@ -327,7 +330,7 @@ export function connect() {
   on<{ tag: string }>("probe-deleted", (d) => dropProbe(d.tag));
   on<Enrich>("enrich", (e) => set({ enrich: new Map(state.enrich).set(e.ip, e) }));
   on<MailRow>("mail", (row) => mailSubs.forEach((f) => f({ type: "mail", row })));
-  on<{ id: number }>("mail-deleted", (d) => mailSubs.forEach((f) => f({ type: "deleted", id: d.id })));
+  on<{ id?: number; ids?: number[]; upTo?: number }>("mail-deleted", (d) => mailSubs.forEach((f) => f(d.id !== undefined ? { type: "deleted", id: d.id } : { type: "deleted", ids: d.ids, upTo: d.upTo })));
   on<Mailbox>("mailbox", (m) => { if (state.status) set({ status: { ...state.status, mailbox: m } }); });
   on<{ reason: string; count: number; tag?: string | null }>("reload", (d) => {
     const whose = d.tag === undefined ? "" : d.tag ? ` from ${d.tag}` : " with no tag";

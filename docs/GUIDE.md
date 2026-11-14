@@ -147,6 +147,8 @@ relayed or sent. Read it in the Mailbox tool, through the API
 (`GET /api/mail/latest?local=orca-attacker&since=<time>&wait=30` returns the newest message with
 the one-time code and magic link found in it), or with the MCP's `wait_for_mail`.
 
+Mail is deleted after the retention period. To delete it sooner, use **Clear mailbox** beside the message count, the trash icon by "n matches" for just the filtered messages, or the one on a message. Deleting is permanent (download the .eml first to keep a copy), and Claude can't delete mail.
+
 ## Discord alerts
 
 Paste a webhook URL in Settings → Alerts. Per probe, Colluder posts the first hit of an episode, the

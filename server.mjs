@@ -25,7 +25,7 @@ import { OutsideCheck, CHECK_TAG, checkAlert } from "./lib/selfcheck.mjs";
 import { WEBHOOK_RE, ALERT_KINDS, CHECK_MINUTES, webhookHint, alertKinds, writeEnv, writeEngineServer, nucleiServer } from "./lib/settings.mjs";
 import { execFile } from "node:child_process";
 import { readMail, splitAddress } from "./lib/mime.mjs";
-import { MAILBOX_TAG, mailQuery } from "./lib/mailbox.mjs";
+import { MAILBOX_TAG, mailDeleteRequest, mailQuery } from "./lib/mailbox.mjs";
 import { EngineCheck } from "./lib/enginecheck.mjs";
 import { Resolver } from "node:dns/promises";
 import { loadConfig, requireConfig, configPath, writeConfig } from "./lib/config.mjs";
@@ -630,6 +630,17 @@ const server = http.createServer(async (req, res) => {
       }
       if (res.destroyed) return;
       return json(res, 200, { message: row ? store.mail(row.id) : null, local: q.local, since: q.since || null, waited: q.wait, mailbox: mailboxOut() });
+    }
+    // clearing: the messages shown (ids), or everything up to the newest shown (all + upTo). Gone for good.
+    if (req.method === "POST" && p === "/api/mail/delete") {
+      const q = mailDeleteRequest(await body(req));
+      if (q.error) return json(res, 400, { error: q.error });
+      const gone = q.ids ? store.deleteMails(q.ids) : null;
+      const n = gone ? gone.length : store.clearMail(q.upTo);
+      if (n) broadcast("mail-deleted", gone ? { ids: gone } : { upTo: q.upTo });
+      broadcast("mailbox", mailboxOut());
+      log(`mail: ${n} message(s) deleted from the dashboard`);
+      return json(res, 200, { deleted: n });
     }
     if ((m = /^\/api\/mail\/(\d+)(\/raw)?$/.exec(p))) {
       const id = Number(m[1]);

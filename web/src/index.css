@@ -409,3 +409,9 @@
 /* "still": the lines stop moving (a solid wire, as with reduced motion); arrivals still pop and flash */
 :root:is([data-motion="still"], [data-motion="none"]) :is(.live-base, .live-base-quiet) { opacity: 1; }
 :root:is([data-motion="still"], [data-motion="none"]) .live-pulse { display: none; }
+
+/* Mailbox: a sending organisation's sign (Mailbox.tsx OrgMark). Its hue comes from its domain (one of
+   the crew's hues, clear of amber); the tile is quiet and the initial carries it. Drawn here, never
+   fetched: a sender's logo would be a request to the target. */
+.org-mark { background: oklch(0.33 0.045 var(--org-h)); color: oklch(0.91 0.055 var(--org-h)); box-shadow: inset 0 0 0 1px oklch(0.44 0.05 var(--org-h)); }
+:root[data-theme="light"] .org-mark { background: oklch(0.93 0.03 var(--org-h)); color: oklch(0.37 0.09 var(--org-h)); box-shadow: inset 0 0 0 1px oklch(0.83 0.04 var(--org-h)); }

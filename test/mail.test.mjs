@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 import { parseMail, readMail, decodeWords, parseParams, extractCodes, extractLinks, htmlToText, splitAddress } from "../lib/mime.mjs";
 import { smtpFront, pathArg } from "../lib/smtp.mjs";
 import { Store } from "../lib/store.mjs";
-import { mailQuery, MAILBOX_TAG } from "../lib/mailbox.mjs";
+import { mailQuery, mailDeleteRequest, MAILBOX_TAG } from "../lib/mailbox.mjs";
 import { EngineCheck } from "../lib/enginecheck.mjs";
 import { createServer } from "../lib/mcp.mjs";
 import { receivedLine } from "../edge.mjs";
@@ -323,6 +323,13 @@ test("store: mail is kept apart from hits, found by local part (and +tags) and t
   assert.equal(s.recent().length, 0);
   assert.equal(s.pruneMail("2026-11-11T08:05:30.000Z"), 2);
   assert.deepEqual(s.mailStats(), { count: 2, lastAt: "2026-11-11T08:07:00.000Z" });
+  // clearing from the dashboard: the ones shown, then everything up to the newest shown
+  const e = add(5, "orca-new", "2026-11-11T08:08:00.000Z"), f = add(6, "orca-new", "2026-11-11T08:09:00.000Z");
+  assert.deepEqual(s.deleteMails([e.id, 999999]), [e.id]);
+  assert.equal(s.mail(e.id), null);
+  const g = add(7, "orca-late", "2026-11-11T08:10:00.000Z");
+  assert.equal(s.clearMail(f.id), 3);
+  assert.deepEqual(s.mailList().map((m) => m.id), [g.id]);   // arrived after: kept
   rmSync(d, { recursive: true, force: true });
 });
 
@@ -336,6 +343,9 @@ test("mailbox: the API's query", () => {
   assert.match(q("since=yesterday").error, /ISO 8601/);
   assert.match(q("local=a b").error, /local/);
   assert.match(q("limit=x").error, /whole numbers/);
+  assert.deepEqual(mailDeleteRequest({ ids: [3, 3, 4] }), { ids: [3, 4] });
+  assert.deepEqual(mailDeleteRequest({ all: true, upTo: 56 }), { upTo: 56 });
+  for (const b of [{}, { ids: [] }, { ids: ["1"] }, { ids: [-1] }, { all: true }, { all: "yes", upTo: 5 }, null]) assert.ok(mailDeleteRequest(b).error, JSON.stringify(b));
 });
 
 // ---------- the engine check ----------
