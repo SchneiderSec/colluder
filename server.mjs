@@ -733,7 +733,7 @@ const server = http.createServer(async (req, res) => {
     }
     // Delete: only a retired probe, or a tag nobody planted, so a live probe is never lost by a slip
     if (req.method === "POST" && p === "/api/check") {
-      if (!checkActive()) return json(res, 409, { error: "The outside check runs once the edge fronts DNS (deploy/dns-front.sh)." });
+      if (!checkActive()) return json(res, 409, { error: "The outside check runs once the edge answers DNS (./colluder setup)." });
       const r = await runCheck();
       return r ? json(res, 200, r) : json(res, 500, { error: "The check itself broke: see journalctl --user -u colluder" });
     }

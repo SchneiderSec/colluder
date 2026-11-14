@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# DNS front: move interactsh-server's DNS from :53 to :8053 and put colluder-edge on
-# :53 in front of it. The edge relays every query and answer unchanged and records the ones for
+# The DNS step of `./colluder setup`: move interactsh-server's DNS from :53 to :8053 and put
+# colluder-edge on :53 in front of it. The edge relays every query and answer unchanged and records the ones for
 # Colluder's names, so Colluder's short payloads (avatar-<short>.domain) show up as DNS hits.
-#   Run as root:  sudo deploy/dns-front.sh [--force]
-#   Undo:         sudo deploy/dns-front.sh --rollback
+#   Run by setup; by hand, as root:  sudo deploy/dns.sh [--force]
+#   Undo:                            sudo deploy/dns.sh --undo
 # DNS for the domain is down for a few seconds during the switch. No token is read or printed.
 set -euo pipefail
 umask 077
@@ -12,9 +12,9 @@ umask 077
 PORTS=/etc/interactsh/ports.env
 EENV=$H/.config/colluder/edge.env
 UP_PORT=8053
-MODE=${1:-}
+MODE=${1:-}; [[ "$MODE" == "--undo" ]] && MODE=--rollback
 
-say()  { printf '\n\033[1m== %s\033[0m\n' "$*"; }
+say()  { local t="$*"; printf '   \033[2m-- %s\033[0m\n' "${t#[0-9]/[0-9] }"; }
 ok()   { printf '   ok    %s\n' "$*"; }
 bad()  { printf '   FAIL  %s\n' "$*"; FAILED=1; }
 die()  { printf '\n   STOP  %s\n' "$*" >&2; exit 1; }
@@ -22,7 +22,7 @@ as_user() { sudo -u "$U" XDG_RUNTIME_DIR=/run/user/$UID_U DBUS_SESSION_BUS_ADDRE
 FAILED=0
 
 [[ $EUID -eq 0 ]] || die "run with sudo"
-[[ -f $PORTS && -f $EENV ]] || die "phase 2 isn't installed ($PORTS, $EENV): run cutover-phase2.sh first"
+[[ -f $PORTS && -f $EENV ]] || die "the edge isn't set up yet: run ./colluder setup"
 
 # edge.env stays the user's file (owner and mode kept); lines are replaced, never duplicated
 set_env() { # set_env KEY [VALUE]: no VALUE removes the line
@@ -36,7 +36,7 @@ set_env() { # set_env KEY [VALUE]: no VALUE removes the line
 wait_udp() { for _ in $(seq 1 40); do ss -lunH "sport = :$1" | awk '{print $4}' | grep -qE "$2" && return 0; sleep 0.5; done; return 1; }
 
 rollback() {
-  say "rollback: interactsh back on :53, the edge off it"
+  say "undo: interactsh back on :53, the edge off it"
   set_env COLLUDER_EDGE_DNS
   set_env COLLUDER_UPSTREAM_DNS
   systemctl restart colluder-edge.service
@@ -59,7 +59,7 @@ if ss -lunH "sport = :$UP_PORT" | grep -q . && ! grep -q -- "-dns-port $UP_PORT"
 SHORT=$("$NODE" -e 'try{const j=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.stdout.write((j.shortIds||[])[0]||"")}catch{}' "$DATA/rules.json")
 [[ "$SHORT" =~ ^[a-z][a-z0-9]{5}$ ]] || die "no short id in rules.json yet: restart the dashboard (systemctl --user restart colluder) and run this again"
 ok "short id $SHORT"
-trap 'echo; printf "   STOP  something failed: rolling back\n"; rollback' ERR
+trap 'echo; printf "   STOP  something failed: undoing this step\n"; rollback' ERR
 
 say "2/4 interactsh DNS to :$UP_PORT"
 grep -q -- "-dns-port $UP_PORT" "$PORTS" || sed -i -E "s/^(INTERACTSH_PORT_FLAGS=.*)$/\1 -dns-port $UP_PORT/" "$PORTS"
@@ -81,7 +81,7 @@ ok "dashboard restarted"
 
 say "4/4 verify"
 trap - ERR
-CHECK="dns-front-check-$SHORT.$DOMAIN"
+CHECK="setup-check-dns-$SHORT.$DOMAIN"
 before=$(wc -l < "$DATA/edge.jsonl")
 a=$(dig +short +time=3 +tries=2 @"$PUB" A "$CHECK" || true)
 [[ -n "$a" ]] && ok "your short host resolves through the edge ($a)" || bad "no A answer for $CHECK"
@@ -92,10 +92,11 @@ ns=$(dig +short +time=3 +tries=2 @"$PUB" NS "$DOMAIN" || true)
 other=$(dig +short +time=3 +tries=2 @"$PUB" A "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz.$DOMAIN" || true)
 [[ -n "$other" ]] && ok "other clients' names still resolve (interactsh answers them)" || bad "foreign name got no answer"
 sleep 1
-grep -q "dns-front-check-$SHORT" <(tail -n +$((before + 1)) "$DATA/edge.jsonl") && ok "the edge recorded the check as a DNS hit" || bad "the check lookup was not recorded in edge.jsonl"
+grep -q "setup-check-dns-$SHORT" <(tail -n +$((before + 1)) "$DATA/edge.jsonl") && ok "the edge recorded the check as a DNS hit" || bad "the check lookup was not recorded in edge.jsonl"
 
 if (( FAILED )); then
-  echo; echo "Some checks failed. Undo with: sudo $APP/deploy/dns-front.sh --rollback"; exit 1
+  echo; echo "Some checks failed. Undo with: sudo $APP/deploy/dns.sh --undo"; exit 1
 fi
+[[ -n "${COLLUDER_IN_SETUP:-}" ]] && exit 0   # setup prints the summary
 echo; echo "Done. Payloads now use $SHORT.$DOMAIN (e.g. https://avatar-$SHORT.$DOMAIN/)."
-echo "The check left a 'dns-front-check' tag under Probes: delete it there."
+echo "The check left a 'setup-check-dns' tag under Probes; delete it there if you like."

@@ -62,7 +62,7 @@ export function payloadParts(text: string, tag: string, hosts: (string | null | 
 export const shownId = (id: string) => (id.length > 12 ? `${id.slice(0, 8)}…` : id);
 const sub = (code: string, tag: string, host: string) => `${code}.${tagged(tag, host)}`;
 
-// mailHost: where mail is received. Once the edge receives SMTP (deploy/smtp-front.sh) it's the short
+// mailHost: where mail is received. Once the edge receives SMTP (./colluder setup) it's the short
 // host, like every other payload; before that it's the engine's long host, where interactsh receives it.
 export function callbacks(tag: string, host: string, mailHost = host): Payload[] {
   const v = (code: string, name: string, text: string, note?: string): Payload => ({ code, section: "callbacks", name, text, note });

@@ -14,9 +14,9 @@ U=${COLLUDER_USER:-$(stat -c %U "$APP")}
 H=$(getent passwd "$U" | cut -d: -f6)
 UID_U=$(id -u "$U")
 CONFIG=${COLLUDER_CONFIG:-$H/.config/colluder/config.yaml}
-# run as the operator (install.sh is; the root scripts drop to them, so ~ means their home)
+# run as the operator (install.sh does; the root scripts drop to them, so ~ means their home)
 as_op() { if [[ $EUID -eq $UID_U ]]; then "$@"; else sudo -u "$U" -H "$@"; fi; }
-[[ -r "$CONFIG" ]] || { echo "no $CONFIG: run deploy/install.sh as $U first" >&2; exit 1; }
+[[ -r "$CONFIG" ]] || { echo "no $CONFIG: run ./colluder setup as $U first" >&2; exit 1; }
 # node first, straight from the file: it's what reads the rest
 NODE=$(sed -nE 's/^[[:space:]]+node:[[:space:]]*"?([^"#]*[^"#[:space:]])"?.*$/\1/p' "$CONFIG" | head -1)
 NODE=${NODE/#\~/$H}

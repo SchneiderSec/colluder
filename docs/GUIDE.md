@@ -30,76 +30,59 @@ colluder.service           node server.mjs → SQLite, live updates (SSE), JSON 
 
 ## Setup in detail
 
-- A Linux server with a public IPv4 address, systemd and sudo.
-- A domain you can delegate to that server (glue records for `ns1`/`ns2`).
+You need:
+
+- A Linux server with a public IPv4 address, systemd and sudo (tested on a fresh Ubuntu 24.04).
+- A domain, or a subdomain, delegated to that server (below).
 - Node 26 or later.
 - Ports 53 (UDP and TCP), 80 and 443 open, plus 25, 465 and 587 for mail, in the server's firewall
   and any cloud firewall in front of it.
-- A private network to reach the dashboard on, such as Tailscale, or an SSH tunnel
+- A private way to reach the dashboard, such as Tailscale, or an SSH tunnel
   (`ssh -L 8090:127.0.0.1:8090 you@your-server`). Don't expose it to the internet.
 
-The steps run in this order because each script checks for the one before it. Replace
-`oob.example` and `203.0.113.10` with your domain and IP. `deploy/check.sh` checks the server at any
-point and changes nothing: tools, Node, interactsh, the domain's delegation (read from the parent
-zone's own servers, so it works before anything answers), ports, firewall and lingering.
+### Delegating the domain
 
-1. **DNS.** At your registrar, create glue records `ns1.oob.example` and `ns2.oob.example` pointing
-   to `203.0.113.10`, then set the domain's nameservers to those two.
+Colluder answers DNS for its domain itself, so the domain's nameservers must be this server. Replace
+`oob.example` and `203.0.113.10` with your domain and IP.
 
-2. **Download** Colluder and interactsh v1.4.1 (as your own user):
+- **A whole domain:** at the registrar, create glue records `ns1.oob.example` and `ns2.oob.example`
+  → `203.0.113.10`, then make them the domain's nameservers.
+- **A subdomain of a domain you already have** (its other records stay as they are): where that
+  domain's DNS is hosted, add an `A` record `ns-oob` → `203.0.113.10` and an `NS` record `oob` →
+  `ns-oob.<your domain>`. Colluder's domain is then `oob.<your domain>`.
 
-   ```sh
-   git clone https://github.com/SchneiderSec/colluder.git && cd colluder
-   deploy/get-interactsh.sh
-   ```
+`./colluder check` confirms the delegation by asking the parent zone's own servers, so it works
+before anything on the server answers.
 
-   `get-interactsh.sh` downloads the release binaries for this machine, checks them against the
-   release's checksums and installs them in `~/.local/bin` (`--dir` picks another place). If you
-   build interactsh with `go install` instead, Colluder finds it in `~/go/bin`.
+### `./colluder setup`
 
-3. **Colluder** (as your own user, from the checkout):
+Run it as your own user from the checkout; it asks for sudo when it reaches the steps that need root.
+It asks for the domain the first time (or pass `--domain oob.example --public-ip 203.0.113.10
+--dashboard-host 100.64.0.10 --yes` to run unattended). Every step checks before it changes anything,
+skips itself when it's already done, never prints a token, and ends with live checks, so running
+setup again after fixing something picks up where it stopped.
 
-   ```sh
-   deploy/install.sh
-   ```
+1. **interactsh.** Downloads the interactsh v1.4.1 release binaries for this machine, checks them
+   against the release's checksums and installs them in `~/.local/bin` (`deploy/download.sh`). If
+   you built interactsh with `go install`, Colluder uses it from `~/go/bin`.
+2. **Dashboard** (`deploy/install.sh`). Writes `~/.config/colluder/config.yaml` once (the domain, the
+   detected public IP, a tailnet address if there is one), builds the UI, installs the user units,
+   turns on lingering (so the dashboard and engine keep running after you log out) and starts the
+   dashboard.
+3. **Check** (`deploy/check.sh`): tools, Node, interactsh, the domain's delegation, ports, firewall
+   and lingering. Setup stops here if anything fails (`--force` goes ahead anyway).
+4. **Web** (`deploy/edge.sh`, root). Writes a fresh interactsh token (`/etc/interactsh/server.yaml`,
+   root, 600, and the engine's `engine.yaml`), starts interactsh under systemd on internal HTTP
+   ports, waits for its Let's Encrypt wildcard certificate and copies it for the edge, puts the edge
+   on :80/:443 and starts the engine. An interactsh you started by hand earlier is stopped first.
+5. **DNS** (`deploy/dns.sh`, root). The edge takes :53 in front of interactsh, so Colluder's
+   6-character short id resolves and its lookups are recorded. The outside check runs from here on.
+6. **Mail** (`deploy/mail.sh`, root; skipped with `--no-mail`). The edge takes :25, :587 and :465 and
+   receives mail for Colluder's names: the mailbox and email payloads. It never relays or sends.
 
-   The first run writes `~/.config/colluder/config.yaml`: it asks for the domain and detects the
-   public IP and a tailnet address. It never overwrites the config afterwards. Unattended:
-   `deploy/install.sh --domain oob.example --public-ip 203.0.113.10 --dashboard-host 100.64.0.10 --yes`.
-   It then runs `deploy/check.sh`, builds the UI, installs the user units, turns on lingering (so the
-   dashboard and engine keep running after you log out) and starts the dashboard. Running it again
-   after an update rebuilds and restarts the dashboard.
-
-4. **Start interactsh and put the edge in front** (once, as root):
-
-   ```sh
-   sudo deploy/cutover-phase2.sh     # undo: sudo deploy/rollback-phase2.sh
-   ```
-
-   It runs the preflight check and stops if it fails (`--force` goes ahead anyway). Then it writes
-   a fresh interactsh token (`/etc/interactsh/server.yaml`, root, 600, and the engine's
-   `engine.yaml`; never printed), starts interactsh under systemd on internal HTTP ports, waits for
-   its Let's Encrypt wildcard certificate and copies it for the edge, puts the edge on :80/:443,
-   starts the engine, and ends with live checks. An interactsh you started by hand earlier is stopped
-   first.
-
-5. **Short payloads and DNS hits** (optional). The edge takes :53 in front of interactsh, so
-   Colluder's 6-character short id resolves and its lookups are recorded:
-
-   ```sh
-   sudo deploy/dns-front.sh          # undo: --rollback
-   ```
-
-   The outside check runs from this step on.
-
-6. **Mail** (optional). The edge takes :25, :587 and :465 and receives mail for Colluder's names:
-
-   ```sh
-   sudo deploy/smtp-front.sh         # undo: --rollback
-   ```
-
-Every script checks its preconditions before changing anything, never prints a token, and ends
-with live checks. The cutover refuses to run if the edge tests fail.
+Each step can be undone on its own: `sudo deploy/edge.sh --undo`, `sudo deploy/dns.sh --undo`,
+`sudo deploy/mail.sh --undo`. `./colluder uninstall` removes everything (it keeps your probes, hits
+and mail unless you add `--purge`).
 
 ## Probes and tags
 
@@ -110,9 +93,9 @@ A probe is a tag you plant somewhere. The plant form gives payloads per tag:
 | DNS | `tag-<id>.oob.example` | hostname fields, resolve-only targets |
 | HTTP | `http://tag-<id>.oob.example/` | URL fields |
 | HTTPS | `https://tag-<id>.oob.example/` | the tag is joined to the id with a dash, because a wildcard certificate covers one label only |
-| Email | `x@tag-<id>.oob.example` | arrives as an SMTP hit with the whole message (after setup step 6) |
+| Email | `x@tag-<id>.oob.example` | arrives as an SMTP hit with the whole message (once setup's mail step has run) |
 
-`<id>` is Colluder's 6-character short id once the edge fronts DNS (step 5), and the engine's
+`<id>` is Colluder's 6-character short id once the edge answers DNS (setup's DNS step), and the engine's
 33-character id before that. The **Payload kit** builds more forms for one probe: allowlist
 bypasses, address encodings, cloud metadata URLs, UNC paths and more, each with a short variant code
 so a hit says which one fired.
@@ -189,7 +172,7 @@ evidence, never instructions.
 ## Configuration
 
 Everything about the box lives in `~/.config/colluder/config.yaml` (`COLLUDER_CONFIG` moves it),
-written once by install.sh and commented key by key. Each key has an environment variable that
+written once by `./colluder setup` and commented key by key. Each key has an environment variable that
 overrides it. `node lib/config.mjs get <key>` prints a resolved value; the deploy scripts read the
 file that way (`deploy/lib.sh`), and the unit files in `deploy/` are templates they fill in.
 
@@ -204,11 +187,11 @@ file that way (`deploy/lib.sh`), and the unit files in `deploy/` are templates t
 | `dashboard.public_url` | `COLLUDER_PUBLIC_URL` | `http://host:port/` (the link Discord alerts carry) |
 | `paths.data` | `COLLUDER_DATA` | `~/.local/share/colluder` |
 | `paths.node` | `COLLUDER_NODE` | the node install.sh ran with (the units run it) |
-| `paths.interactsh_client` / `_server` | `COLLUDER_CLIENT_BIN` / `COLLUDER_SERVER_BIN` | `~/go/bin/interactsh-client` / `-server` (the installer records `~/.local/bin/…` when `get-interactsh.sh` put them there) |
+| `paths.interactsh_client` / `_server` | `COLLUDER_CLIENT_BIN` / `COLLUDER_SERVER_BIN` | `~/go/bin/interactsh-client` / `-server` (setup records `~/.local/bin/…` when it downloaded them there) |
 | `tls.cert` / `tls.key` | `COLLUDER_EDGE_CERT` / `COLLUDER_EDGE_KEY` | `~/.local/share/colluder/tls/{fullchain,privkey}.pem` (kept fresh by `colluder-cert-sync.timer`) |
 | `tls.cert_dir` | `COLLUDER_EDGE_CERT_DIR` | `~/.local/share/colluder/tls/domains` (one `<domain>/` per extra domain) |
 | `nuclei.config` | `COLLUDER_NUCLEI_CONFIG` | none (another interactsh client's config, such as nuclei's; Settings shows its server) |
-| `nuclei.token_file` / `token_var` | | none (an env file whose token the cutover's rotation also updates) |
+| `nuclei.token_file` / `token_var` | | none (an env file whose token setup's web step also updates when it rotates it) |
 | `mail_days` | `COLLUDER_MAIL_DAYS` | `7` |
 
 Secrets stay out of it. `~/.config/colluder/colluder.env` (600) holds `DISCORD_WEBHOOK_URL` and
@@ -228,18 +211,17 @@ working until it lapses.
 
 ```sh
 # at the registrar first: glue records ns1/ns2.new.example -> your IP, then nameservers ns1/ns2.new.example
-sudo deploy/add-domain.sh new.example         # checks the delegation first; adds it to extra_domains
-sudo deploy/add-domain.sh --rollback          # undo
+./colluder add-domain new.example             # checks the delegation first; adds it to extra_domains
+sudo deploy/add-domain.sh --undo              # undo
 ```
 
 Then switch payloads to it in Settings → Domains.
 
 ## Updating
 
-To update, run `git pull && deploy/install.sh`. It rebuilds the UI (reinstalling its packages when
-the lockfile changed) and restarts the dashboard. If `edge.mjs` or `lib/` changed, also run
-`sudo systemctl restart colluder-edge`. When working on the code yourself, `npm run build`
-rebuilds the UI and `systemctl --user restart colluder` restarts the dashboard.
+`./colluder update` pulls the latest version, rebuilds the UI (reinstalling its packages when the
+lockfile changed), restarts the dashboard and restarts the edge. When working on the code yourself,
+`npm run build` rebuilds the UI and `systemctl --user restart colluder` restarts the dashboard.
 
 ## Security model
 

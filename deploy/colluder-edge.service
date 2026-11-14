@@ -1,6 +1,6 @@
 # Colluder edge: the public front door. System unit, runs as the operator with only the
 # capability to bind low ports. Its domain, address and certificate paths come from the operator's
-# ~/.config/colluder/config.yaml. A template: deploy/cutover-phase2.sh fills in the @...@ values.
+# ~/.config/colluder/config.yaml. A template: deploy/edge.sh fills in the @...@ values.
 [Unit]
 Description=Colluder edge (public HTTP/HTTPS/DNS/SMTP, relays to interactsh)
 After=network-online.target interactsh.service

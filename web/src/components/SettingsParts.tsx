@@ -105,7 +105,7 @@ export function PayloadSection({ st }: { st: Status | null }) {
         {pl && (
           <Row dense label="Short id">
             <Mono>{pl.shortId}</Mono>
-            <span className="text-ash">{pl.short ? "in use; the edge records its DNS" : "waiting for the edge's DNS front (deploy/dns-front.sh); payloads use the long id until then"}</span>
+            <span className="text-ash">{pl.short ? "in use; the edge records its DNS" : "waiting for the edge to answer DNS (./colluder setup); payloads use the long id until then"}</span>
           </Row>
         )}
         {pl?.short && <Row dense label="Long payload"><Mono className="break-all">{pl.longHost}</Mono><span className="text-ash">for SMTP, and old payloads</span></Row>}
@@ -293,7 +293,7 @@ export function CheckSection({ st }: { st: Status | null }) {
           <LineForm kind={w.kind} signal="echo" className={w.kind === "down" ? "text-bad" : w.kind === "off" ? "text-ash" : "text-bone"} />
           <b className={cn("font-semibold first-letter:uppercase", w.kind === "down" ? "text-bad" : "text-bone")}>{w.word}</b>
           <span className="text-ash">
-            {!c.active ? "It starts once the edge fronts DNS (deploy/dns-front.sh): it checks the short payload host."
+            {!c.active ? "It starts once the edge answers DNS (./colluder setup): it checks the short payload host."
               : l ? `last run ${l.finishedAt.slice(11, 16)} UTC, ${ago(Date.now() - isoMs(l.finishedAt))}${c.off ? "" : ` · every ${c.everyMinutes} min`}`
               : "the first run is about 30 s after Colluder starts"}
           </span>

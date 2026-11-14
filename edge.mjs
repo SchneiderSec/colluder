@@ -35,10 +35,10 @@ const CFG = {
   https: env.COLLUDER_EDGE_HTTPS === "off" ? null : addr(env.COLLUDER_EDGE_HTTPS || `${C.public_ip}:443`),
   upHttp: addr(env.COLLUDER_UPSTREAM_HTTP || "127.0.0.1:8081"),
   upHttps: addr(env.COLLUDER_UPSTREAM_HTTPS || "127.0.0.1:8444"),
-  // DNS front: off until deploy/dns-front.sh moves interactsh's DNS off :53
+  // DNS front: off until the DNS step (deploy/dns.sh) moves interactsh's DNS off :53
   dns: env.COLLUDER_EDGE_DNS && env.COLLUDER_EDGE_DNS !== "off" ? addr(env.COLLUDER_EDGE_DNS) : null,
   upDns: addr(env.COLLUDER_UPSTREAM_DNS || "127.0.0.1:8053"),
-  // SMTP: off until deploy/smtp-front.sh moves interactsh's SMTP off :25/:587/:465.
+  // SMTP: off until the mail step (deploy/mail.sh) moves interactsh's SMTP off :25/:587/:465.
   // COLLUDER_EDGE_SMTP: plain ports with STARTTLS (25, 587); COLLUDER_EDGE_SMTPS: implicit TLS (465)
   smtp: [...listOf(env.COLLUDER_EDGE_SMTP).map((a) => ({ ...addr(a), implicitTls: false })),
     ...listOf(env.COLLUDER_EDGE_SMTPS).map((a) => ({ ...addr(a), implicitTls: true }))],

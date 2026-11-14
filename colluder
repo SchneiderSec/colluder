@@ -1,0 +1,191 @@
+#!/usr/bin/env bash
+# Colluder's one command. Run it as your normal user from the checkout; it asks for sudo when it needs it.
+#   ./colluder setup       set up this server, or finish setting it up (safe to run again)
+#   ./colluder update      pull the latest version, rebuild and restart
+#   ./colluder check       say what's wrong with this server and how to fix it (changes nothing)
+#   ./colluder add-domain  serve a second payload domain (e.g. before moving to it)
+#   ./colluder uninstall   stop Colluder and remove its services
+# The steps live in deploy/ (download, install, check, edge, dns, mail, add-domain); each can run on its own.
+set -euo pipefail
+ROOT=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
+CONF="$HOME/.config/colluder"
+
+bold() { printf '\n\033[1m%s\033[0m\n' "$*"; }
+ok()   { printf '   ok    %s\n' "$*"; }
+note() { printf '   note  %s\n' "$*"; }
+die()  { printf '\n   STOP  %s\n' "$*" >&2; exit 1; }
+
+# node: COLLUDER_NODE, the one setup recorded, the one on PATH, or nvm's newest
+find_node() {
+  local n=${COLLUDER_NODE:-}
+  [[ -x "$n" ]] || n=$(sed -nE 's/^[[:space:]]+node:[[:space:]]*"?([^"#]*[^"#[:space:]])"?.*$/\1/p' "$CONF/config.yaml" 2>/dev/null | head -1); n=${n/#\~/$HOME}
+  [[ -x "$n" ]] || n=$(command -v node || true)
+  [[ -x "$n" ]] || n=$(ls -d "$HOME"/.nvm/versions/node/v*/bin/node 2>/dev/null | sort -V | tail -1)
+  NODE_WHY=""
+  [[ -x "$n" ]] || return 1
+  (( $("$n" -p 'process.versions.node.split(".")[0]') >= 26 )) || { NODE_WHY="$n is Node $("$n" -v)"; return 1; }
+  NODE=$n
+}
+need_node() {
+  find_node && return 0
+  die "Colluder needs Node 26 or later${NODE_WHY:+ ($NODE_WHY)}. With nvm:
+           curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
+           . ~/.nvm/nvm.sh && nvm install 26
+         On a minimal Ubuntu image, run sudo apt install libatomic1 first. Then run this again."
+}
+cfg() { "$NODE" "$ROOT/lib/config.mjs" get "$1" 2>/dev/null; }
+not_root() { [[ $EUID -ne 0 ]] || die "run this as your normal user, not root: it asks for sudo when it needs it"; }
+edge_env() { grep -q "^$1=" "$CONF/edge.env" 2>/dev/null; }
+edge_live() { systemctl is-active -q colluder-edge 2>/dev/null && edge_env COLLUDER_EDGE_HTTP; }
+get_sudo() {
+  sudo -n true 2>/dev/null && return 0
+  echo "   The next steps run as root (ports 53, 80, 443 and system services): sudo asks for your password."
+  sudo -v || die "sudo is needed for the rest"
+}
+
+# interactsh: the binaries config.yaml names (or the defaults setup would pick), at the version Colluder knows
+interactsh_ready() {
+  local c s v
+  if [[ -f "$CONF/config.yaml" ]]; then c=$(cfg paths.interactsh_client); s=$(cfg paths.interactsh_server)
+  elif [[ -x "$HOME/go/bin/interactsh-server" ]]; then c=$HOME/go/bin/interactsh-client; s=$HOME/go/bin/interactsh-server
+  else c=$HOME/.local/bin/interactsh-client; s=$HOME/.local/bin/interactsh-server; fi
+  for b in "$c" "$s"; do
+    [[ -x "$b" ]] || return 1
+    v=$("$b" -version 2>&1 | grep -o '[0-9]\+\.[0-9]\+\.[0-9]\+' | head -1); [[ "$v" == "1.4.1" ]] || return 1
+  done
+}
+
+summary() {
+  local domain host port short dash
+  domain=$(cfg domain); host=$(cfg dashboard.host); port=$(cfg dashboard.port)
+  short=$("$NODE" -e 'try{const j=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.stdout.write((j.shortIds||[])[0]||"")}catch{}' "$(cfg paths.data)/rules.json")
+  dash="http://$host:$port"
+  bold "Colluder is live on $domain"
+  printf '   Dashboard     %s\n' "$dash"
+  if [[ "$host" == 127.0.0.1 || "$host" == localhost ]]; then
+    printf '                 it listens only on this server: from your computer, run\n                 ssh -L %s:127.0.0.1:%s %s@%s   then open http://localhost:%s\n' "$port" "$port" "$USER" "$(cfg public_ip)" "$port"
+  fi
+  [[ -n "$short" ]] && printf '   Payloads      <tag>-%s.%s   (plant a probe in the dashboard to get one)\n' "$short" "$domain"
+  edge_env COLLUDER_EDGE_SMTP && [[ -n "$short" ]] && printf '   Mailbox       <anyone>@mailbox-%s.%s\n' "$short" "$domain"
+  printf '   Claude Code   claude mcp add --scope user colluder -- node "%s/mcp.mjs"\n' "$ROOT"
+  printf '   Later         ./colluder update   ./colluder check   ./colluder uninstall\n'
+}
+
+cmd_setup() {
+  local NO_MAIL=0 FORCE=0 PASS=() n=6
+  while (( $# )); do case "$1" in
+    --no-mail) NO_MAIL=1; n=5 ;;
+    --force) FORCE=1 ;;
+    --yes) PASS+=(--yes) ;;
+    --domain|--public-ip|--dashboard-host|--allowed-hosts|--extra-domains|--self-ips|--tls-cert|--tls-key|--tls-cert-dir|--nuclei-config|--token-file|--token-var|--interactsh-client|--interactsh-server)
+      [[ -n "${2:-}" ]] || die "$1 needs a value"; PASS+=("$1" "$2"); shift ;;
+    *) die "unknown option $1 (./colluder help)" ;;
+  esac; shift; done
+  not_root
+  need_node
+
+  bold "[1/$n] interactsh"
+  if interactsh_ready; then ok "interactsh 1.4.1 installed"; else "$ROOT/deploy/download.sh" | sed 's/^/   ok    /'; fi
+
+  bold "[2/$n] dashboard"
+  COLLUDER_NODE=$NODE "$ROOT/deploy/install.sh" "${PASS[@]}"
+  find_node   # setup recorded it in config.yaml
+
+  bold "[3/$n] check this server"
+  if ! COLLUDER_NODE=$NODE COLLUDER_IN_SETUP=1 "$ROOT/deploy/check.sh"; then
+    (( FORCE )) || die "fix the FAIL lines above, then run ./colluder setup again: it picks up where it stopped"
+    note "going ahead anyway (--force)"
+  fi
+
+  local todo=0
+  edge_live || todo=1; edge_env COLLUDER_EDGE_DNS || todo=1; (( NO_MAIL )) || edge_env COLLUDER_EDGE_SMTP || todo=1
+  (( todo )) && get_sudo
+  local f=(); (( FORCE )) && f=(--force)
+
+  bold "[4/$n] web: interactsh and the edge on :80/:443"
+  if edge_live; then ok "already live"; else sudo env COLLUDER_IN_SETUP=1 "$ROOT/deploy/edge.sh" --checked "${f[@]}"; fi
+  bold "[5/$n] DNS: short payloads and DNS hits"
+  if edge_env COLLUDER_EDGE_DNS; then ok "already on"; else sudo env COLLUDER_IN_SETUP=1 "$ROOT/deploy/dns.sh" "${f[@]}"; fi
+  if (( ! NO_MAIL )); then
+    bold "[6/$n] mail: the mailbox and email payloads"
+    if edge_env COLLUDER_EDGE_SMTP; then ok "already on"; else sudo env COLLUDER_IN_SETUP=1 "$ROOT/deploy/mail.sh" "${f[@]}"; fi
+  fi
+  summary
+}
+
+cmd_update() {
+  not_root
+  bold "update"
+  git -C "$ROOT" pull --ff-only --quiet || die "git pull failed (local changes in $ROOT?)"
+  ok "now at $(git -C "$ROOT" log -1 --format='%h %s' | cut -c1-70)"
+  need_node
+  COLLUDER_NODE=$NODE "$ROOT/deploy/install.sh"
+  if systemctl is-active -q colluder-edge 2>/dev/null; then
+    get_sudo; sudo systemctl restart colluder-edge; ok "edge restarted"
+  fi
+}
+
+cmd_uninstall() {
+  local PURGE=0 YES=0 data=""
+  while (( $# )); do case "$1" in --purge) PURGE=1 ;; --yes) YES=1 ;; *) die "unknown option $1" ;; esac; shift; done
+  not_root
+  find_node && [[ -f "$CONF/config.yaml" ]] && data=$(cfg paths.data) || true
+  bold "uninstall"
+  echo "   This stops Colluder, interactsh and the edge and removes their services and settings."
+  if (( PURGE )); then echo "   --purge: it also deletes your probes, hits and mail${data:+ ($data)} and ~/.config/colluder."
+  else echo "   Your probes, hits, mail${data:+ ($data)} and ~/.config/colluder are kept (--purge deletes them)."; fi
+  if (( ! YES )); then read -r -p "   Continue? [y/N] " a; [[ "$a" == [yY]* ]] || { echo "   Nothing changed."; exit 0; }; fi
+  systemctl --user disable --now colluder.service colluder-engine.service >/dev/null 2>&1 || true
+  rm -f "$HOME/.config/systemd/user/colluder.service" "$HOME/.config/systemd/user/colluder-engine.service"
+  systemctl --user daemon-reload 2>/dev/null || true
+  systemctl --user reset-failed colluder.service colluder-engine.service 2>/dev/null || true
+  ok "dashboard and engine stopped and removed"
+  get_sudo
+  sudo bash -c '
+    systemctl disable --now colluder-edge.service interactsh.service colluder-cert-sync.timer colluder-cert-sync.service >/dev/null 2>&1 || true
+    rm -f /etc/systemd/system/colluder-edge.service /etc/systemd/system/interactsh.service \
+          /etc/systemd/system/colluder-cert-sync.service /etc/systemd/system/colluder-cert-sync.timer \
+          /usr/local/libexec/colluder-cert-sync /etc/default/colluder-cert-sync
+    rm -rf /etc/interactsh /root/colluder-add-domain-backup
+    systemctl daemon-reload
+    systemctl reset-failed colluder-edge.service interactsh.service colluder-cert-sync.service 2>/dev/null || true'
+  ok "edge, interactsh and the certificate timer stopped and removed"
+  rm -f "$CONF/edge.env"   # what the edge listened on: setup writes it again
+  if (( PURGE )); then
+    [[ -n "$data" && -d "$data" ]] && rm -rf "$data"
+    rm -rf "$CONF"
+    ok "settings and data deleted"
+  fi
+  echo
+  echo "   Left in place: this checkout ($ROOT), the interactsh binaries, lingering for $USER, and"
+  echo "   interactsh's certificates under /root/.local/share/certmagic (so a reinstall doesn't wait on"
+  echo "   Let's Encrypt). ./colluder setup sets everything up again."
+}
+
+usage() {
+  sed -n '2,8p' "$ROOT/colluder" | sed 's/^# \{0,1\}//'
+  cat <<'EOF'
+
+setup options:
+  --domain D --public-ip IP --dashboard-host H   answer setup's questions up front (with --yes: ask nothing)
+  --no-mail     skip the mail step (ports 25, 465 and 587)
+  --force       go ahead even when the check fails or a nuclei scan is running
+uninstall options:
+  --purge       also delete probes, hits, mail and settings
+  --yes         don't ask
+EOF
+}
+
+main() {
+  local c=${1:-help}; shift || true
+  case "$c" in
+    setup) cmd_setup "$@" ;;
+    update) cmd_update "$@" ;;
+    check) need_node; COLLUDER_NODE=$NODE "$ROOT/deploy/check.sh" "$@" ;;
+    add-domain) not_root; need_node; get_sudo; sudo "$ROOT/deploy/add-domain.sh" "$@" ;;
+    uninstall) cmd_uninstall "$@" ;;
+    help|-h|--help) usage ;;
+    *) echo "unknown command: $c" >&2; usage >&2; exit 2 ;;
+  esac
+}
+main "$@"; exit $?

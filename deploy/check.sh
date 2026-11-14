@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Checks this server is ready for Colluder and says what to fix. Changes nothing; safe any time.
-#   deploy/check.sh [--domain oob.example] [--public-ip 203.0.113.10]
-# Run as your normal user. deploy/install.sh runs it once the domain is known, and the cutover runs
-# it before changing anything. Exit status 1 when something must be fixed first.
+#   ./colluder check [--domain oob.example] [--public-ip 203.0.113.10]     (this is deploy/check.sh)
+# Run as your normal user. ./colluder setup runs it before it changes anything as root, and so does
+# deploy/edge.sh when run by hand. Exit status 1 when something must be fixed first.
 set -uo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 FAILED=0
@@ -13,7 +13,7 @@ note() { printf '   note  %s\n' "$*"; }
 DOMAIN=""; PUB=""
 while (( $# )); do case "$1" in --domain) DOMAIN=${2:-}; shift 2 ;; --public-ip) PUB=${2:-}; shift 2 ;; *) echo "unknown option $1" >&2; exit 2 ;; esac; done
 
-printf '\n\033[1m== Colluder preflight\033[0m\n'
+[[ -n "${COLLUDER_IN_SETUP:-}" ]] || printf '\n\033[1m== Colluder check\033[0m\n'
 # ---- the system
 [[ -d /run/systemd/system ]] && ok "systemd" || fail "systemd is not running: Colluder's services need it"
 command -v sudo >/dev/null && ok "sudo" || fail "sudo is missing: the cutover and front scripts run as root"
@@ -29,7 +29,7 @@ else
   fail "Node not found: install Node 26 or later (with nvm: nvm install 26)"; NODE=""
 fi
 
-# ---- the config (when install.sh has written it)
+# ---- the config (once setup has written it)
 cfg() { [[ -n "$NODE" ]] && "$NODE" "$ROOT/lib/config.mjs" get "$1" 2>/dev/null; }
 CONF=${COLLUDER_CONFIG:-$HOME/.config/colluder/config.yaml}
 if [[ -f "$CONF" && -n "$NODE" ]]; then
@@ -47,15 +47,15 @@ done
 for b in "$CLIENT" "$SERVER"; do
   if [[ -x "$b" ]]; then
     v=$("$b" -version 2>&1 | grep -o '[0-9]\+\.[0-9]\+\.[0-9]\+' | head -1)
-    [[ "$v" == "1.4.1" ]] && ok "$(basename "$b") $v" || warn "$(basename "$b") is ${v:-of unknown version}; Colluder is built against 1.4.1 (deploy/get-interactsh.sh installs it)"
+    [[ "$v" == "1.4.1" ]] && ok "$(basename "$b") $v" || warn "$(basename "$b") is ${v:-of unknown version}; Colluder is built against 1.4.1 (./colluder setup installs it)"
   else
-    fail "$(basename "$b") not found at $b: run deploy/get-interactsh.sh"
+    fail "$(basename "$b") not found at $b: run ./colluder setup"
   fi
 done
 
 # ---- the domain's delegation, read from the parent zone's own servers (works before interactsh runs)
 if [[ -z "$DOMAIN" ]]; then
-  note "no domain yet: deploy/install.sh asks for it (or pass --domain)"
+  note "no domain yet: ./colluder setup asks for it (or pass --domain)"
 elif [[ -z "$PUB" ]]; then
   fail "no public IPv4 address found on this server"
 else
@@ -144,8 +144,9 @@ note "a cloud firewall (AWS security groups, Hetzner Firewalls and the like) mus
 
 # ---- the dashboard and engine are user services: they keep running after you log out only with lingering
 if [[ "$(loginctl show-user "$USER" -p Linger --value 2>/dev/null)" == "yes" ]]; then ok "lingering on for $USER"
-else note "lingering is off for $USER: deploy/install.sh turns it on, so Colluder keeps running after you log out"; fi
+else note "lingering is off for $USER: ./colluder setup turns it on, so Colluder keeps running after you log out"; fi
 
+[[ -n "${COLLUDER_IN_SETUP:-}" ]] && exit $FAILED
 echo
-if (( FAILED )); then echo "Fix the FAIL lines above, then run deploy/check.sh again."; exit 1; fi
+if (( FAILED )); then echo "Fix the FAIL lines above, then run ./colluder check again."; exit 1; fi
 echo "Ready."

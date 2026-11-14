@@ -58,7 +58,7 @@ test("config: no file is fine until a needed key is missing, and the error says 
   assert.equal(c.file, null);
   assert.equal(c.domain, "");
   assert.equal(c["dashboard.host"], "127.0.0.1");
-  assert.throws(() => requireConfig(c, ["domain", "public_ip"]), /domain, public_ip missing.*install\.sh/);
+  assert.throws(() => requireConfig(c, ["domain", "public_ip"]), /domain, public_ip missing.*colluder setup/);
   assert.doesNotThrow(() => requireConfig(loadConfig({ env: { COLLUDER_CONFIG: "/x", COLLUDER_DOMAIN: "a.example", COLLUDER_PUBLIC_IP: "203.0.113.1" } }), ["domain", "public_ip"]));
 });
 

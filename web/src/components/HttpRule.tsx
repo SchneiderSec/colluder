@@ -6,7 +6,7 @@ import { useApp, getState, fetchRule, previewRule, saveRule, setRuleDraft, takeR
 import type { Decoy, HttpRule, Probe, RuleMode, RuleState, RuleVersion } from "@/lib/types";
 import { reachOf } from "@/lib/reach";
 import { METADATA, redirectable } from "@/lib/metadata";
-import { dayOrTime, plural, deployCmd } from "@/lib/format";
+import { dayOrTime, plural, setupCmd } from "@/lib/format";
 import { copy, toast } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -132,7 +132,7 @@ function Num({ value, onChange, label, max, w = "w-[64px]", invalid }: { value: 
 export function HttpRuleTab({ p }: { p: Probe }) {
   const host = useApp((s) => s.status?.payload?.host) || "<id>.<your domain>";
   const edge = useApp((s) => s.status?.edge);
-  const CUTOVER = deployCmd(useApp((s) => s.status?.app), "cutover-phase2.sh");
+  const CUTOVER = setupCmd(useApp((s) => s.status?.app));
   const live = edge?.state === "running";
   const [rs, setRs] = useState<RuleState | null>(null);
   const [loadErr, setLoadErr] = useState<string | null>(null);

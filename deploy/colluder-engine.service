@@ -1,5 +1,5 @@
 # Colluder engine: interactsh-client polling the payload domain and writing JSON lines.
-# A template: deploy/install.sh fills in the @...@ values from config.yaml.
+# A template: deploy/install.sh (run by ./colluder setup) fills in the @...@ values from config.yaml.
 # Server and token come from ~/.config/colluder/engine.yaml (mode 600) so the token is not on argv.
 # Interactions arrive as JSON lines on stdout; systemd appends them to the log (the client's own -o
 # truncates on every start). Logs and the banner go to stderr, i.e. the journal.

@@ -41,4 +41,5 @@ export const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`
 export const lineCount = (s: string) => (s ? s.split(/\r?\n/).length : 0);
 export const byteCount = (s: string) => new TextEncoder().encode(s || "").length;
 // A deploy script as the operator runs it, by its path in this server's checkout.
-export const deployCmd = (app: string | undefined, script: string) => `sudo ${app ?? "."}/deploy/${script}`;
+// the one command that sets up (or finishes setting up) the server, run as the operator from anywhere
+export const setupCmd = (app: string | undefined) => `${app ?? "."}/colluder setup`;

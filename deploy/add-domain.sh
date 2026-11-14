@@ -3,8 +3,8 @@
 # Payloads keep using the current domain; this makes the new one answer, get its own wildcard
 # certificate, and pass the outside check, so the switch later is one setting.
 #   Run as root, after pointing the domain's nameservers at ns1/ns2.<domain> (glue: this box's IP):
-#     sudo deploy/add-domain.sh alt.example [--force]
-#   Undo:  sudo deploy/add-domain.sh --rollback
+#     ./colluder add-domain alt.example     (or: sudo deploy/add-domain.sh alt.example [--force])
+#   Undo:  sudo deploy/add-domain.sh --undo
 # interactsh restarts once (DNS for the domains is down for a few seconds). No token is read or printed.
 set -euo pipefail
 umask 077
@@ -17,7 +17,7 @@ CENV=$H/.config/colluder/colluder.env
 STORE=/root/.local/share/certmagic/certificates
 BK=/root/colluder-add-domain-backup
 
-say()  { printf '\n\033[1m== %s\033[0m\n' "$*"; }
+say()  { local t="$*"; printf '   \033[2m-- %s\033[0m\n' "${t#[0-9]/[0-9] }"; }
 ok()   { printf '   ok    %s\n' "$*"; }
 bad()  { printf '   FAIL  %s\n' "$*"; FAILED=1; }
 die()  { printf '\n   STOP  %s\n' "$*" >&2; exit 1; }
@@ -50,7 +50,7 @@ rollback() {
   ok "edge and dashboard restarted on one domain (the new cert-sync stays: it handles one domain too)"
 }
 
-if [[ "${1:-}" == "--rollback" ]]; then rollback; exit 0; fi
+if [[ "${1:-}" == "--rollback" || "${1:-}" == "--undo" ]]; then rollback; exit 0; fi
 NEW=${1:-}; MODE=${2:-}
 [[ "$NEW" =~ ^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,63}$ ]] || die "usage: sudo $0 <new-domain> [--force]   (or --rollback)"
 [[ "$NEW" != "$OLD" ]] || die "$NEW is already the payload domain"
@@ -75,7 +75,7 @@ ok "edge, DNS and domain tests pass"
 # a domain in server.yaml would fight the -d flag: stop rather than guess which wins (key names only)
 if grep -qiE '^\s*(d|domain)\s*:' /etc/interactsh/server.yaml 2>/dev/null; then die "/etc/interactsh/server.yaml sets a domain itself; move it to $DOMS (INTERACTSH_DOMAINS=...) by hand first"; fi
 SHORT=$("$NODE" -e 'try{const j=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.stdout.write((j.shortIds||[])[0]||"")}catch{}' "$DATA/rules.json")
-[[ "$SHORT" =~ ^[a-z][a-z0-9]{5}$ ]] || die "no short id in rules.json: run deploy/dns-front.sh first"
+[[ "$SHORT" =~ ^[a-z][a-z0-9]{5}$ ]] || die "no short id in rules.json: run ./colluder setup first"
 CUR=$( [[ -f $DOMS ]] && sed -n 's/^INTERACTSH_DOMAINS=//p' $DOMS || echo "$OLD")
 [[ -n "$CUR" ]] || CUR=$OLD
 case ",$CUR," in *",$NEW,"*) LIST=$CUR;; *) LIST="$CUR,$NEW";; esac

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Phase 2 cutover: put colluder-edge in front of interactsh on :80/:443 and rotate the
-# interactsh auth token. Run as root:   sudo deploy/cutover-phase2.sh [--force]
-# Rollback:                            sudo deploy/rollback-phase2.sh
+# The web step of `./colluder setup`: run interactsh under systemd with a fresh auth token, on internal
+# HTTP ports, and put colluder-edge in front of it on :80/:443. Run by setup; by hand, as root:
+#   sudo deploy/edge.sh [--force]    --force: go ahead despite a failed check or a running nuclei scan
+#   sudo deploy/edge.sh --undo       stop the edge and put interactsh back on :80/:443 (keeps the token)
 # The token is never printed and never placed on a command line.
 set -euo pipefail
 umask 077
@@ -9,9 +10,10 @@ umask 077
 . "$(dirname "$0")/lib.sh"   # the operator, paths, public IP and domain, from config.yaml
 BIN=$SERVER_BIN
 ORIGIN_HDR=X-Colluder-Origin-IP
-FORCE=0; [[ "${1:-}" == "--force" ]] && FORCE=1
+FORCE=0; CHECKED=0; UNDO=0
+for a in "$@"; do case "$a" in --force) FORCE=1 ;; --checked) CHECKED=1 ;; --undo|--rollback) UNDO=1 ;; *) echo "unknown option $a" >&2; exit 2 ;; esac; done
 
-say()  { printf '\n\033[1m== %s\033[0m\n' "$*"; }
+say()  { local t="$*"; printf '   \033[2m-- %s\033[0m\n' "${t#[0-9]/[0-9] }"; }
 ok()   { printf '   ok    %s\n' "$*"; }
 bad()  { printf '   FAIL  %s\n' "$*"; FAILED=1; }
 die()  { printf '\n   STOP  %s\n' "$*" >&2; exit 1; }
@@ -21,18 +23,38 @@ FAILED=0
 [[ $EUID -eq 0 ]] || die "run with sudo"
 [[ -x "$BIN" && -x "$NODE" ]] || die "interactsh-server or node not found"
 
+# --undo: the edge off, interactsh back on :80/:443 (the token and the systemd unit stay)
+if (( UNDO )); then
+  systemctl disable --now colluder-edge.service 2>/dev/null || true
+  printf 'INTERACTSH_PORT_FLAGS=\n' > /etc/interactsh/ports.env
+  systemctl restart interactsh.service
+  # interactsh listens only after it has tried for its certificate (a first try can take minutes)
+  for _ in $(seq 1 180); do ss -ltnH "sport = :80" | grep -q "$PUB" && break; sleep 1; done
+  for _ in $(seq 1 10); do ss -ltnH "sport = :443" | grep -q "$PUB" && break; sleep 0.5; done
+  if ss -ltnH "sport = :443" | grep -q "$PUB" && ss -ltnH "sport = :80" | grep -q "$PUB"; then
+    ok "undone: interactsh answers :80/:443 again; the edge is stopped and disabled"
+    echo "   HTTP rules in the dashboard are kept but not served until ./colluder setup runs again."
+  elif ss -ltnH "sport = :80" | grep -q "$PUB" && ! compgen -G "/root/.local/share/certmagic/certificates/*/wildcard_.$DOMAIN" >/dev/null; then
+    ok "undone: interactsh answers :80 again; the edge is stopped and disabled"
+    echo "   It has no certificate for *.$DOMAIN yet, so no HTTPS: once ./colluder check passes, run ./colluder setup again."
+  else
+    die "interactsh did not come back on :80/:443: journalctl -u interactsh"
+  fi
+  exit 0
+fi
+
 say "1/6 preflight"
 if pgrep -x nuclei >/dev/null && (( ! FORCE )); then die "a nuclei scan is running; it would lose callbacks during the switch and its token would stop working. Re-run with --force to go ahead anyway."; fi
-[[ -f $APP/web/dist/index.html ]] || die "UI not built: run deploy/install.sh in $APP as $U"
+[[ -f $APP/web/dist/index.html ]] || die "UI not built: run ./colluder setup as $U"
 # COLLUDER_NODE: sudo drops an nvm-installed node from PATH
-if ! as_user env COLLUDER_NODE="$NODE" "$APP/deploy/check.sh"; then (( FORCE )) || die "the preflight check failed (above): fix it first, or re-run with --force"; fi
+if (( ! CHECKED )) && ! as_user env COLLUDER_NODE="$NODE" "$APP/deploy/check.sh"; then (( FORCE )) || die "the preflight check failed (above): fix it first, or re-run with --force"; fi
 as_user "$NODE" --test "$APP/test/edge.test.mjs" >/dev/null 2>&1 || die "edge tests fail: run npm test in $APP"
 ok "edge tests pass"
 install -D -m 755 "$APP/deploy/cert-sync.sh" /usr/local/libexec/colluder-cert-sync
 write_cert_defaults
 STORE=/root/.local/share/certmagic/certificates
 have_cert() { compgen -G "$STORE/*/wildcard_.$DOMAIN/wildcard_.$DOMAIN.crt" >/dev/null; }
-if have_cert; then /usr/local/libexec/colluder-cert-sync | sed 's/^/   /'; else ok "no certificate yet: interactsh requests it when it starts (step 4)"; fi
+if have_cert; then /usr/local/libexec/colluder-cert-sync | sed 's/^/   /'; else ok "no certificate yet: interactsh requests it when it starts (below)"; fi
 for p in 8081 8444; do
   if ss -ltnH "sport = :$p" | grep -q . && ! systemctl is-active -q interactsh; then die "port $p is already in use"; fi
 done
@@ -89,7 +111,7 @@ if ! systemctl is-active -q interactsh; then
   for _ in $(seq 1 20); do pgrep -f "^$BIN( |$)" >/dev/null || break; sleep 0.5; done
   pgrep -f "^$BIN( |$)" >/dev/null && { pkill -TERM -f "^$BIN( |$)" || true; sleep 1; }
 fi
-systemctl enable --now interactsh.service
+systemctl enable -q --now interactsh.service
 systemctl restart interactsh.service
 # interactsh gets its certificate before it listens on anything (a first start: up to a few minutes),
 # and without one it never opens HTTPS: it doesn't retry until it restarts
@@ -97,8 +119,8 @@ have_cert || printf '   ...   interactsh is getting the *.%s certificate from Le
 for _ in $(seq 1 180); do ss -ltnH "sport = :8081" | grep -q . && ss -lunH "sport = :53" | grep -q "$PUB" && break; sleep 1; done
 for _ in $(seq 1 10); do ss -ltnH "sport = :8444" | grep -q . && break; sleep 0.5; done
 UP_HTTP=$(ss -ltnH "sport = :8081" | awk '{print $4}' | head -1); UP_HTTPS=$(ss -ltnH "sport = :8444" | awk '{print $4}' | head -1)
-[[ -n "$UP_HTTP" ]] || die "interactsh did not come up on 8081 (journalctl -u interactsh); run rollback-phase2.sh"
-[[ -n "$UP_HTTPS" ]] && have_cert || die "interactsh couldn't get a certificate for *.$DOMAIN, so it has no HTTPS (journalctl -u interactsh shows why). Check the delegation with deploy/check.sh, run rollback-phase2.sh, then run this again"
+[[ -n "$UP_HTTP" ]] || die "interactsh did not come up on 8081 (journalctl -u interactsh); undo with: sudo deploy/edge.sh --undo"
+[[ -n "$UP_HTTPS" ]] && have_cert || die "interactsh couldn't get a certificate for *.$DOMAIN, so it has no HTTPS (journalctl -u interactsh shows why). Check the delegation with ./colluder check, then run ./colluder setup again"
 UP_HTTP=${UP_HTTP/#\*:/127.0.0.1:}; UP_HTTP=${UP_HTTP/#0.0.0.0:/127.0.0.1:}; UP_HTTP=${UP_HTTP/#\[::\]:/127.0.0.1:}
 UP_HTTPS=${UP_HTTPS/#\*:/127.0.0.1:}; UP_HTTPS=${UP_HTTPS/#0.0.0.0:/127.0.0.1:}; UP_HTTPS=${UP_HTTPS/#\[::\]:/127.0.0.1:}
 ok "interactsh on $UP_HTTP (http) and $UP_HTTPS (https); DNS, SMTP, LDAP unchanged"
@@ -108,14 +130,14 @@ install -o $U -g $U -m 600 /dev/null $H/.config/colluder/edge.env
 printf 'COLLUDER_EDGE_HTTP=%s:80\nCOLLUDER_EDGE_HTTPS=%s:443\nCOLLUDER_UPSTREAM_HTTP=%s\nCOLLUDER_UPSTREAM_HTTPS=%s\n' "$PUB" "$PUB" "$UP_HTTP" "$UP_HTTPS" > $H/.config/colluder/edge.env
 
 say "5/6 start the edge, the certificate timer, and the engine"
-systemctl enable --now colluder-cert-sync.timer
-systemctl enable --now colluder-edge.service
+systemctl enable -q --now colluder-cert-sync.timer
+systemctl enable -q --now colluder-edge.service
 systemctl restart colluder-edge.service
 for _ in $(seq 1 20); do ss -ltnH "sport = :443" | grep -q "$PUB" && break; sleep 0.5; done
 as_user systemctl --user restart colluder.service
 loginctl enable-linger "$U"   # the dashboard and engine are user services: keep them up after logout
 as_user systemctl --user reset-failed colluder-engine.service 2>/dev/null || true
-as_user systemctl --user enable --now colluder-engine.service
+as_user systemctl --user enable -q --now colluder-engine.service
 ok "edge, timer, dashboard and engine started"
 
 say "6/6 verify"
@@ -131,29 +153,27 @@ sleep 2
 # unauthenticated registration must be refused (the token config was read)
 code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 -X POST -H 'content-type: application/json' -d '{}' "http://${UP_HTTP}/register" || true)
 [[ "$code" == "401" ]] && ok "interactsh refuses unauthenticated clients (401)" || bad "interactsh /register answered $code, expected 401: the token may not be loaded"
-body=$(curl -s --max-time 5 --resolve "cutover-http.$ID.$DOMAIN:80:$PUB" "http://cutover-http.$ID.$DOMAIN/" -A colluder-cutover || true)
+body=$(curl -s --max-time 5 --resolve "setup-check-http.$ID.$DOMAIN:80:$PUB" "http://setup-check-http.$ID.$DOMAIN/" -A colluder-setup-check || true)
 [[ "$body" == *"$(rev <<<"$ID")"* ]] && ok "edge answers your probes over HTTP" || bad "own HTTP probe did not get the edge's reply"
-body=$(curl -s --max-time 5 --resolve "$ID.$DOMAIN:443:$PUB" "https://$ID.$DOMAIN/cutover-https/" -A colluder-cutover || true)
+body=$(curl -s --max-time 5 --resolve "$ID.$DOMAIN:443:$PUB" "https://$ID.$DOMAIN/setup-check-https/" -A colluder-setup-check || true)
 [[ "$body" == *"$(rev <<<"$ID")"* ]] && ok "edge answers your probes over HTTPS with a valid certificate" || bad "own HTTPS probe failed (certificate or edge)"
 hdr=$(curl -s -o /dev/null -D - --max-time 5 --resolve "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz.$DOMAIN:80:$PUB" "http://zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz.$DOMAIN/" || true)
 grep -qi '^server:' <<<"$hdr" && ok "other clients' traffic reaches interactsh through the edge" || bad "foreign HTTP request got no answer from interactsh"
 code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 --resolve "$DOMAIN:443:$PUB" "https://$DOMAIN/" || true)
 [[ "$code" != "000" ]] && ok "interactsh's API on https://$DOMAIN passes through with its own certificate ($code)" || bad "https://$DOMAIN unreachable: clients can't poll"
 before=$(wc -l < "$DATA/interactions.jsonl")
-dig +short +time=3 +tries=1 "@$PUB" "cutover-dns.$ID.$DOMAIN" A >/dev/null || true
+dig +short +time=3 +tries=1 "@$PUB" "setup-check-dns.$ID.$DOMAIN" A >/dev/null || true
 for _ in $(seq 1 20); do (( $(wc -l < "$DATA/interactions.jsonl") > before )) && break; sleep 1; done
 (( $(wc -l < "$DATA/interactions.jsonl") > before )) && ok "engine polls with the new token (DNS hit arrived)" || bad "no DNS hit reached the engine in 20 s: check journalctl --user -u colluder-engine"
-grep -q 'cutover-http' "$DATA/edge.jsonl" 2>/dev/null && ok "edge recorded its hits for the dashboard" || bad "edge.jsonl has no record of the check"
+grep -q 'setup-check-http' "$DATA/edge.jsonl" 2>/dev/null && ok "edge recorded its hits for the dashboard" || bad "edge.jsonl has no record of the check"
 
 echo
 if (( FAILED )); then
-  echo "Some checks failed. The rollback puts interactsh back on :80/:443 (keeping the new token):"
-  echo "  sudo $APP/deploy/rollback-phase2.sh"
+  echo "Some checks failed. To put interactsh back on :80/:443 (keeping the new token):"
+  echo "  sudo $APP/deploy/edge.sh --undo"
   exit 1
 fi
 cat <<EOF
-Cutover done. Colluder answers your probes on :80/:443; everything else reaches interactsh unchanged.
-  - New interactsh token: in engine.yaml$( [[ -n "$(cfg nuclei.token_file)" ]] && echo " and $(cfg nuclei.token_file) ($(cfg nuclei.token_var))"). Any other
-    interactsh client started before now keeps the old token and stops receiving.
-  - Rollback: sudo $APP/deploy/rollback-phase2.sh
+   ok    Colluder answers your probes on :80/:443; everything else reaches interactsh unchanged.
+   note  new interactsh token in engine.yaml$( [[ -n "$(cfg nuclei.token_file)" ]] && echo " and $(cfg nuclei.token_file) ($(cfg nuclei.token_var))"); other interactsh clients started before now stop receiving
 EOF

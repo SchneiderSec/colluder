@@ -133,7 +133,7 @@ export interface Probe extends Counts {
 export type EngineState = "capturing" | "starting" | "degraded" | "down" | "missing" | "unknown";
 
 export interface Status {
-  app?: string; // the server's checkout, for deploy commands (deployCmd)
+  app?: string; // the server's checkout, for the setup command (setupCmd)
   engine: { state: EngineState; detail: string; fix?: string; since?: string | null; unit: string; restarts: number; version: string | null; check?: EngineCheck | null };
   // host: what payloads are built on (the short host once the edge records its DNS); longHost: the engine's
   payload: { host: string; longHost?: string; mailHost?: string; shortId?: string; shortHost?: string; short?: boolean; correlationId: string; domain: string; writtenAt: string } | null;

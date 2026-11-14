@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# SMTP front: move interactsh-server's SMTP from :25/:587/:465 to internal ports and
-# put colluder-edge on them. The edge receives mail for Colluder's names itself (probes and the
+# The mail step of `./colluder setup`: move interactsh-server's SMTP from :25/:587/:465 to internal
+# ports and put colluder-edge on them. The edge receives mail for Colluder's names itself (probes and the
 # mailbox), writes each message to disk before it answers 250, and refuses everything else. Nothing
 # is relayed or sent.
-#   Run as root:  sudo deploy/smtp-front.sh [--force]
-#   Undo:         sudo deploy/smtp-front.sh --rollback
+#   Run by setup (unless --no-mail); by hand, as root:  sudo deploy/mail.sh [--force]
+#   Undo:                                               sudo deploy/mail.sh --undo
 # Mail to the domain is refused for a few seconds during the switch (senders retry). No token is read
 # or printed. interactsh restarts, which makes it forget the engine's registration: the engine is
 # restarted after it, so it registers again.
@@ -16,9 +16,9 @@ PORTS=/etc/interactsh/ports.env
 EENV=$H/.config/colluder/edge.env
 UP_SMTP=8025; UP_SMTPS=8587; UP_AUTOTLS=8465
 FLAGS="-smtp-port $UP_SMTP -smtps-port $UP_SMTPS -smtp-autotls-port $UP_AUTOTLS"
-MODE=${1:-}
+MODE=${1:-}; [[ "$MODE" == "--undo" ]] && MODE=--rollback
 
-say()  { printf '\n\033[1m== %s\033[0m\n' "$*"; }
+say()  { local t="$*"; printf '   \033[2m-- %s\033[0m\n' "${t#[0-9]/[0-9] }"; }
 ok()   { printf '   ok    %s\n' "$*"; }
 bad()  { printf '   FAIL  %s\n' "$*"; FAILED=1; }
 warn() { printf '   WARN  %s\n' "$*"; }
@@ -27,7 +27,7 @@ as_user() { sudo -u "$U" XDG_RUNTIME_DIR=/run/user/$UID_U DBUS_SESSION_BUS_ADDRE
 FAILED=0
 
 [[ $EUID -eq 0 ]] || die "run with sudo"
-[[ -f $PORTS && -f $EENV ]] || die "phase 2 isn't installed ($PORTS, $EENV): run cutover-phase2.sh first"
+[[ -f $PORTS && -f $EENV ]] || die "the edge isn't set up yet: run ./colluder setup"
 
 set_env() { # set_env KEY [VALUE]: no VALUE removes the line (edge.env stays the user's file)
   local tmp; tmp=$(mktemp)
@@ -41,7 +41,7 @@ greeting() { timeout 8 bash -c "exec 3<>/dev/tcp/$PUB/$1; IFS= read -r -t 6 l <&
 restart_engine() { as_user systemctl --user restart colluder-engine.service && ok "engine restarted: it registers its id with interactsh again"; }
 
 rollback() {
-  say "rollback: interactsh back on :25/:587/:465, the edge off them"
+  say "undo: interactsh back on :25/:587/:465, the edge off them"
   set_env COLLUDER_EDGE_SMTP
   set_env COLLUDER_EDGE_SMTPS
   systemctl restart colluder-edge.service
@@ -69,7 +69,7 @@ ok "short id $SHORT: the mailbox will be <anyone>@mailbox-$SHORT.$DOMAIN"
 if command -v ufw >/dev/null && ufw status 2>/dev/null | grep -q "Status: active"; then
   for p in 25 465 587; do ufw status | grep -qE "^$p(/tcp)?[[:space:]]+ALLOW" || warn "ufw is active and has no ALLOW rule for $p/tcp: senders on the internet can't reach it (ufw allow $p/tcp)"; done
 fi
-trap 'echo; printf "   STOP  something failed: rolling back\n"; rollback' ERR
+trap 'echo; printf "   STOP  something failed: undoing this step\n"; rollback' ERR
 
 say "2/5 interactsh SMTP to :$UP_SMTP, :$UP_SMTPS, :$UP_AUTOTLS"
 grep -q -- "-smtp-port $UP_SMTP" "$PORTS" || sed -i -E "s/^(INTERACTSH_PORT_FLAGS=.*)$/\1 $FLAGS/" "$PORTS"
@@ -100,14 +100,14 @@ if command -v openssl >/dev/null; then
   [[ -n "$s" ]] && ok "TLS on :465" || bad "TLS on :465 didn't complete"
 fi
 NONCE=$(head -c4 /dev/urandom | od -An -tx1 | tr -d ' \n')
-LOCAL="smtp-front-check-$NONCE"
+LOCAL="setup-check-mail-$NONCE"
 out=$(python3 -I - "$PUB" "$LOCAL@mailbox-$SHORT.$DOMAIN" "nobody@elsewhere.example" <<'PY' 2>&1
 import smtplib, sys
 from email.message import EmailMessage
 pub, to, foreign = sys.argv[1:4]
-m = EmailMessage(); m["From"] = "smtp-front@colluder.invalid"; m["To"] = to; m["Subject"] = "Colluder SMTP front check"
+m = EmailMessage(); m["From"] = "setup-check@colluder.invalid"; m["To"] = to; m["Subject"] = "Colluder setup mail check"
 m.set_content("Your verification code is 731942.\n\nOr sign in: https://colluder.invalid/magic?token=a1b2c3d4e5f6g7h8i9\n")
-s = smtplib.SMTP(pub, 25, timeout=15); s.ehlo("smtp-front.check"); s.starttls(); s.ehlo("smtp-front.check")
+s = smtplib.SMTP(pub, 25, timeout=15); s.ehlo("setup-check.colluder.invalid"); s.starttls(); s.ehlo("setup-check.colluder.invalid")
 print("sent", s.send_message(m))
 try:
     s.sendmail("x@colluder.invalid", [foreign], "Subject: no\r\n\r\nno\r\n"); print("foreign ACCEPTED")
@@ -128,8 +128,9 @@ r=$(curl -fsS -m 5 "$DASH/api/status" || true)
 grep -q '"state":"capturing"' <<<"$r" && ok "engine capturing (the engine check runs within a minute and every 3 after)" || warn "engine not 'capturing' yet: look at the dashboard in a minute"
 
 if (( FAILED )); then
-  echo; echo "Some checks failed. Undo with: sudo $APP/deploy/smtp-front.sh --rollback"; exit 1
+  echo; echo "Some checks failed. Undo with: sudo $APP/deploy/mail.sh --undo"; exit 1
 fi
+[[ -n "${COLLUDER_IN_SETUP:-}" ]] && exit 0   # setup prints the summary
 echo
 echo "Done. Mail for Colluder's names now lands in Colluder:"
 echo "  mailbox:  <anyone>@mailbox-$SHORT.$DOMAIN  (dashboard Mailbox tab, /api/mail, MCP wait_for_mail)"

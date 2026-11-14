@@ -79,46 +79,29 @@ You need:
 - **Node 26 or later** (with [nvm](https://github.com/nvm-sh/nvm): `nvm install 26`; on a minimal Ubuntu image, `sudo apt install libatomic1` first)
 - these ports open in the server's firewall and your cloud provider's: **53** (UDP and TCP), **80** and **443**, plus **25**, **465** and **587** for mail
 
-The dashboard has no login, so keep it private. With Tailscale, the installer offers your tailnet address. Without it, the dashboard listens on `127.0.0.1` and you reach it through SSH: `ssh -L 8090:127.0.0.1:8090 you@your-server`, then open http://localhost:8090.
+The dashboard has no login, so keep it private. With Tailscale, setup offers your tailnet address. Without it, the dashboard listens on `127.0.0.1` and you reach it through SSH: `ssh -L 8090:127.0.0.1:8090 you@your-server`, then open http://localhost:8090.
 
-In the commands below, replace `oob.example` with your domain and `203.0.113.10` with your server's IP.
+**1. Point a domain at the server.** Colluder answers DNS for its domain, so the domain's nameservers must be your server. Use a whole domain, or a subdomain of one you already have:
 
-**1. Point your domain at the server.** At your registrar, create glue records `ns1.oob.example` and `ns2.oob.example` → `203.0.113.10`, then make them the domain's nameservers. To use a subdomain of a domain you already have instead, add just two records where its DNS is hosted: an `A` record `ns-oob` → `203.0.113.10` and an `NS` record `oob` → `ns-oob.<your domain>`, then use `oob.<your domain>` as your Colluder domain. The installer checks the delegation for you.
+- **Subdomain** (your other records stay as they are): where the domain's DNS is hosted, add an `A` record `ns-oob` → your server's IP and an `NS` record `oob` → `ns-oob.yourdomain.com`. Colluder's domain is then `oob.yourdomain.com`.
+- **Whole domain:** at the registrar, create glue records `ns1` and `ns2` → your server's IP, then make them the domain's nameservers.
 
-**2. Download Colluder and interactsh** as your normal user. interactsh comes as a checksum-verified release binary, so you don't need Go.
+**2. Run setup** on the server, as your normal user:
 
 ```sh
 git clone https://github.com/SchneiderSec/colluder.git
 cd colluder
-deploy/get-interactsh.sh
+./colluder setup
 ```
 
-**3. Install.** The installer asks for your domain, checks the server (DNS delegation, ports, firewall), builds the dashboard and starts it.
+It asks for your domain, checks the server (the delegation, ports and firewall), then sets up interactsh, the dashboard, HTTPS with a Let's Encrypt certificate, DNS and the mailbox. It asks for sudo when it needs it and ends by printing your dashboard address. If a check fails, it says what to fix; run it again and it picks up where it stopped. Add `--no-mail` if you can't open the mail ports.
+
+## Afterwards
 
 ```sh
-deploy/install.sh
-```
-
-**4. Start interactsh and put Colluder's edge in front.** This runs interactsh under systemd with a fresh token, waits for its Let's Encrypt certificate, puts the edge on :80 and :443, and ends with live checks. On a fresh server it takes under a minute.
-
-```sh
-sudo deploy/cutover-phase2.sh
-```
-
-Open the dashboard and plant your first probe. Two optional extras:
-
-```sh
-sudo deploy/dns-front.sh     # short payloads (avatar-k7wq2x.oob.example) and DNS hits
-sudo deploy/smtp-front.sh    # receive mail: the mailbox and email payloads
-```
-
-Every script checks before it changes anything and can be undone (`deploy/rollback-phase2.sh`, or `--rollback`). If something isn't working, `deploy/check.sh` says what to fix.
-
-## Update
-
-```sh
-git pull && deploy/install.sh        # rebuilds and restarts the dashboard
-sudo systemctl restart colluder-edge
+./colluder update      # pull the latest version, rebuild and restart
+./colluder check       # what's wrong with this server and how to fix it
+./colluder uninstall   # stop Colluder and remove its services (keeps your data unless --purge)
 ```
 
 ## Connect Claude Code

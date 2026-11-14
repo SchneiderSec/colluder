@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Downloads the interactsh release Colluder is built against (server and client), checks both against
 # the release's checksums, and installs them for this user. No Go toolchain needed.
-#   deploy/get-interactsh.sh [--dir DIR]     default DIR: ~/.local/bin
-# Run as your normal user, before deploy/install.sh (which finds the binaries there).
+#   deploy/download.sh [--dir DIR]     default DIR: ~/.local/bin
+# Run by ./colluder setup as your normal user, before deploy/install.sh (which finds the binaries there).
 set -euo pipefail
 VERSION=1.4.1
 DIR="$HOME/.local/bin"

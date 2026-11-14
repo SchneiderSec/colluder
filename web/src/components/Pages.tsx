@@ -7,7 +7,7 @@ import { Copy, RotateCcw, Trash2 } from "lucide-react";
 import { useApp, clearAll, restoreClear } from "@/store";
 import { AlertsSection, CheckSection, DisplaySection, Group, PayloadSection, Row, Section, THEME_NAMES, checkWord, fail } from "./SettingsParts";
 import { LineForm } from "./bits";
-import { plural, deployCmd } from "@/lib/format";
+import { plural, setupCmd } from "@/lib/format";
 import { copy } from "@/lib/toast";
 import { useDisplay } from "@/lib/display";
 import { cn } from "@/lib/utils";
@@ -16,7 +16,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import type { Status } from "@/lib/types";
 
 function edgeRows(e: Status["edge"], app?: string): [string, ReactNode][] {
-  if (!e || e.state === "absent") return [["State", <span className="text-smoke">Not installed yet (before the cutover). HTTP rules are saved, but interactsh still answers the internet. To go live: <code className="font-mono">{deployCmd(app, "cutover-phase2.sh")}</code>.</span>]];
+  if (!e || e.state === "absent") return [["State", <span className="text-smoke">Not set up yet. HTTP rules are saved, but interactsh still answers the internet. To go live: <code className="font-mono">{setupCmd(app)}</code>.</span>]];
   const word = { running: "answering", stale: "silent (no heartbeat for 20 s)", stopped: "stopped", unreadable: `status unreadable: ${e.detail ?? ""}`, absent: "" }[e.state];
   const rows: [string, ReactNode][] = [["State", <span className={e.state === "running" ? "text-bone" : "font-semibold text-bad"}>{word}</span>]];
   if (e.listen) rows.push(["Listening", <code className="font-mono text-bone">{[e.listen.http, e.listen.https, e.listen.dns && `${e.listen.dns} (DNS)`].filter(Boolean).join(" · ")}</code>]);

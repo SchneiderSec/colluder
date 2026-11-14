@@ -1,7 +1,7 @@
 # Colluder dashboard: tails the engine's JSON lines, serves the UI on a private address.
 # Its address, domain and paths come from ~/.config/colluder/config.yaml; optional secrets
 # (DISCORD_WEBHOOK_URL) live in ~/.config/colluder/colluder.env (mode 600).
-# A template: deploy/install.sh fills in the @...@ values from config.yaml.
+# A template: deploy/install.sh (run by ./colluder setup) fills in the @...@ values from config.yaml.
 [Unit]
 Description=Colluder dashboard (@DASH@)
 After=network-online.target
