@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { ArrowDownToLine, ChevronDown, Copy, RefreshCw, X } from "lucide-react";
-import { useApp, plant, save, setPlanting } from "@/store";
+import { ArrowDownToLine, ChevronDown, Copy, Dices, RefreshCw, X } from "lucide-react";
+import { useApp, plant, save, setPlanting, cancelPlanting } from "@/store";
 import { TAG_RE } from "@/lib/types";
+import { quickTag } from "@/lib/quicktag";
 import { variants } from "@/lib/raw";
 import { hostOf } from "@/lib/metadata";
 import { CLOUDS, XXE_FILES, ssrfRule, xxeRule } from "@/lib/presets";
@@ -50,18 +51,24 @@ function usePayloads(tag: string | null, previewTechnique?: string) {
 }
 
 // The probe header's copy buttons, while the rows are folded: one per variant (or per preset payload)
-export function PayloadCopy({ tag }: { tag: string }) {
+export function PayloadCopy({ tag, brief }: { tag: string; brief?: boolean }) {
   const { vs, presetRows, folded, probe } = usePayloads(tag);
   if (!folded || probe?.retiredAt) return null;
+  // beside a plant line the callbacks are secondary: one button that shows them
+  if (brief) return (
+    <Button variant="ghost" size="sm" className="flex-none text-smoke" data-payloads title="The DNS, HTTP and HTTPS callbacks" onClick={() => setPinned(true)}>Callbacks<ChevronDown /></Button>
+  );
   return (
+    // one "Copy" names the group, so each button is just its payload's name (narrower, and it reads)
     <div className="flex flex-wrap items-center gap-0.5 max-[820px]:mr-auto" data-payloads>
+      <span className="mr-0.5 flex items-center gap-1 text-label text-ash"><Copy className="size-3.5" strokeWidth={1.5} />Copy</span>
       {presetRows ? presetRows.slice(0, 3).map((p) => (
         <Button key={p.code} data-copy variant="ghost" size="sm" title={`${p.note ?? ""}\n${p.text}`} aria-label={`Copy ${p.name} payload`} onClick={() => copy(p.text, `${p.name} payload`)}>
-          <Copy />{p.name}
+          {p.name}
         </Button>
       )) : vs!.map((v) => (
         <Button key={v.proto} data-copy variant="ghost" size="sm" title={v.value} aria-label={`Copy ${v.proto.toUpperCase()} payload`} onClick={() => copy(v.value, `${v.proto.toUpperCase()} payload`)}>
-          <Copy /><TypeChip proto={v.proto} />
+          <TypeChip proto={v.proto} />
         </Button>
       ))}
       <Button variant="ghost" size="icon-sm" className="text-ash" aria-label="Show payloads" title="Show the payloads in full" onClick={() => setPinned(true)}><ChevronDown /></Button>
@@ -180,6 +187,10 @@ export function Composer() {
   const [err, setErr] = useState("");
   const tagRef = useRef<HTMLInputElement>(null);
   useEffect(() => { tagRef.current?.focus(); }, []);
+  // a quick probe: leave Tag empty and it plants under a made-up name, shown in the field (the dice
+  // deals another)
+  const roll = () => quickTag((t) => s.probes.has(t));
+  const [quick, setQuick] = useState(roll);
 
   const host = s.status?.payload?.host;
   const preview = tag && TAG_RE.test(tag) && !s.probes.has(tag) ? tag : null;
@@ -187,16 +198,17 @@ export function Composer() {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!TAG_RE.test(tag)) { setErr(tag ? BAD_TAG : "Give the probe a tag first, e.g. avatar."); tagRef.current?.focus(); return; }
+    if (tag && !TAG_RE.test(tag)) { setErr(BAD_TAG); tagRef.current?.focus(); return; }
+    const tag_ = tag || (s.probes.has(quick) ? roll() : quick);
     try {
       const c = CLOUDS.find((x) => x.id === cloud)!;
       const file = xxeFile === "custom" ? xxeCustom.trim() : xxeFile;
-      if (technique === "ssrf-metadata") await plant(tag, target.trim(), technique, ssrfRule(c.url, headDecoy), `302 → ${hostOf(c.url)} (${c.provider}: ${c.name}) after 2 hops`);
+      if (technique === "ssrf-metadata") await plant(tag_, target.trim(), technique, ssrfRule(c.url, headDecoy), `302 → ${hostOf(c.url)} (${c.provider}: ${c.name}) after 2 hops`);
       else if (technique === "xxe") {
         if (!host) throw new Error("No payload host yet: wait for the engine.");
-        await plant(tag, target.trim(), technique, xxeRule(tagged(tag, host), file), `an XXE DTD reading ${file}`);
+        await plant(tag_, target.trim(), technique, xxeRule(tagged(tag_, host), file), `an XXE DTD reading ${file}`);
       }
-      else await plant(tag, target.trim(), technique);
+      else await plant(tag_, target.trim(), technique);
       const next = technique === "redirect" ? '[aria-label="Location"]' : technique === "file" ? '[aria-label="Template"]' : null;
       setPlanting(false);
       // the next step: setting up the answer for Redirect / Hosted file, else copying a payload
@@ -212,15 +224,27 @@ export function Composer() {
   const fld = "flex h-9 items-center gap-[9px] overflow-hidden rounded-[3px] border border-rule bg-soot px-3 whitespace-nowrap transition-colors focus-within:border-smoke";
   return (
     <section aria-label="Plant a probe" className="grid grid-cols-[132px_minmax(0,1fr)_auto] gap-x-0 gap-y-2.5 mx-2 mt-2 rounded-md border border-rule bg-soot-1 px-5 pt-3.5 pb-3 max-[820px]:mx-1.5 max-[820px]:grid-cols-[minmax(0,1fr)_auto] max-[820px]:px-3.5"
-      onKeyDown={(e) => { if (e.key === "Escape" && !tag && !target && !empty) setPlanting(false); }}>
+      onKeyDown={(e) => { if (e.key === "Escape" && !tag && !target && !empty) cancelPlanting(); }}>
       <h1 className="self-start pt-[6px] text-headline font-[650] max-[820px]:pt-0">Plant a probe</h1>
       <form onSubmit={submit} noValidate autoComplete="off"
         className="grid grid-cols-[minmax(200px,318px)_minmax(0,1fr)_236px_auto] gap-2.5 max-[1180px]:grid-cols-[minmax(160px,1fr)_minmax(0,1.4fr)_172px_auto] max-[820px]:col-span-full max-[820px]:row-start-2 max-[820px]:grid-cols-1">
         <label className={cn(fld, err && "border-bad")}>
           <span className="text-body font-[550] text-smoke">Tag</span>
-          <input ref={tagRef} value={tag} maxLength={32} spellCheck={false} placeholder="e.g. avatar" aria-invalid={!!err} aria-describedby="tag-err"
+          <input ref={tagRef} value={tag} maxLength={32} spellCheck={false} placeholder={quick} aria-invalid={!!err} aria-describedby="tag-err tag-quick"
             onChange={(e) => { const v = e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""); setTag(v); setErr(v && !TAG_RE.test(v) ? BAD_TAG : ""); }}
             className="min-w-0 flex-1 bg-transparent font-mono text-body text-bone outline-none placeholder:text-ash" />
+          <span id="tag-quick" className="sr-only">{tag ? "" : `Left empty, the probe is planted as ${quick}.`}</span>
+          {!tag && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button type="button" aria-label="Another made-up name" onClick={() => { setQuick(roll()); tagRef.current?.focus(); }}
+                  className="-mx-1 flex size-6 flex-none items-center justify-center rounded-sm text-ash hover:bg-accent hover:text-bone focus-visible:outline-2 focus-visible:outline-smoke [&_svg]:size-3.5">
+                  <Dices strokeWidth={1.5} aria-hidden="true" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>Left empty, the probe is planted as {quick}. The dice deals another name.</TooltipContent>
+            </Tooltip>
+          )}
           {host && <span className="font-mono text-body text-ash">-{shownId(host.split(".")[0])}</span>}
         </label>
         <label className={fld}>
@@ -268,7 +292,7 @@ export function Composer() {
         )}
       </form>
       {!empty
-        ? <Button variant="ghost" size="icon" className="ml-2 self-start text-smoke max-[820px]:col-start-2 max-[820px]:row-start-1" aria-label="Close the plant form" title="Close (Esc)" onClick={() => setPlanting(false)}><X /></Button>
+        ? <Button variant="ghost" size="icon" className="ml-2 self-start text-smoke max-[820px]:col-start-2 max-[820px]:row-start-1" aria-label="Close the plant form" title="Close (Esc)" onClick={cancelPlanting}><X /></Button>
         : <span />}
       {err && <p id="tag-err" className="col-start-2 -mt-1 text-body text-alarm-ink max-[820px]:col-start-1">{err}</p>}
       {preview && <PayloadRows tag={preview} previewTechnique={technique} className="col-start-2 max-[820px]:col-span-full max-[820px]:col-start-1" />}

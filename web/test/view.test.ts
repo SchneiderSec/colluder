@@ -345,3 +345,14 @@ test("ultrathink: the word is picked out of a tag or target in any case, everyth
   for (const t of ["ultrathink-ssrf", "x-ULTRATHINK-y", "plain target, no easter egg"]) assert.equal(ultraParts(t).map((p) => p.s).join(""), t);
   assert.ok(!ultraParts("ultra think").some((p) => p.ultra));
 });
+
+test("quick tags: valid, unused, and fall back when every name is taken", async () => {
+  const { quickTag } = await import("../src/lib/quicktag.ts");
+  const { TAG_RE } = await import("../src/lib/types.ts");
+  for (let i = 0; i < 200; i++) assert.match(quickTag(), TAG_RE);
+  const seen = new Set<string>();
+  for (let i = 0; i < 50; i++) { const t = quickTag((x) => seen.has(x)); assert.ok(!seen.has(t)); seen.add(t); }
+  const t = quickTag(() => true);
+  assert.match(t, /^quick-[a-z0-9]+$/);
+  assert.match(t, TAG_RE);
+});

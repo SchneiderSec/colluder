@@ -38,6 +38,7 @@ function fakeApi({ hits = [], later = [] } = {}) {
       if (path === "/api/probes/testing") return { status: 200, body: probe({ tag: "testing", plantedBy: "you" }) };
       if (path === "/api/probes/testing/http-rule") return { status: 200, body: { active: { version: 1, rule: { mode: "file", contentType: "text/plain", body: "x" } }, history: [] } };
       if (path === "/api/probes/old") return { status: 200, body: probe({ tag: "old", plantedBy: "claude", retiredAt: "2026-11-01T00:00:00Z" }) };
+      if (path === "/api/probes/old-quiet") return { status: 200, body: probe({ tag: "old-quiet", plantedBy: "claude", retiredAt: "2026-11-01T00:00:00Z", httpRule: null }) };
       if (/^\/api\/probes\/(new-ssrf|new-xxe|new-cb)$/.test(path)) return { status: 200, body: probe({ tag: path.split("/").pop(), plantedBy: "claude" }) };
       if (/^\/api\/probes\/(new-ssrf|new-xxe|new-cb)\/http-rule$/.test(path)) return { status: 200, body: { active: null, history: [], defaultHits: 0 } };
       if (path.startsWith("/api/probes/nope")) return { status: 404, body: { error: "no such probe" } };
@@ -252,9 +253,19 @@ test("reset_rule, record_trigger, retire_probe", async () => {
   assert.deepEqual(api.sent.at(-1).body, { rule: { mode: "default" } });
   assert.equal(parse(await c.tool("record_trigger", { tag: "mcpt", request: "GET /fetch?url=x HTTP/1.1" })).bytes, 25);
   assert.deepEqual(api.sent.at(-1), { method: "PATCH", path: "/api/probes/mcpt", body: { trigger: "GET /fetch?url=x HTTP/1.1" } });
+  // retiring resets the answer first (default), so the redirect stops serving
+  api.sent.length = 0;
   const r = parse(await c.tool("retire_probe", { tag: "mcpt" }));
   assert.equal(r.retired, true);
-  assert.match(r.still_answers_http_with, /rule v1/);
+  assert.equal(r.answer_reset, true);
+  assert.equal(r.answers_http_with, "the default reply");
+  assert.deepEqual(api.sent.map((x) => [x.method, x.path, x.body]), [["POST", "/api/probes/mcpt/http-rule", { rule: { mode: "default" } }], ["PATCH", "/api/probes/mcpt", { retired: true }]]);
+  // keep_answering leaves the rule alone
+  api.sent.length = 0;
+  const k = parse(await c.tool("retire_probe", { tag: "mcpt", keep_answering: true }));
+  assert.equal(k.answer_reset, false);
+  assert.match(k.answers_http_with, /rule v1/);
+  assert.deepEqual(api.sent.map((x) => x.method), ["PATCH"]);
 });
 
 // ---------- feedback from a bug bounty run through the MCP ----------
@@ -322,7 +333,17 @@ test("reset_rule and retire_probe: nothing changes when there's nothing to chang
   const api = fakeApi();
   const c = rpc(api);
   assert.deepEqual(parse(await c.tool("reset_rule", { tag: "new-cb" })), { saved: false, unchanged: true, answers_http_with: "the default reply (already)" });
+  const r = parse(await c.tool("retire_probe", { tag: "old-quiet" }));
+  assert.equal(r.already_retired_at, "2026-11-01T00:00:00Z");
+  assert.equal(r.answers_http_with, "the default reply");
+  assert.equal(api.sent.length, 0);
+});
+
+test("retire_probe on a retired probe that still answers: stops the answer, keeps the retire time", async () => {
+  const api = fakeApi();
+  const c = rpc(api);
   const r = parse(await c.tool("retire_probe", { tag: "old" }));
   assert.equal(r.already_retired_at, "2026-11-01T00:00:00Z");
-  assert.equal(api.sent.length, 0);
+  assert.equal(r.answer_reset, true);
+  assert.deepEqual(api.sent.map((x) => [x.method, x.path]), [["POST", "/api/probes/old/http-rule"]]);
 });

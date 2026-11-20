@@ -66,7 +66,7 @@ function MetaItem({ r, tag, enc, onForms }: { r: MetaRow; tag: string; enc: Enc;
         <p className="mt-0.5 max-w-[78ch] text-label leading-4 text-ash">{r.note}</p>
         {(onForms || redirectable(r)) && (
           <div className="mt-1.5 -ml-2.5 flex flex-wrap gap-1">
-            {redirectable(r) && <Button variant="ghost" size="sm" title={`Opens ${tag}'s HTTP response tab with a redirect here, unsaved`} onClick={redirect}><CornerDownRight />Redirect {tag} here</Button>}
+            {redirectable(r) && <Button variant="ghost" size="sm" title={`Opens ${tag}'s Answer tab with a redirect here, unsaved`} onClick={redirect}><CornerDownRight />Redirect {tag} here</Button>}
             {onForms && <Button variant="ghost" size="sm" onClick={onForms}>Address forms</Button>}
           </div>
         )}
@@ -151,7 +151,7 @@ export function PayloadKit({ section }: { section: string | null }) {
           )}
           {sec === "address" && (
             <>
-              <p className="max-w-[72ch] text-body leading-[1.1875rem] text-smoke">The same internal address written the ways filters miss. These go to the target, not to a probe, so a working one shows up as data in a response, not as a hit; pair them with a redirect from the probe's HTTP response tab.</p>
+              <p className="max-w-[72ch] text-body leading-[1.1875rem] text-smoke">The same internal address written the ways filters miss. These go to the target, not to a probe, so a working one shows up as data in a response, not as a hit; pair them with a redirect from the probe's Answer tab.</p>
               <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2">
                 <Field label="Address" value={ip} onChange={setIp} w="w-[170px]" />
                 <Field label="Path" value={path} onChange={setPath} w="w-[220px]" />

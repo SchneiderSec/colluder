@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Bell, BellOff, ChevronRight, Download, Ellipsis, Eraser, FileText, Pencil, RotateCcw, Search, Trash2, Archive, X } from "lucide-react";
-import { useApp, getState, keyOf, markSeen, selectHit, patchProbe, saveRule, fetchTrigger, fetchReport, chatterOf, setTab, unreadFor, loadOlder, searchHits, exportUrl, deleteProbe, clearProbe, restoreProbe, PROBE_TABS, type AppState, type ProbeTab } from "@/store";
+import { CircleStop, Bell, BellOff, ChevronRight, Copy, Download, Ellipsis, Eraser, FileText, Pencil, RotateCcw, Search, Trash2, Archive, X } from "lucide-react";
+import { useApp, getState, keyOf, markSeen, selectHit, patchProbe, saveRule, fetchRule, fetchTrigger, fetchReport, chatterOf, setTab, unreadFor, loadOlder, searchHits, exportUrl, deleteProbe, clearProbe, restoreProbe, PROBE_TABS, type AppState, type ProbeTab } from "@/store";
 import { lastClearFor, probeState } from "@/lib/probeState";
 import { dnsSteps, mostSpecific } from "@/lib/dns";
 import { stageOf } from "@/lib/stage";
+import { uaShort } from "@/lib/headers";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { UNTAGGED, type Interaction, type Probe } from "@/lib/types";
 import { ago, dayOrTime, hmsms, isoMs, newestFirst, plural, settled } from "@/lib/format";
@@ -14,15 +15,17 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Chip, LineForm, NewDot, NilDot, TechniqueMark, TypeChip } from "./bits";
+import { Chip, ClaudeMark, LineForm, NewDot, NilDot, TechniqueMark, TypeChip } from "./bits";
+import { CardOnCrew, startRename, stopAnswering, useProbeSnap, useTabsView } from "./ProbeTabs";
 import { HitDetail } from "./HitDetail";
 import { HttpRuleTab } from "./HttpRule";
 import { CrewMark } from "./Mark";
-import { aKind, crewOf, lookOf, STRAY_LOOK } from "@/lib/crew";
+import { crewOf, lookOf, STRAY_LOOK } from "@/lib/crew";
 import { PayloadCopy, PayloadRows } from "./Composer";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import { shownId } from "@/lib/kit";
+import { shownId, tagged } from "@/lib/kit";
+import { hostedFile } from "@/lib/plant";
 import { useDisplay, type HitsHeight } from "@/lib/display";
 import { Ultra } from "@/components/Ultra";
 
@@ -69,7 +72,11 @@ function Head({ s }: { s: AppState }) {
   const [del, setDel] = useState(false);
   const [clr, setClr] = useState(false);
   const [resetRule, setResetRule] = useState(true);
-  const cls = "flex min-h-[52px] min-w-0 items-center gap-3.5 border-b border-rule pr-5 pl-6 max-[820px]:flex-wrap max-[820px]:gap-2 max-[820px]:px-3.5 max-[820px]:py-2.5";
+  const plantLine = usePlant(s.sel && s.sel !== UNTAGGED ? s.probes.get(s.sel) : undefined);
+  const { names } = useProbeSnap(); // your name for the probe, from its tab or list row
+  // two fixed rows: who the probe is and its actions on the first (one line, the target truncates),
+  // what to paste on the second, so the header is the same height from probe to probe
+  const cls = "flex h-[52px] min-w-0 items-center gap-3.5 border-b border-rule pr-5 pl-6 max-[820px]:h-auto max-[820px]:flex-wrap max-[820px]:gap-2 max-[820px]:px-3.5 max-[820px]:py-2.5";
   if (s.sel === UNTAGGED) {
     return (
       <div className={cls}>
@@ -90,19 +97,31 @@ function Head({ s }: { s: AppState }) {
     {/* the probe in one line: what it is and whether it listens, the payloads to copy, the report;
         everything else is in the menu */}
     <div className={cn(cls, "border-b-0")}>
-      <span className="flex items-center gap-2.5 font-mono text-headline whitespace-nowrap">
-        <span title={st === "unplanted" ? undefined : `${p.tag}'s colluder: ${aKind(lookOf(crewOf(s.probes), p.tag).species)}`} className="flex">
+      <span className="flex min-w-0 flex-none items-center gap-2.5 font-mono text-headline whitespace-nowrap min-[821px]:max-w-[45%]">
+        <CardOnCrew s={s} k={p.tag} hint="Double-click the tag to rename">
           <CrewMark size={26} {...(st === "unplanted" ? STRAY_LOOK : lookOf(crewOf(s.probes), p.tag))} state={p.retiredAt || st === "unplanted" ? "doze" : "wink"} />
-        </span><Ultra text={p.tag} />
+        </CardOnCrew>
+        {/* a double-click renames it where it's listed (its tab, or its list row) */}
+        {names[p.tag] ? (
+            <span className="flex min-w-0 items-baseline gap-2" onDoubleClick={() => startRename(p.tag)} title={`${p.tag}: double-click to rename`}>
+              <span className="truncate font-sans font-semibold">{names[p.tag]}</span><span className="truncate text-title text-smoke"><Ultra text={p.tag} /></span>
+            </span>
+          ) : <span className="truncate" title={`${p.tag}: double-click to give it your own name`} onDoubleClick={() => startRename(p.tag)}><Ultra text={p.tag} /></span>}
+        {p.plantedBy === "claude" && <ClaudeMark className="size-4" />}
       </span>
       {st === "unplanted" ? <Chip grey>not planted</Chip>
-        : p.retiredAt ? <span className="flex items-center gap-1.5 text-body whitespace-nowrap text-ash" title="Out of the active list. New hits on this tag are still recorded."><LineForm kind="off" className="w-4" />{st === "late" ? "Retired · late hit" : "Retired"}</span>
+        : p.retiredAt ? <>
+            <span className="flex items-center gap-1.5 text-body whitespace-nowrap text-ash" title="Out of the active list. New hits on this tag are still recorded."><LineForm kind="off" className="w-4" />{st === "late" ? "Retired · late hit" : "Retired"}</span>
+            {p.httpRule && s.status?.edge?.state === "running" && (
+              <Button variant="ghost" size="sm" className="h-6 flex-none px-1.5 text-caution-ink hover:text-caution-ink" title={`Retired, but its rule is still served to anyone who finds the payload: ${p.httpRule.line}. This resets it to the default reply (Undo in the message).`}
+                onClick={() => stopAnswering([p.tag])}><CircleStop />Stop answering</Button>
+            )}
+          </>
         : <span className="flex items-center gap-1.5 text-body font-[550] whitespace-nowrap text-bone" title={`Planted ${dayOrTime(p.plantedAt)} UTC and listening: a callback shows up here within seconds`}><LineForm kind="live" signal="listen" seed={p.tag} className="w-4" />Armed</span>}
       {st !== "unplanted" && p.technique !== "callback" && <TechniqueMark technique={p.technique} className="text-body font-[550]" />}
       {!!p.muted && <BellOff aria-label="Discord alerts muted" className="size-3.5 flex-none text-ash" strokeWidth={1.5} />}
       <span className={cn("min-w-0 truncate text-body", p.target ? "text-smoke" : "text-ash")} title={[p.target, p.note && `Note: ${p.note}`].filter(Boolean).join("\n") || undefined}>{p.target ? <Ultra text={p.target} /> : "No target noted"}</span>
-      <div className="ml-auto flex flex-none items-center gap-1.5 max-[820px]:ml-0 max-[820px]:flex-1 max-[820px]:basis-full max-[820px]:flex-wrap">
-        <PayloadCopy tag={p.tag} />
+      <div className="ml-auto flex flex-none items-center gap-1.5">
         <Button variant="quiet" title={`Markdown for a bug report: summary, ${p.triggerBytes ? "the triggering request, " : ""}timeline, sources, decoded exfil and the first web request`}
           onClick={() => fetchReport(p.tag).then((md) => copy(md, `${p.tag} report`), fail)}><FileText />Copy report</Button>
         <DropdownMenu>
@@ -116,6 +135,11 @@ function Head({ s }: { s: AppState }) {
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+    </div>
+    {/* the second row: the line to plant (when the saved answer has one), then the callbacks */}
+    <div className="flex min-w-0 items-center gap-x-5 gap-y-1.5 px-6 pb-2.5 empty:hidden max-[820px]:flex-wrap max-[820px]:px-3.5">
+      {plantLine && <PlantLine p={p} line={plantLine} />}
+      <PayloadCopy tag={p.tag} brief={!!plantLine} />
     </div>
     <PayloadRows compact tag={p.tag} className="px-6 pb-2.5 max-[820px]:px-3.5" />
       <AlertDialog open={del} onOpenChange={setDel}>
@@ -140,7 +164,7 @@ function Head({ s }: { s: AppState }) {
           <Button variant="ghost" size="icon-sm" aria-label="Close" className="absolute top-3 right-3 text-smoke" onClick={() => setRetire(false)}><X /></Button>
           <AlertDialogHeader>
             <AlertDialogTitle>Retire {p.tag}?</AlertDialogTitle>
-            <AlertDialogDescription>It moves to Retired at the bottom of the list. Its hits stay, and new hits on this tag are still recorded.</AlertDialogDescription>
+            <AlertDialogDescription>It moves to Retired (in the probe list and under All probes). Its hits stay, and new hits on this tag are still recorded.</AlertDialogDescription>
           </AlertDialogHeader>
           {p.httpRule && (
             <label className="flex items-start gap-2 text-body text-smoke">
@@ -158,6 +182,37 @@ function Head({ s }: { s: AppState }) {
         </AlertDialogContent>
       </AlertDialog>
     </div>
+  );
+}
+
+// The line to put in the target, from the saved answer (a hosted file's stylesheet line, DOCTYPE line,
+// img tag…), so what to paste is in view without opening the Answer tab. The draft's own line is on
+// that tab; this one is what the edge serves now.
+function usePlant(p: Probe | undefined): [string, string] | null {
+  const host = useApp((x) => x.status?.payload?.host);
+  const v = p?.httpRule?.mode === "file" && !p.retiredAt ? p.httpRule.version : null;
+  const [line, setLine] = useState<[string, string] | null>(null);
+  useEffect(() => {
+    setLine(null);
+    if (v == null || !host || !p) return;
+    let live = true;
+    fetchRule(p.tag).then((r) => { if (live && r.active?.rule.mode === "file") setLine(hostedFile(r.active.rule, p.tag, host).plant); }, () => {});
+    return () => { live = false; };
+  }, [p?.tag, v, host]); // eslint-disable-line react-hooks/exhaustive-deps
+  return line;
+}
+
+function PlantLine({ p, line }: { p: Probe; line: [string, string] }) {
+  const host = useApp((x) => x.status?.payload?.host);
+  // display only: the payload host recedes to the tag (its id and domain are the same for every
+  // payload), so the line's shape and path stay in view; Copy and the tooltip carry it exactly
+  const shown = host ? line[0].split(tagged(p.tag, host)).join(`${p.tag}-…`) : line[0];
+  return (
+    <span className="flex min-w-0 flex-1 items-center gap-2">
+      <span className="flex-none text-label text-ash" title={`What to put in the target: the ${line[1]} for the saved answer (v${p.httpRule?.version})`}>Plant</span>
+      <code className="min-w-0 truncate font-mono text-body text-bone" title={line[0]}>{shown}</code>
+      <Button variant="ghost" size="icon-sm" className="flex-none" aria-label={`Copy the ${line[1]}`} onClick={() => copy(line[0], line[1])}><Copy /></Button>
+    </span>
   );
 }
 
@@ -205,7 +260,8 @@ function RequestLine({ line }: { line: string }) {
           </span>
         );
       })}
-      <span className="text-ash">{version}{rest}</span>
+      {/* the version is in the tooltip: the cell's room goes to the stage and what followed */}
+      {!/^ HTTP\/1\.[01]$/.test(version) && <span className="text-ash">{version}</span>}<span className="text-ash">{rest}</span>
     </span>
   );
 }
@@ -217,7 +273,7 @@ function rowKeys(fn: () => void) {
 // the labels before the payload id, for naming a longer lookup compactly
 const labelsOf = (fullId: string) => fullId.split(".").slice(0, -3).join(".") || fullId;
 
-function HitRow({ i, open, sel, arrived, child, chatter, inProbe, step, self, stop, onClick }: { i: Interaction; open: number; sel: boolean; arrived: boolean; child?: boolean; chatter?: string; inProbe?: boolean; step?: string; self?: "box" | "mine"; stop?: boolean; onClick: () => void }) {
+function HitRow({ i, open, sel, arrived, child, chatter, inProbe, step, self, stop, after, onClick }: { i: Interaction; open: number; sel: boolean; arrived: boolean; child?: boolean; chatter?: string; inProbe?: boolean; step?: string; self?: "box" | "mine"; stop?: boolean; after?: { id: number; ms: number }; onClick: () => void }) {
   const isNew = i.id > open && !chatter && !step;
   const quiet = !!chatter || !!step;
   const web = i.protocol === "http" || i.protocol === "https";
@@ -233,7 +289,7 @@ function HitRow({ i, open, sel, arrived, child, chatter, inProbe, step, self, st
         <span className={cn(web && !self && !sel && "font-[550] text-bone")}>{i.remoteAddress}</span>
         {self && <span className="ml-2 font-sans" title="A self-test (the OOB box, or a source you marked as yours), not the target"><Chip grey>{self === "mine" ? "yours" : "this box"}</Chip></span>}
       </Td>
-      <Td sel={sel} last>{web || i.protocol === "smtp" ? <>{web ? <RequestLine line={reqOf(i.summary)} /> : <span className="font-mono text-body">{reqOf(i.summary)}</span>}{stageOf(i) && <span className="ml-2 text-label whitespace-nowrap text-smoke" title="What Colluder's edge answered. A redirect sent is not proof it was followed; a later hop is.">· {stageOf(i)}</span>}{uaOf(i.summary) && <span className="ml-2 font-mono text-label text-ash">· {uaOf(i.summary)}</span>}</> : i.protocol === "dns" ? <><DnsName i={i} />{chatter && <span className="text-label text-ash" title="A lookup of the bare payload id near this probe's hits: a resolver walking the name, or a client resolving the HTTPS host. Kept, never counted as new."> · resolver chatter{inProbe ? "" : ` around ${chatter}`}</span>}{step && <span className="text-label text-ash" title={`The resolver asked for this on its way to ${step} (QNAME minimisation). Not exfil data.`}> · resolver step toward <span className="font-mono">{labelsOf(step)}</span></span>}</> : <span className="text-label text-smoke">{i.summary}</span>}</Td>
+      <Td sel={sel} last>{web || i.protocol === "smtp" ? <>{web ? <RequestLine line={reqOf(i.summary)} /> : <span className="font-mono text-body">{reqOf(i.summary)}</span>}{stageOf(i) && <span className="ml-2 text-label whitespace-nowrap text-smoke" title="What Colluder's edge answered. A redirect sent is not proof it was followed; a later hop is.">· {stageOf(i)}</span>}{after && <span className="ml-2 text-label whitespace-nowrap text-smoke" title={`Same source as #${after.id}, ${after.ms} ms later: most likely the same firing`}>· {after.ms < 1000 ? `${after.ms} ms` : `${(after.ms / 1000).toFixed(1)} s`} after #{after.id}</span>}{uaOf(i.summary) && <span className="ml-2 text-label text-ash" title={uaOf(i.summary)}>· {uaShort(uaOf(i.summary))}</span>}</> : i.protocol === "dns" ? <><DnsName i={i} />{chatter && <span className="text-label text-ash" title="A lookup of the bare payload id near this probe's hits: a resolver walking the name, or a client resolving the HTTPS host. Kept, never counted as new."> · resolver chatter{inProbe ? "" : ` around ${chatter}`}</span>}{step && <span className="text-label text-ash" title={`The resolver asked for this on its way to ${step} (QNAME minimisation). Not exfil data.`}> · resolver step toward <span className="font-mono">{labelsOf(step)}</span></span>}</> : <span className="text-label text-smoke">{i.summary}</span>}</Td>
     </tr>
   );
 }
@@ -244,12 +300,18 @@ function Td({ children, sel, first, last, className }: { children: React.ReactNo
   );
 }
 
-const TAB_LABEL: Record<ProbeTab, string> = { hits: "Hits", http: "HTTP response" };
-// the tab's note for an unsaved draft says what the draft answers: "302, edited", "XXE, edited"
-const draftShort = (r: { mode?: string; status?: number } | undefined) =>
-  !r ? "default" : r.mode === "redirect" || r.mode === "custom" ? String(r.status ?? r.mode) : r.mode === "file" ? "file" : r.mode === "preset" ? "XXE" : "default";
+const TAB_LABEL: Record<ProbeTab, string> = { hits: "Hits", http: "Answer" };
+// what the probe answers HTTP with, in words, for the Answer tab's chip
+const RULE_WORDS: Record<string, (short: string) => string> = {
+  redirect: (s) => `Redirect ${s}`, file: () => "Hosted file", custom: (s) => `Custom ${s}`, preset: () => "XXE preset",
+};
+const answerWords = (r: { mode: string; short: string } | null | undefined) => (r ? (RULE_WORDS[r.mode]?.(r.short) ?? r.short) : "Default reply");
+// the tab's note for an unsaved draft says what the draft answers: "Redirect 302, edited"
+const draftWords = (r: { mode?: string; status?: number } | undefined) =>
+  !r || !r.mode || r.mode === "default" ? "Default reply" : answerWords({ mode: r.mode, short: String(r.status ?? "") });
 
-function ProbeTabs({ s, p, right }: { s: AppState; p: Probe; right?: React.ReactNode }) {
+// the probe's own tabs (Hits, Answer); not the probe tabs above the pane
+function PaneTabs({ s, p }: { s: AppState; p: Probe }) {
   const unread = s.tab !== "hits" ? unreadFor(s, p.tag) : 0;
   const ref = useRef<HTMLDivElement>(null);
   const onKeyDown = (e: React.KeyboardEvent) => {
@@ -262,35 +324,35 @@ function ProbeTabs({ s, p, right }: { s: AppState; p: Probe; right?: React.React
     ref.current?.querySelectorAll<HTMLButtonElement>("[role=tab]")[next]?.focus();
   };
   return (
-    <div className="flex h-[35px] min-w-0 items-stretch border-b border-rule pr-5 max-[820px]:h-11 max-[820px]:pr-3.5">
+    <div className="flex h-10 min-w-0 items-stretch border-b border-rule pr-5 max-[820px]:h-11 max-[820px]:pr-3.5">
     <div ref={ref} role="tablist" aria-label={`Probe ${p.tag}`} onKeyDown={onKeyDown}
-      className="flex flex-none items-stretch gap-6 overflow-x-auto pl-6 max-[820px]:gap-5 max-[820px]:pl-3.5">
+      className="flex flex-none items-stretch gap-7 overflow-x-auto pl-6 max-[820px]:gap-5 max-[820px]:pl-3.5">
       {PROBE_TABS.map((t) => {
         const on = s.tab === t;
+        const draft = t === "http" ? (s.ruleDrafts[p.tag] as { mode?: string; status?: number } | undefined) : undefined;
         return (
           <button key={t} type="button" role="tab" id={`probe-tab-${t}`} aria-selected={on} aria-controls="probe-panel" tabIndex={on ? 0 : -1}
+            aria-label={t === "hits" ? `Hits, ${p.hits}` : `Answer: ${draft ? `${draftWords(draft)}, unsaved` : answerWords(p.httpRule)}`}
             onClick={() => setTab(t)}
-            className={cn("relative flex flex-none cursor-pointer items-center gap-[7px] text-body font-[550] whitespace-nowrap text-smoke hover:text-bone focus-visible:outline-[1.5px] focus-visible:-outline-offset-2 focus-visible:outline-bone",
+            className={cn("relative flex flex-none cursor-pointer items-center gap-2 text-title font-[650] whitespace-nowrap text-smoke hover:text-bone focus-visible:outline-[1.5px] focus-visible:-outline-offset-2 focus-visible:outline-bone",
               on && "text-bone after:absolute after:inset-x-0 after:-bottom-px after:h-0.5 after:rounded-[1px] after:bg-bone")}>
             {TAB_LABEL[t]}
             {t === "hits" ? <span className="font-normal text-smoke">{p.hits}</span>
-              : t === "http" && s.ruleDrafts[p.tag] ? <span className="text-label font-normal text-smoke italic" title="Unsaved changes, kept until you save or discard">{draftShort(s.ruleDrafts[p.tag] as { mode?: string; status?: number })}, edited</span>
-              : t === "http" && p.httpRule ? (s.status?.edge?.state === "running"
-                ? <span className="font-mono text-label font-normal text-bone" title={p.httpRule.line}>{p.httpRule.short}</span>
-                : <span className="font-mono text-label font-normal text-ash" title={`v${p.httpRule.version} saved, not served until the cutover`}>{p.httpRule.short}</span>)
-              : <span className="text-label font-normal text-ash" title="interactsh-server's standard answer">default</span>}
+              : draft ? <span className="font-normal" title="Unsaved changes, kept until you save or discard"><Chip grey>{draftWords(draft)}, unsaved</Chip></span>
+              : p.httpRule && s.status?.edge?.state !== "running" ? <span className="font-normal opacity-70" title={`v${p.httpRule.version} saved, not served until the cutover`}><Chip grey>{answerWords(p.httpRule)}, not served yet</Chip></span>
+              : <span className="font-normal" title={p.httpRule ? p.httpRule.line : "interactsh-server's standard answer"}><Chip grey>{answerWords(p.httpRule)}</Chip></span>}
             {t === "hits" && unread > 0 && <NewDot title={`${plural(unread, "new hit")} since you switched tabs`} />}
           </button>
         );
       })}
     </div>
-    {right}
     </div>
   );
 }
 
 export function ProbePane() {
   const s = useApp((x) => x);
+  const tabsView = useTabsView();
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const hitsHeight = useDisplay().hits;
   const [q, setQ] = useState("");
@@ -359,18 +421,18 @@ export function ProbePane() {
       <section className={wrap}>
         <div className="border-b border-rule" /><div />
         <div className="flex items-center justify-center border-t border-rule bg-soot-1 text-body text-ash">
-          {s.probes.size ? "Select a probe to see who called." : "Your probes and their callbacks will appear here."}
+          {!s.probes.size ? "Your probes and their callbacks will appear here." : tabsView ? <span>No probe open. <b className="font-semibold text-smoke">+</b> or <kbd className="font-mono text-smoke">p</kbd> plants one; <b className="font-semibold text-smoke">All probes</b> or <kbd className="font-mono text-smoke">o</kbd> opens one.</span> : "Select a probe to see who called."}
         </div>
       </section>
     );
   }
   const p = s.probes.get(s.sel);
   // a tagged probe gets the tab strip; Unregistered only has hits
-  const tabs = p ? <ProbeTabs s={s} p={p} /> : null;
-  const tabbed = p ? "grid-rows-[auto_35px_minmax(0,auto)_minmax(0,1fr)]" : "";
+  const tabs = p ? <PaneTabs s={s} p={p} /> : null;
+  const tabbed = p ? "grid-rows-[auto_40px_minmax(0,auto)_minmax(0,1fr)]" : "";
   if (p && s.tab !== "hits") {
     return (
-      <section className={cn(wrap, "grid-rows-[auto_35px_minmax(0,1fr)]")} aria-label={`Probe ${s.sel}`}>
+      <section className={cn(wrap, "grid-rows-[auto_40px_minmax(0,1fr)]")} aria-label={`Probe ${s.sel}`}>
         <Head s={s} />{tabs}<HttpRuleTab p={p} />
       </section>
     );
@@ -420,6 +482,18 @@ export function ProbePane() {
 
   const open = s.openSeen[s.sel] ?? s.seen[s.sel] ?? 0;
   const chatter = chatterAll;
+  // a web hit that lands within 10 s of another from the same source is the same firing carried on
+  // (the XSLT fetch, then the command it ran): each one names the hit before it
+  const after = new Map<number, { id: number; ms: number }>();
+  {
+    const last = new Map<string, Interaction>();
+    for (const i of [...all].filter((x) => x.protocol === "http" || x.protocol === "https").sort((a, b) => isoMs(a.timestamp) - isoMs(b.timestamp) || a.id - b.id)) {
+      const prev = last.get(i.remoteAddress);
+      const ms = prev ? isoMs(i.timestamp) - isoMs(prev.timestamp) : Infinity;
+      if (prev && ms <= 10_000) after.set(i.id, { id: prev.id, ms });
+      last.set(i.remoteAddress, i);
+    }
+  }
   const boxIps = new Set(s.status?.selfIps ?? []), mineIps = new Set(s.status?.mineIps ?? []);
   const selfOf = (ip: string) => (boxIps.has(ip) ? "box" as const : mineIps.has(ip) ? "mine" as const : undefined);
   // with no row selected (a filter hid it), the first row is the table's tab stop
@@ -427,7 +501,7 @@ export function ProbePane() {
   let stopGiven = selShown;
   const takeStop = () => { if (stopGiven) return false; stopGiven = true; return true; };
   const row = (i: Interaction, child?: boolean) => (
-    <HitRow key={i.id} stop={takeStop()} child={child} i={i} chatter={chatter.get(i.id)} inProbe={s.sel !== UNTAGGED} step={steps.get(i.id)} self={selfOf(i.remoteAddress)} open={open} sel={i.id === hitId} arrived={i.id === s.arrived} onClick={() => selectHit(i.id === hitId ? null : i.id)} />
+    <HitRow key={i.id} stop={takeStop()} child={child} i={i} chatter={chatter.get(i.id)} inProbe={s.sel !== UNTAGGED} step={steps.get(i.id)} self={selfOf(i.remoteAddress)} after={after.get(i.id)} open={open} sel={i.id === hitId} arrived={i.id === s.arrived} onClick={() => selectHit(i.id === hitId ? null : i.id)} />
   );
   const rows: React.ReactNode[] = [];
   for (const g of groupHits(hits)) {
@@ -478,7 +552,7 @@ export function ProbePane() {
           <ToggleGroupItem key={v} value={v} className={cn("h-6 rounded-none px-2.5 text-label text-smoke data-[state=on]:bg-soot-2 data-[state=on]:font-semibold data-[state=on]:text-bone", n > 0 && "border-l border-rule")}>{l}</ToggleGroupItem>
         ))}
       </ToggleGroup>
-      <label className={cn("flex h-6 min-w-[140px] flex-1 items-center gap-1.5 rounded-[3px] border border-rule bg-soot px-2 focus-within:border-smoke", where === "bar" && "max-[820px]:basis-full", where === "tabs" && "max-w-[340px]")}>
+      <label className={cn("flex h-6 min-w-[140px] flex-1 items-center gap-1.5 rounded-[3px] border border-rule bg-soot px-2 focus-within:border-smoke", where === "bar" && "max-[820px]:basis-full", "max-w-[420px]")}>
         <Search className="size-3.5 flex-none text-ash" strokeWidth={1.5} />
         <input aria-label={`Search ${p ? p.tag : "untagged"} hits`} value={q} onChange={(e) => setQ(e.target.value)} spellCheck={false}
           placeholder="Search names, paths, bodies, IPs" className="h-full w-full min-w-0 bg-transparent font-mono text-body text-bone outline-none placeholder:font-sans placeholder:text-ash" />
@@ -491,14 +565,15 @@ export function ProbePane() {
   const firstHit = all[all.length - 1];
   const ownCount = all.filter((i) => keyOf(i) === s.sel).length;
   return (
-    <section className={cn(wrap, tabbed, hitId == null && (p ? "grid-rows-[auto_35px_minmax(0,1fr)]" : "grid-rows-[auto_minmax(0,1fr)]"))} aria-label={`Probe ${s.sel === UNTAGGED ? "No tag" : s.sel}`}>
-      <Head s={s} />{p && <ProbeTabs s={s} p={p} right={<div className="ml-auto hidden min-w-0 flex-1 items-center justify-end gap-2.5 pl-6 @min-[900px]/probe:flex">{filterBar("tabs")}</div>} />}
+    <section className={cn(wrap, tabbed, hitId == null && (p ? "grid-rows-[auto_40px_minmax(0,1fr)]" : "grid-rows-[auto_minmax(0,1fr)]"))} aria-label={`Probe ${s.sel === UNTAGGED ? "No tag" : s.sel}`}>
+      <Head s={s} />{p && <PaneTabs s={s} p={p} />}
       <div id={p ? "probe-panel" : undefined} role={p ? "tabpanel" : undefined} aria-labelledby={p ? "probe-tab-hits" : undefined} className="flex min-h-0 flex-col">
-      {/* the filters sit in the tab strip when the pane is wide; below it otherwise (and on Unregistered) */}
-      <div className={cn("flex flex-none flex-wrap items-center gap-x-2.5 gap-y-1.5 border-b border-rule-2 py-1.5 pr-5 pl-6 max-[820px]:px-3.5", p && "@min-[900px]/probe:hidden")}>{filterBar("bar")}</div>
+      {/* the filters belong to the hits: their own row inside the Hits panel, never in the tab strip, where
+          they read as more tabs */}
+      <div className="flex flex-none flex-wrap items-center gap-x-2.5 gap-y-1.5 border-b border-rule-2 py-1.5 pr-5 pl-6 max-[820px]:px-3.5">{filterBar("bar")}</div>
       <div className={cn("min-h-0 overflow-auto max-[820px]:max-h-none", hitId != null && HITS_HEIGHT[hitsHeight])}>
         <table className="w-full table-fixed border-collapse">
-          <colgroup><col className="w-[112px] max-[820px]:w-[84px]" /><col className="w-[116px] max-[820px]:w-[96px]" /><col className="w-[106px] max-[820px]:w-[96px]" /><col className="w-[218px] max-[820px]:w-auto" /><col className="max-[820px]:w-0" /></colgroup>
+          <colgroup><col className="w-[132px] max-[820px]:w-[84px]" /><col className="w-[116px] max-[820px]:w-[96px]" /><col className="w-[106px] max-[820px]:w-[96px]" /><col className="w-[198px] max-[820px]:w-auto" /><col className="max-[820px]:w-0" /></colgroup>
           <thead>
             <tr>{["#", "Time (UTC)", "Type", "Source", "Request"].map((t, i) => (
               <th key={t} scope="col" className={cn("sticky top-0 z-[1] border-b border-rule bg-soot px-2.5 py-[5px] text-left text-label font-semibold tracking-[.03em] text-smoke [&:not(:last-child)]:border-r [&:not(:last-child)]:border-r-rule-2", i === 0 && "pl-6 max-[820px]:pl-3.5", i === 4 && "max-[820px]:hidden")}>{t}</th>

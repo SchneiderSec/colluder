@@ -81,7 +81,7 @@ function KeyboardSection() {
   return (
     <Section id="keyboard" title="Keyboard">
       <Group>
-        {([[["p", "/"], "Plant a probe"], [["j", "k"], "Next / previous hit"], [["Esc"], "Leave a field"]] as [string[], string][]).map(([keys, what]) => (
+        {([[["p"], "Plant a probe (stays in the view you're in)"], [["/", "o"], "Find a probe: All probes in tabs, the filter with the list docked"], [["j", "k"], "Next / previous hit"], [["[", "]"], "Previous / next probe, wrapping round (tabs, or the list)"], [["n"], "Next probe with new hits"], [["1–8", "9"], "Probe tab by position, or the last"], [["\\"], "Switch between the probe tabs and the docked list"], [["Shift+T"], "Reopen the last closed tab"], [["F2"], "Rename the open probe"], [["←", "→"], "Move along the tab strip (when a tab has focus); Home and End go to the ends"], [["Delete"], "Close the focused tab"], [["Esc"], "Leave a field, close the plant form or a hit"]] as [string[], string][]).map(([keys, what]) => (
           <Row dense key={what} label={<span className="flex items-center gap-1.5">{keys.map((k, i) => <span key={k} className="contents">{i > 0 && <span className="text-ash">or</span>}<Kbd k={k} /></span>)}</span>}>
             <span className="text-bone">{what}</span>
           </Row>
