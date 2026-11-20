@@ -356,3 +356,43 @@ test("quick tags: valid, unused, and fall back when every name is taken", async 
   assert.match(t, /^quick-[a-z0-9]+$/);
   assert.match(t, TAG_RE);
 });
+
+test("clock: 12-hour times keep UTC digits and get AM or PM; 24-hour is untouched", async () => {
+  const { setTwelveHour, hms, hmsms, hm, clock } = await import("../src/lib/format.ts");
+  const ts = (h: string) => `2026-11-20T${h}:05:09.850Z`;
+  assert.equal(hms(ts("14")), "14:05:09");
+  setTwelveHour(true);
+  try {
+    assert.equal(hms(ts("00")), "12:05:09 AM");
+    assert.equal(hms(ts("09")), "9:05:09 AM");
+    assert.equal(hm(ts("12")), "12:05 PM");
+    assert.equal(hmsms(ts("23")), "11:05:09.850 PM");
+    assert.equal(clock("not a time"), "not a time");
+  } finally { setTwelveHour(false); }
+  assert.equal(hm(ts("23")), "23:05");
+});
+
+test("time zone: the browser's zone shifts the digits, the day and the label; UTC is the string as stored", async () => {
+  const { setLocalZone, setTwelveHour, hms, hmsms, hm, dayKey, dayOrTime, stamp, zoneName } = await import("../src/lib/format.ts");
+  const tz = process.env.TZ;
+  process.env.TZ = "America/Los_Angeles";
+  try {
+    const ts = "2026-11-20T06:05:09.850123456Z"; // interactsh gives nanoseconds
+    assert.equal(stamp(ts, "ms"), "2026-11-20 06:05:09.850 UTC");
+    setLocalZone(true);
+    assert.equal(hms(ts), "22:05:09");
+    assert.equal(hmsms(ts), "22:05:09.850");
+    assert.equal(dayKey(ts), "2026-11-19", "06:05 UTC is the evening before in PST");
+    assert.equal(stamp(ts), "2026-11-19 22:05 PST");
+    assert.equal(dayOrTime("2020-01-02T03:04:05Z"), "01-01 19:04");
+    assert.equal(hm("2026-07-01T12:00:00Z"), "05:00", "summer is PDT, UTC-7");
+    assert.equal(zoneName(Date.parse("2026-07-01T12:00:00Z")), "PDT");
+    setTwelveHour(true);
+    assert.equal(stamp(ts, "s"), "2026-11-19 10:05:09 PM PST");
+  } finally {
+    setLocalZone(false); setTwelveHour(false);
+    if (tz === undefined) delete process.env.TZ; else process.env.TZ = tz;
+  }
+  assert.equal(hms("2026-11-20T06:05:09Z"), "06:05:09");
+});
+

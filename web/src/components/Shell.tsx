@@ -3,7 +3,7 @@ import { ArrowDownToLine, Copy, Settings2, Briefcase, Mail } from "lucide-react"
 import type { LucideIcon } from "lucide-react";
 import { useApp, totalUnread, chatterOf, keyOf, select, selectHit, runCheck } from "@/store";
 import { UNTAGGED } from "@/lib/types";
-import { ago, dur, hms, isoMs, newestFirst } from "@/lib/format";
+import { ago, dur, hms, isoMs, newestFirst, stamp, zoneName } from "@/lib/format";
 import { copy, toast } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
 import { LineForm, useTick, type Signal } from "./bits";
@@ -129,7 +129,7 @@ export function StatusBar() {
       <div className="ml-auto flex flex-none items-center gap-[18px] max-[820px]:hidden">
         {night && <span className="text-label text-ash">Night shift</span>}
         {host && <span className="font-mono text-label text-smoke max-[1560px]:hidden in-[.type-comfortable]:max-[1800px]:hidden">{shownId(host.split(".")[0])}.{s.status!.payload!.domain}</span>}
-        <span className="font-semibold tracking-[.02em]">{now.toISOString().slice(11, 19)}<span className="ml-[3px] text-label font-medium text-smoke">UTC</span></span>
+        <span className="font-semibold tracking-[.02em]">{hms(now.toISOString())}<span className="ml-[3px] text-label font-medium text-smoke">{zoneName(now.getTime())}</span></span>
       </div>
     </footer>
   );
@@ -206,12 +206,14 @@ export function Banners() {
   const ch = s.status?.correlationChangedAt;
   let acked = "";
   try { acked = localStorage.getItem("colluder.ackCorr") ?? ""; } catch { /* */ }
-  if (ch && acked !== JSON.stringify(ch)) {
+  // only while a live probe predates the change: once they're all retired there's nothing to act on
+  const stale = ch ? [...s.probes.values()].some((p) => !p.retiredAt && p.plantedAt < ch) : false;
+  if (ch && stale && acked !== JSON.stringify(ch)) {
     out.push(
       <div key="corr" className="flex items-center gap-3 rounded-md border border-caution-border bg-caution-ground px-4 py-[9px] max-[820px]:px-3.5 text-body text-caution-ink">
         {s.status?.edge?.state === "running"
-          ? <>The engine's correlation id changed at {ch.replace("T", " ").slice(0, 16)} UTC. Older payloads still bring HTTP(S) hits here through Colluder's edge, but not their DNS lookups; copy fresh ones for DNS.</>
-          : <>The engine's correlation id changed at {ch.replace("T", " ").slice(0, 16)} UTC. Payloads planted before then no longer reach this dashboard; copy fresh ones.</>}
+          ? <>The engine's correlation id changed at {stamp(ch)}. Older payloads still bring HTTP(S) hits here through Colluder's edge, but not their DNS lookups; copy fresh ones for DNS.</>
+          : <>The engine's correlation id changed at {stamp(ch)}. Payloads planted before then no longer reach this dashboard; copy fresh ones.</>}
         <Button variant="ghost" className="ml-auto" onClick={() => { try { localStorage.setItem("colluder.ackCorr", JSON.stringify(ch)); } catch { /* */ } bump((n) => n + 1); }}>Got it</Button>
       </div>,
     );

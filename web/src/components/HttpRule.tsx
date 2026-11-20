@@ -403,7 +403,7 @@ export function HttpRuleTab({ p }: { p: Probe }) {
       </div>
 
       <aside className="flex min-w-0 flex-col gap-3.5 pb-4" aria-label="Preview and history">
-        <div className="flex flex-col rounded-[3px] border border-rule-2 bg-well">
+        <div className="flex flex-col rounded-[3px] border border-rule bg-well">
           <div className="flex h-8 items-center gap-2 border-b border-rule-2 pr-1.5 pl-3 text-body font-[650]">
             <span className="whitespace-nowrap">{live ? "Next answer" : "Answer after cutover"}</span>
             {(() => {
@@ -446,7 +446,7 @@ export function HttpRuleTab({ p }: { p: Probe }) {
         </div>
       </aside>
 
-      <div className={cn("sticky bottom-0 col-span-full flex flex-wrap items-center gap-2 border-t border-rule-2 bg-soot py-3 max-[820px]:bottom-7", !dirty && "max-[820px]:static")}>
+      <div className={cn("sticky bottom-0 col-span-full flex flex-wrap items-center gap-2 border-t border-rule bg-soot py-3 max-[820px]:bottom-7", !dirty && "max-[820px]:static")}>
         {dirty && <span className="mr-1 flex items-center gap-1.5 text-body text-smoke"><i className="inline-block size-1.5 rounded-full border-[1.5px] border-smoke" />Unsaved changes</span>}
         <Button disabled={!dirty || saving || !!preview.error} onClick={save}>Save as v{nextVersion}</Button>
         <Button variant="quiet" disabled={!dirty || saving} onClick={() => { setDraft(base); setHop(1); }}>Discard</Button>

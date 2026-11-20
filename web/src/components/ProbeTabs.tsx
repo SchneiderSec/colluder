@@ -506,7 +506,7 @@ function Tab({ s, k, i, focus, last }: { s: AppState; k: string; i: number; focu
         onDrop={(e) => { e.preventDefault(); showCard(null); const from = e.dataTransfer.getData("text/x-colluder-tab"); if (from) moveTab(from, k, drop === "after"); setDrop(null); }}
         role="presentation"
         className={cn("group relative flex h-9 max-w-[240px] min-w-[104px] flex-[0_1_auto] items-center rounded-t-[5px] border border-b-0",
-          sel ? "z-10 -mb-px h-[calc(2.25rem+1px)] border-rule bg-soot" : "border-rule-2 hover:bg-hover", s.lit === k && !sel && "animate-lit")}>
+          sel ? "z-10 -mb-px h-[calc(2.25rem+1px)] border-rule bg-soot" : "border-rule hover:bg-hover", s.lit === k && !sel && "animate-lit")}>
         {/* where a dragged tab will land */}
         {drop && <span aria-hidden="true" className={cn("absolute top-1 bottom-1 w-0.5 rounded-full bg-bone", drop === "before" ? "-left-[2px]" : "-right-[2px]")} />}
         {editing === k ? (
@@ -590,7 +590,7 @@ function Switcher({ s, onPick }: { s: AppState; onPick: () => void }) {
   };
   return (
     <div className="flex max-h-[min(560px,70vh)] flex-col">
-      <label className="flex h-10 flex-none items-center gap-2 border-b border-rule-2 px-3">
+      <label className="flex h-10 flex-none items-center gap-2 border-b border-rule px-3">
         <Search className="size-3.5 flex-none text-ash" strokeWidth={1.5} aria-hidden="true" />
         <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={onKey} placeholder="Find a probe: tag, name, target, note"
           role="combobox" aria-expanded="true" aria-controls={listId} aria-activedescendant={rows[at] ? `${listId}-${at}` : undefined} aria-label="Find a probe"
@@ -634,7 +634,7 @@ function Switcher({ s, onPick }: { s: AppState; onPick: () => void }) {
         })}
         {retiredHidden > 0 && <p className="px-2 pt-2 pb-1 text-label text-ash">{plural(retiredHidden, "retired probe")} not shown: search finds them.</p>}
       </div>
-      <div className="flex flex-none flex-wrap items-center gap-1 border-t border-rule-2 p-1">
+      <div className="flex flex-none flex-wrap items-center gap-1 border-t border-rule p-1">
         <Button variant="ghost" size="sm" className="text-smoke" onClick={() => { onPick(); setFolded(false); }}><PanelLeftOpen />Dock the list<kbd className="ml-1 font-mono text-label text-ash">\</kbd></Button>
         <Button variant="ghost" size="sm" className="text-smoke" onClick={() => { onPick(); plantNew(); }}><Plus />Plant<kbd className="ml-1 font-mono text-label text-ash">p</kbd></Button>
         {!!snap.closed.length && <Button variant="ghost" size="sm" className="text-smoke" onClick={() => { onPick(); reopenTab(); }}><RotateCcw />Reopen<kbd className="ml-1 font-mono text-label text-ash">⇧T</kbd></Button>}
