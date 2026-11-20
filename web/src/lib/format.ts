@@ -9,14 +9,45 @@ export const newestFirst = (a: { timestamp: string; id: number }, b: { timestamp
 const BOOT = Date.now();
 export const settled = () => Date.now() - BOOT > 2000;
 export const isoMs = (ts?: string | null) => (ts ? Date.parse(String(ts).replace(/(\.\d{3})\d+/, "$1")) : NaN);
-export const hms = (ts?: string | null) => (ts ? ts.slice(11, 19) : "");
-export const hmsms = (ts?: string | null) => (ts ? ts.slice(11, 23) : "");
-export const hm = (ts?: string | null) => (ts ? ts.slice(11, 16) : "");
+// Times are stored, exported, reported and copied as evidence in UTC, as the server records them. Settings >
+// Display only changes how the dashboard shows them: UTC or this browser's zone, on a 24-hour or 12-hour
+// clock (lib/display.ts sets both). Every displayed time goes through the helpers below.
+let twelve = false, local = false;
+export const setTwelveHour = (on: boolean) => { twelve = on; };
+// where "YYYY-MM-DDTHH:MM:SS.mmm" stops for each precision
+const upTo = (p: "min" | "s" | "ms") => ({ min: 16, s: 19, ms: 23 })[p];
+export const setLocalZone = (on: boolean) => { local = on; };
+export const isLocalZone = () => local;
+// this browser's zone, short ("PST", "PDT" in summer) and long ("America/Los_Angeles")
+export const browserZone = (ms = Date.now()) =>
+  new Intl.DateTimeFormat("en-US", { timeZoneName: "short" }).formatToParts(new Date(ms)).find((p) => p.type === "timeZoneName")?.value ?? "local";
+export const browserZoneId = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
+// the shown zone's name, for labels; pass the time when it matters (PST or PDT)
+export const zoneName = (ms = Date.now()) => (local ? browserZone(ms) : "UTC");
+// an ISO timestamp's wall-clock digits in the shown zone ("YYYY-MM-DDTHH:MM:SS.mmm"); UTC is the string as stored
+const wall = (ts: string) => {
+  if (!local) return ts;
+  const t = isoMs(ts);
+  return Number.isFinite(t) ? new Date(t - new Date(t).getTimezoneOffset() * 60000).toISOString().slice(0, 23) : ts;
+};
+// "HH:MM[:SS[.mmm]]" as the chosen clock: "08:05:09" or "8:05:09 AM"
+export const clock = (t: string) => {
+  if (!twelve || !/^\d\d:\d\d/.test(t)) return t;
+  const h = +t.slice(0, 2);
+  return `${h % 12 || 12}${t.slice(2)} ${h < 12 ? "AM" : "PM"}`;
+};
+export const hms = (ts?: string | null) => (ts ? clock(wall(ts).slice(11, upTo("s"))) : "");
+export const hmsms = (ts?: string | null) => (ts ? clock(wall(ts).slice(11, upTo("ms"))) : "");
+export const hm = (ts?: string | null) => (ts ? clock(wall(ts).slice(11, upTo("min"))) : "");
+// the calendar day in the shown zone, "YYYY-MM-DD"
+export const dayKey = (ts: string) => wall(ts).slice(0, 10);
+// a full date and time with its zone: "2026-11-20 06:05 UTC" (to the minute), or to the second or millisecond
+export const stamp = (ts: string, to: "min" | "s" | "ms" = "min") => `${dayKey(ts)} ${clock(wall(ts).slice(11, upTo(to)))} ${zoneName(isoMs(ts))}`;
 
 export function dayOrTime(ts?: string | null) {
   const t = isoMs(ts);
   if (!t || !ts) return "";
-  return Date.now() - t > 20 * 3600e3 ? `${ts.slice(5, 10)} ${hm(ts)}` : hm(ts);
+  return Date.now() - t > 20 * 3600e3 ? `${dayKey(ts).slice(5)} ${hm(ts)}` : hm(ts);
 }
 
 export function ago(ms: number) {

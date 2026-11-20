@@ -6,7 +6,7 @@ import { useState, type ReactNode } from "react";
 import { Check, Copy, Play, Send, X } from "lucide-react";
 import { saveSettings, setDiscord, testDiscord, runCheck } from "@/store";
 import { copy, toast } from "@/lib/toast";
-import { ago, isoMs } from "@/lib/format";
+import { ago, browserZone, browserZoneId, hm, isoMs, zoneName } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,7 +15,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { LineForm, TypeChip } from "./bits";
 import { applyTypeScale, readTypeScale, type TypeScale } from "@/lib/typeScale";
-import { setDisplay, shownTheme, useDisplay, type Display, type Theme } from "@/lib/display";
+import { isLight, setDisplay, shownTheme, useDisplay, type Display, type Theme } from "@/lib/display";
 import { chime } from "@/lib/chime";
 import type { AlertKind, CheckResult, Status } from "@/lib/types";
 
@@ -294,7 +294,7 @@ export function CheckSection({ st }: { st: Status | null }) {
           <b className={cn("font-semibold first-letter:uppercase", w.kind === "down" ? "text-bad" : "text-bone")}>{w.word}</b>
           <span className="text-ash">
             {!c.active ? "It starts once the edge answers DNS (./colluder setup): it checks the short payload host."
-              : l ? `last run ${l.finishedAt.slice(11, 16)} UTC, ${ago(Date.now() - isoMs(l.finishedAt))}${c.off ? "" : ` · every ${c.everyMinutes} min`}`
+              : l ? `last run ${hm(l.finishedAt)} ${zoneName()}, ${ago(Date.now() - isoMs(l.finishedAt))}${c.off ? "" : ` · every ${c.everyMinutes} min`}`
               : "the first run is about 30 s after Colluder starts"}
           </span>
         </div>
@@ -358,9 +358,9 @@ export function CheckSection({ st }: { st: Status | null }) {
 }
 
 // ---------- display (this browser) ----------
-export const THEME_NAMES: Record<Theme, string> = { dark: "Colluder dark", contrast: "High contrast", dracula: "Dracula", nord: "Nord", tokyo: "Tokyo Night", mocha: "Catppuccin Mocha", gruvbox: "Gruvbox Dark", light: "Colluder light", system: "Match system" };
+export const THEME_NAMES: Record<Theme, string> = { dark: "Colluder dark", contrast: "High contrast", dracula: "Dracula", nord: "Nord", tokyo: "Tokyo Night", mocha: "Catppuccin Mocha", gruvbox: "Gruvbox Dark", light: "Colluder light", latte: "Catppuccin Latte", solarized: "Solarized Light", system: "Match system" };
 // tiles are narrow: the long names shorten there (the hint and the index say them in full)
-const TILE_NAMES: Partial<Record<Theme, string>> = { mocha: "Catppuccin", gruvbox: "Gruvbox" };
+const TILE_NAMES: Partial<Record<Theme, string>> = { mocha: "Mocha", latte: "Latte", gruvbox: "Gruvbox", solarized: "Solarized" };
 const THEME_HINTS: Record<Exclude<Theme, "system">, string> = {
   dark: "Colluder's own: a graphite bay where every region is its own strip, and amber for anything new.",
   contrast: "Colluder dark with brighter edges and secondary text, for reading from across a desk or on a dim second monitor.",
@@ -370,39 +370,52 @@ const THEME_HINTS: Record<Exclude<Theme, "system">, string> = {
   mocha: "Catppuccin Mocha's soft pastels on blue-violet: mauve DNS, peach HTTP, blue HTTPS, green SMTP.",
   gruvbox: "Gruvbox's warm retro browns: purple DNS, orange HTTP, blue HTTPS, aqua SMTP, yellow for new.",
   light: "The same bay by day: white strips on grey, with the protocol colours deepened to read on white.",
+  latte: "Catppuccin Latte, Mocha's daytime sibling: lavender-white strips, mauve DNS, peach HTTP, blue HTTPS, green SMTP.",
+  solarized: "Solarized's warm cream with deep teal ink: violet DNS, orange HTTP, blue HTTPS, cyan SMTP, deepened to read on cream.",
 };
-// each tile is painted in its own theme's colours (the page around it stays in the current one)
-type Swatch = { ground: string; rail: string; ink: string; dim: string; fresh: string; inks: [string, string, string, string] };
-const SWATCH: Record<Exclude<Theme, "system">, Swatch> = {
-  dark: { ground: "#1b1d20", rail: "#101113", ink: "#eceef1", dim: "#b5bac1", fresh: "#f2b33d", inks: ["#b9a0f2", "#f08c55", "#73a9f5", "#5fc290"] },
-  contrast: { ground: "#131416", rail: "#08090a", ink: "#f7f8f9", dim: "#d5d9de", fresh: "#f7c25a", inks: ["#d0b8fa", "#f5a074", "#9cc2f8", "#7fd3a8"] },
-  dracula: { ground: "#282a36", rail: "#21222c", ink: "#f8f8f2", dim: "#d0d3e3", fresh: "#ffb86c", inks: ["#bd93f9", "#ff79c6", "#8be9fd", "#50fa7b"] },
-  nord: { ground: "#2e3440", rail: "#272c36", ink: "#eceff4", dim: "#d3d9e4", fresh: "#ebcb8b", inks: ["#d0aeca", "#e3a58e", "#8ec6d5", "#a3be8c"] },
-  mocha: { ground: "#1e1e2e", rail: "#181825", ink: "#cdd6f4", dim: "#bac2de", fresh: "#f9e2af", inks: ["#cba6f7", "#fab387", "#89b4fa", "#a6e3a1"] },
-  gruvbox: { ground: "#282828", rail: "#1d2021", ink: "#ebdbb2", dim: "#d5c4a1", fresh: "#fabd2f", inks: ["#dc95a8", "#fe8019", "#8fb2a5", "#8ec07c"] },
-  tokyo: { ground: "#1a1b26", rail: "#16161e", ink: "#c0caf5", dim: "#a9b1d6", fresh: "#e0af68", inks: ["#bb9af7", "#ff9e64", "#7aa2f7", "#9ece6a"] },
-  light: { ground: "#ffffff", rail: "#d7dade", ink: "#16181b", dim: "#454a52", fresh: "#7f4f00", inks: ["#7348c2", "#a94c18", "#2a5fbe", "#1c754b"] },
-};
-
-// a miniature of the dashboard: the rail, two lines of text, the four protocol inks and a new-hit dot
-function Miniature({ w, className }: { w: Swatch; className?: string }) {
+// Each tile is a miniature of the dashboard drawn from its own theme's tokens: index.css gives every theme's
+// values to [data-theme-preview] as well as to <html>, so a tile can't drift from the theme it shows.
+// The bay with its rail, the probe list (a plain strip, the selected one, one cocked out with an amber
+// edge for new hits) and the pane (a title and its button over hit rows, each with its protocol ink).
+type Shown = Exclude<Theme, "system">;
+const Line = ({ c, w }: { c: string; w: string }) => <span className={cn("block h-[2px] flex-none rounded-full", c)} style={{ width: w }} />;
+function MiniStrip({ ink, w, state }: { ink: string; w: string; state?: "selected" | "new" }) {
   return (
-    <span className={cn("absolute inset-0 flex", className)} style={{ backgroundColor: w.ground }}>
-      <span className="w-2.5 flex-none" style={{ backgroundColor: w.rail }} />
-      <span className="flex flex-1 flex-col justify-center gap-[5px] px-2.5">
-        <span className="h-[3px] w-[62%] rounded-full" style={{ backgroundColor: w.ink }} />
-        <span className="h-[3px] w-[40%] rounded-full opacity-80" style={{ backgroundColor: w.dim }} />
-        <span className="mt-0.5 flex items-center gap-[5px]">
-          {w.inks.map((c) => <span key={c} className="size-[7px] rounded-[2px]" style={{ backgroundColor: c }} />)}
-          <span className="ml-auto size-[7px] rounded-full" style={{ backgroundColor: w.fresh }} />
+    <span className={cn("flex min-h-0 flex-1 flex-col justify-center gap-[3px] rounded-[2px] border px-[3px]",
+      state === "selected" ? "border-ash bg-soot-2" : "border-rule bg-soot", state === "new" && "translate-x-[3px] border-amber")}>
+      <Line c="bg-bone" w={w} />
+      <span className="flex items-center gap-[2px]"><span className={cn("size-[3px] flex-none rounded-[0.5px]", ink)} /><Line c="bg-ash" w="40%" /></span>
+    </span>
+  );
+}
+function Miniature({ t, className }: { t: Shown; className?: string }) {
+  const rows: [string, string][] = [["bg-dns", "58%"], ["bg-http", "72%"], ["bg-https", "46%"], ["bg-smtp", "64%"]];
+  return (
+    <span data-theme-preview={t} className={cn("absolute inset-0 flex gap-[3px] bg-bay py-[4px] pr-[4px]", className)}>
+      <span className="flex w-[10px] flex-none justify-center pt-[1px]"><span className="size-[5px] rounded-[1px] bg-soot" /></span>
+      <span className="flex w-[33%] flex-none flex-col gap-[2px] pr-[3px]">
+        <MiniStrip ink="bg-https" w="70%" />
+        <MiniStrip ink="bg-dns" w="55%" state="selected" />
+        <MiniStrip ink="bg-http" w="62%" state="new" />
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-[2px] border border-rule bg-soot">
+        <span className="flex h-[13px] flex-none items-center gap-[3px] px-[4px]">
+          <Line c="bg-bone" w="38%" />
+          <span className="ml-auto h-[6px] w-[14px] rounded-[1px] bg-bone" />
         </span>
+        {rows.map(([ink, w], i) => (
+          <span key={ink} className={cn("flex min-h-0 flex-1 items-center gap-[3px] border-t border-rule-2 px-[4px]", i === 1 && "bg-soot-2")}>
+            <span className={cn("size-[3px] flex-none rounded-[0.5px]", ink)} />
+            <Line c="bg-smoke" w={w} />
+          </span>
+        ))}
       </span>
     </span>
   );
 }
 
 function ThemePicker({ d }: { d: Display }) {
-  const order: Theme[] = ["system", "dark", "light", "contrast", "dracula", "nord", "tokyo", "mocha", "gruvbox"];
+  const order: Theme[] = ["system", "light", "latte", "solarized", "dark", "contrast", "dracula", "nord", "tokyo", "mocha", "gruvbox"];
   return (
     <ToggleGroup type="single" value={d.theme} onValueChange={(v) => { if (v) setDisplay("theme", v as Theme); }} aria-label="Theme" className="grid w-full grid-cols-[repeat(auto-fill,minmax(104px,1fr))] gap-2.5">
       {order.map((t) => {
@@ -410,10 +423,10 @@ function ThemePicker({ d }: { d: Display }) {
         return (
           <ToggleGroupItem key={t} value={t} aria-label={THEME_NAMES[t]}
             className="group h-auto min-w-0 flex-col items-stretch gap-1.5 rounded-[4px] border border-rule bg-transparent p-1.5 text-left shadow-none hover:border-ash hover:bg-transparent data-[state=on]:border-bone data-[state=on]:bg-soot-2">
-            <span className="relative block h-12 overflow-hidden rounded-[3px] outline outline-1 -outline-offset-1 outline-rule/70" aria-hidden>
+            <span className="relative block h-[60px] overflow-hidden rounded-[3px] outline outline-1 -outline-offset-1 outline-rule/70" aria-hidden>
               {t === "system"
-                ? <><Miniature w={SWATCH.light} className="[clip-path:polygon(0_0,100%_0,0_100%)]" /><Miniature w={SWATCH[d.dark]} className="[clip-path:polygon(100%_0,100%_100%,0_100%)]" /></>
-                : <Miniature w={SWATCH[t]} />}
+                ? <><Miniature t={d.light} className="[clip-path:polygon(0_0,100%_0,0_100%)]" /><Miniature t={d.dark} className="[clip-path:polygon(100%_0,100%_100%,0_100%)]" /></>
+                : <Miniature t={t} />}
             </span>
             <span className={cn("flex items-center gap-1 px-0.5 text-body", on ? "font-semibold text-bone" : "text-smoke group-hover:text-bone")}>
               <span className="truncate">{TILE_NAMES[t] ?? THEME_NAMES[t]}</span>
@@ -433,7 +446,7 @@ export function DisplaySection() {
   return (
     <Section id="display" title="Display" desc="Saved in this browser only, so the desk monitor and the phone can each have their own.">
       <Group title="Look">
-        <Row label="Theme" hint={d.theme === "system" ? `Light when the system is set to light; otherwise ${THEME_NAMES[d.dark]}, the dark theme you picked last.` : THEME_HINTS[d.theme]}>
+        <Row label="Theme" hint={d.theme === "system" ? `Follows the system: ${THEME_NAMES[d.light]} when it's set to light, otherwise ${THEME_NAMES[d.dark]} (the light and dark themes you picked last).` : THEME_HINTS[d.theme]}>
           <ThemePicker d={d} />
         </Row>
         <Row label="Protocol colours" hint={d.inks === "safe" ? "Okabe-Ito hues: DNS, HTTP, HTTPS and SMTP stay apart with red-green and blue-yellow colour blindness." : undefined}>
@@ -446,7 +459,15 @@ export function DisplaySection() {
         <Row label="Motion" hint={{ full: "Live lines carry a moving signal; arrivals pop and flash.", still: "Live lines hold still, a solid wire beside the same word; arrivals still pop and flash.", none: "Nothing moves, whatever the system's reduce-motion setting." }[d.motion]}>
           <Seg label="Motion" value={d.motion} onChange={set("motion")} options={[["full", "Moving"], ["still", "Still lines"], ["none", "None"]]} />
         </Row>
-        <Row label="Night shift" hint={shownTheme(d) === "light" ? "Dark themes only: the light theme never dims." : "From midnight to 05:00 local time the text dims a little and the status bar says so."}>
+        <Row label="Time zone" hint={d.zone === "local"
+          ? `Times on this page show in ${browserZoneId()} (${browserZone()}). Reports, exports and copied evidence stay in UTC, as the server records them; hover a hit's time for it.`
+          : "As the server records them. Reports, exports and copied evidence are always in UTC, whichever you pick."}>
+          <Seg label="Time zone" value={d.zone} onChange={set("zone")} options={[["utc", "UTC"], ["local", `This browser (${browserZone()})`]]} />
+        </Row>
+        <Row label="Clock" hint={d.clock === "12" ? `2:05:09 PM ${zoneName()}, with AM or PM after each time.` : `14:05:09 ${zoneName()}.`}>
+          <Seg label="Clock" value={d.clock} onChange={set("clock")} options={[["24", "24-hour"], ["12", "12-hour"]]} />
+        </Row>
+        <Row label="Night shift" hint={isLight(shownTheme(d)) ? "Dark themes only: light themes never dim." : "From midnight to 05:00 local time the text dims a little and the status bar says so."}>
           <Seg label="Night shift" value={d.night} onChange={set("night")} options={[["auto", "Midnight to 05:00"], ["off", "Off"]]} />
         </Row>
       </Group>

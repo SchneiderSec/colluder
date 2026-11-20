@@ -2,7 +2,7 @@
 // carries its state in the line grammar), and the sections themselves, ordered by why you came:
 // what to paste, who hears about hits, whether callbacks get through, how it looks, then the
 // machinery underneath.
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import { Copy, RotateCcw, Trash2 } from "lucide-react";
 import { useApp, clearAll, restoreClear } from "@/store";
 import { AlertsSection, CheckSection, DisplaySection, Group, PayloadSection, Row, Section, THEME_NAMES, checkWord, fail } from "./SettingsParts";
@@ -143,24 +143,27 @@ export function Settings() {
   };
   const list = entries(st, THEME_NAMES[d.theme]);
 
+  // one strip like the Payload kit: a header band, the section index as its own column, the sections scrolling
+  // beside it. "Why you came" (payloads, alerts, the outside check) sits above a Rule, the machinery below it.
   return (
-    <div ref={scroller} className="min-h-0 overflow-auto px-8 pt-7 pb-24 max-[820px]:px-4 max-[820px]:pb-10">
-      <div className="grid max-w-[980px] grid-cols-[176px_minmax(0,1fr)] gap-x-12 max-[1000px]:grid-cols-1">
-        <header className="col-span-full mb-7">
-          <h1 className="text-headline font-bold text-bone">Settings</h1>
-          <p className="mt-0.5 text-smoke">Colluder · Your insider on the wire.</p>
-        </header>
+    <div className="m-2 grid min-h-0 flex-1 grid-cols-[208px_minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-md border border-rule bg-soot max-[1000px]:grid-cols-1 max-[1000px]:grid-rows-[auto_auto_minmax(0,1fr)] max-[820px]:m-1.5 max-[820px]:block">
+      <header className="col-span-full flex flex-wrap items-baseline gap-x-4 gap-y-1 border-b border-rule px-8 py-4 max-[820px]:px-4">
+        <h1 className="text-headline font-bold text-bone">Settings</h1>
+        <p className="text-body text-ash">Colluder · Your insider on the wire.</p>
+      </header>
 
-        <nav aria-label="Settings sections" className="sticky top-6 self-start max-[1000px]:static max-[1000px]:mb-8">
-          <ul className="space-y-0.5 max-[1000px]:flex max-[1000px]:flex-wrap max-[1000px]:gap-1.5 max-[1000px]:space-y-0">
-            {list.map((x) => {
-              const on = active === x.id;
-              return (
-                <li key={x.id}>
+      <nav aria-label="Settings sections" className="min-h-0 overflow-auto border-r border-rule py-3 max-[1000px]:border-r-0 max-[1000px]:border-b max-[1000px]:px-4 max-[1000px]:py-2.5">
+        <ul className="max-[1000px]:flex max-[1000px]:flex-wrap max-[1000px]:gap-1.5">
+          {list.map((x) => {
+            const on = active === x.id;
+            return (
+              <Fragment key={x.id}>
+                <li>
                   <button type="button" onClick={() => go(x.id)} aria-current={on ? "location" : undefined}
-                    className={cn("flex w-full flex-col items-start rounded-[3px] px-2.5 py-1.5 text-left transition-colors max-[1000px]:w-auto max-[1000px]:border max-[1000px]:border-rule",
+                    className={cn("flex min-h-[46px] w-full flex-col items-start justify-center px-8 py-1.5 text-left transition-colors",
+                      "max-[1000px]:min-h-0 max-[1000px]:w-auto max-[1000px]:rounded-[3px] max-[1000px]:border max-[1000px]:border-rule max-[1000px]:px-2.5 max-[1000px]:py-1",
                       on ? "bg-soot-2 text-bone" : "text-smoke hover:bg-hover hover:text-bone")}>
-                    <span className={on ? "font-semibold" : ""}>{x.name}</span>
+                    <span className={cn("text-title", on && "font-semibold")}>{x.name}</span>
                     {x.sub && (
                       <span className={cn("flex max-w-full items-center gap-1.5 text-label max-[1000px]:hidden", x.bad ? "text-bad" : "text-ash")}>
                         {x.line && <LineForm kind={x.line} signal={x.id === "system" ? "beat" : x.id === "check" ? "echo" : "sparse"} className={cn("w-4", x.bad ? "text-bad" : x.line === "off" ? "text-ash" : "text-smoke")} />}
@@ -169,12 +172,15 @@ export function Settings() {
                     )}
                   </button>
                 </li>
-              );
-            })}
-          </ul>
-        </nav>
+                {x.id === "check" && <li aria-hidden className="mx-8 my-2 border-t border-rule max-[1000px]:hidden" />}
+              </Fragment>
+            );
+          })}
+        </ul>
+      </nav>
 
-        <div className="min-w-0 max-w-[720px]">
+      <div ref={scroller} className="min-h-0 overflow-auto px-8 pt-6 pb-24 max-[820px]:px-4 max-[820px]:pb-10">
+        <div className="max-w-[720px]">
           <PayloadSection st={st} />
           <AlertsSection st={st} />
           <CheckSection st={st} />

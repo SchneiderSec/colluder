@@ -153,7 +153,7 @@ function Brief({ s, p }: { s: AppState; p: Probe }) {
   const alias = names[p.tag] || null;
   const renaming = editing === p.tag;
   const label = [alias ? `${alias} (${p.tag})` : p.tag, when, marksLabel(s, p.tag), p.muted && "Discord alerts muted"].filter(Boolean).join(", ");
-  const cls = cn("mb-1 flex w-[calc(100%-14px)] min-w-0 cursor-pointer items-center gap-2.5 rounded border border-rule-2 bg-soot py-[6px] pr-4 pl-3 text-left hover:bg-hover max-[820px]:min-h-11", sel && "border-ash bg-soot-2 hover:bg-soot-2", s.lit === p.tag && "animate-lit");
+  const cls = cn("mb-1 flex w-[calc(100%-14px)] min-w-0 cursor-pointer items-center gap-2.5 rounded border border-rule bg-soot py-[6px] pr-4 pl-3 text-left hover:bg-hover max-[820px]:min-h-11", sel && "border-ash bg-soot-2 hover:bg-soot-2", s.lit === p.tag && "animate-lit");
   return (
     <ProbeActions s={s} k={p.tag}>
       {renaming ? (

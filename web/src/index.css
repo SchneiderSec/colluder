@@ -8,13 +8,14 @@
    gaps between regions) holds strips: each region, probe row and detail block is its own object one
    tonal step up, with a hard 1px edge. Warmth lives only in the accents: amber = new/unread, the crew's
    coats and the mask. Token names are the original ones (soot = a strip, soot-2 = selected). */
-:root {
+:root, [data-theme-preview="dark"] {
   /* the ultrathink rainbow (components/Ultra.tsx): 4.6:1 or better on every ground of every dark theme */
   --rb-1: #ff9494; --rb-2: #ffa45c; --rb-3: #ffd75e; --rb-4: #7ddc8a; --rb-5: #61baff; --rb-6: #b7a8ff; --rb-7: #f393d6;
   --bay: #101113;
   --soot: #1b1d20;
   --soot-1: #212327;
   --soot-2: #2b2f34;
+  --band: var(--soot-1); /* a header band inside a strip (the hits table's column heads): one step off it */
   --well: #141518;
   --rule: #3a3e45;
   --rule-2: #2a2d32;
@@ -77,7 +78,7 @@
 /* Themes (Settings > Display, lib/display.ts sets data-theme on <html>). Every pair holds 4.5:1 for
    text on every ground it sits on (checked with a script, not by eye). */
 /* High contrast: the same bay with the lights up. Edges, secondary text and inks brighter. */
-:root[data-theme="contrast"] {
+:root[data-theme="contrast"], [data-theme-preview="contrast"] {
   --bay: #08090a; --soot: #131416; --soot-1: #191b1e; --soot-2: #272b30; --well: #0e0f11;
   --rule: #6c727b; --rule-2: #464b52;
   --bone: #f7f8f9; --smoke: #d5d9de; --ash: #c0c5cc; --amber: #f7c25a; --fur: #b8ad9e; --bad: #f48a72;
@@ -91,18 +92,55 @@
 }
 /* Light: the same bay by day. A grey bay frame with white strips and near-black ink; the inks deepen to
    read on white, and amber deepens to an ochre so it still reads as text. */
-:root[data-theme="light"] {
+:root[data-theme="light"], [data-theme-preview="light"] {
   --rb-1: #b3261e; --rb-2: #9b4400; --rb-3: #725a00; --rb-4: #1a6c33; --rb-5: #1e5bb7; --rb-6: #5b45c9; --rb-7: #9e2c8d;
-  --bay: #d7dade; --soot: #ffffff; --soot-1: #fbfbfc; --soot-2: #e6ebf1; --well: #f5f6f8;
+  --bay: #d7dade; --soot: #ffffff; --soot-1: #fbfbfc; --soot-2: #e6ebf1; --well: #f5f6f8; --band: #f5f6f8;
   --rule: #b9bfc7; --rule-2: #e1e4e8;
   --bone: #16181b; --bone-glow: #3a3e44; --smoke: #454a52; --ash: #555b64; --amber: #7f4f00; --fur: #7a7064; --bad: #9e321e;
-  --ink-dns: #7348c2; --ink-http: #a94c18; --ink-https: #2a5fbe; --ink-smtp: #1c754b; --ink-other: #555b64;
+  --ink-dns: #7044be; --ink-http: #9f4309; --ink-https: #265bb9; --ink-smtp: #0e6d43; --ink-other: #555b64;
   --hover: #f1f3f5; --child: #f7f8fa; --mark: #dde2e8;
   --alarm-ground: #fbe4e0; --alarm-ink: #86220f; --alarm-banner-ink: #7a1f0d; --alarm-border: #e0a497;
   --caution-ground: #f9eed3; --caution-ink: #5c3f08; --caution-border: #d9bc78;
   --syn-name: oklch(0.43 0.09 245); --syn-value: oklch(0.42 0.09 135);
   --accent: #eceef1; --destructive: #b8452e;
   --selection: #cddcf2; --lit-flash: #f7e7c2;
+  color-scheme: light;
+}
+/* Named light themes. Same structure as Colluder light: a darker bay frame around light strips, the selected
+   fill between them. Where an original's text or accent colour misses 4.5:1 on the darkest ground it can sit
+   on (the bay), it is deepened along its own hue until it holds, so each keeps its character. */
+/* Catppuccin Latte (catppuccin.com, MIT): Mocha's daytime sibling, lavender-white. Base for strips on a
+   Surface 0 bay; Latte's Text is the secondary ink under a deeper primary so the three tiers stay apart.
+   Mauve DNS, peach HTTP, blue HTTPS, green SMTP, yellow (as an ochre) for new. */
+:root[data-theme="latte"], [data-theme-preview="latte"] {
+  --rb-1: #ab1c16; --rb-2: #933d00; --rb-3: #6c5400; --rb-4: #0f652c; --rb-5: #1654af; --rb-6: #563fc3; --rb-7: #972486;
+  --bay: #ccd0da; --soot: #eff1f5; --soot-1: #f5f6f9; --soot-2: #d2d9ef; --well: #e6e9ef; --band: #e6e9ef;
+  --rule: #acb0be; --rule-2: #d8dce5;
+  --bone: #1c1e35; --bone-glow: #3a3d58; --smoke: #3e415a; --ash: #525469; --amber: #794f00; --fur: #707384; --bad: #b30020;
+  --ink-dns: #771cd9; --ink-http: #9f3300; --ink-https: #0049d7; --ink-smtp: #166606; --ink-other: #525469;
+  --hover: #e8ebf1; --child: #eaedf2; --mark: #c6cde3;
+  --alarm-ground: #f9dde2; --alarm-ink: #940003; --alarm-banner-ink: #85000a; --alarm-border: #e5a3b0;
+  --caution-ground: #f8ecd6; --caution-ink: #5e3c00; --caution-border: #dfc08a;
+  --syn-name: #006269; --syn-value: #98287f;
+  --accent: #e6e9ef; --destructive: #d20f39;
+  --selection: #ccd6f6; --lit-flash: #f7e8c6;
+  color-scheme: light;
+}
+/* Solarized Light (ethanschoonover.com/solarized, MIT): warm cream base3 strips on a deeper cream bay, base02
+   for the ink. Violet DNS, orange HTTP, blue HTTPS, cyan SMTP (its olive green sits too near the yellow that
+   marks new), yellow for new; all deepened from the originals, which are built for 4:1-ish body text. */
+:root[data-theme="solarized"], [data-theme-preview="solarized"] {
+  --rb-1: #b3261e; --rb-2: #9b4400; --rb-3: #725a00; --rb-4: #1a6c33; --rb-5: #1e5bb7; --rb-6: #5b45c9; --rb-7: #9e2c8d;
+  --bay: #e4ddc8; --soot: #fdf6e3; --soot-1: #fef9ec; --soot-2: #e8e1ca; --well: #f7f0dc; --band: #f6efda;
+  --rule: #c4bca4; --rule-2: #e6dfca;
+  --bone: #073642; --bone-glow: #1f4d5a; --smoke: #394e55; --ash: #4c6169; --amber: #825800; --fur: #738080; --bad: #c20816;
+  --ink-dns: #5558a9; --ink-http: #a33d00; --ink-https: #0063a7; --ink-smtp: #006c65; --ink-other: #4c6169;
+  --hover: #f6f0dd; --child: #faf3e1; --mark: #e0d5b5;
+  --alarm-ground: #fbe3d9; --alarm-ink: #a40000; --alarm-banner-ink: #950000; --alarm-border: #e8a99a;
+  --caution-ground: #f7ebc8; --caution-ink: #6b4800; --caution-border: #d9bf76;
+  --syn-name: #576700; --syn-value: #b8136c;
+  --accent: #f3ecd8; --destructive: #dc322f;
+  --selection: #d6e2ea; --lit-flash: #f5e4b5;
   color-scheme: light;
 }
 /* Named dark themes, after their published palettes. The ground, ink and accents are the originals;
@@ -113,20 +151,20 @@
    they appear on, the selected row), not higher: lifted further they merge with Bone and the three
    text tiers read as one (readability pass 2026-11-12). */
 /* Dracula (draculatheme.com, MIT): purple DNS, pink HTTP, cyan HTTPS, green SMTP, orange for new. */
-:root[data-theme="dracula"] {
+:root[data-theme="dracula"], [data-theme-preview="dracula"] {
   --bay: #1d1e27; --soot: #282a36; --soot-1: #2f3242; --soot-2: #393c4e; --well: #21222c;
   --rule: #55596f; --rule-2: #363949;
   --bone: #f8f8f2; --bone-glow: #ffffff; --bone-night: #ecece6; --smoke: #c3c6d6; --ash: #a6acc7; --amber: #ffb86c; --fur: #a7accb; --bad: #ff8a8a;
   --ink-dns: #bd93f9; --ink-http: #ff79c6; --ink-https: #8be9fd; --ink-smtp: #50fa7b; --ink-other: #cfd2e0;
-  --hover: #323546; --child: #252731; --mark: #574a6e;
+  --hover: #323546; --child: #252731; --mark: #4d4538;
   --alarm-ground: #3f2a35; --alarm-ink: #ffc2c2; --alarm-banner-ink: #ffd0d0; --alarm-border: #a3485a;
-  --caution-ground: #3b3a2c; --caution-ink: #f1fa8c; --caution-border: #8a8a4f;
+  --caution-ground: #3a3428; --caution-ink: #ffd9a8; --caution-border: #8a6d48;
   --syn-name: #c6d0f5; --syn-value: #f1fa8c;
   --accent: #3a3d50; --destructive: #ff5555;
   --selection: #44475a; --lit-flash: #4d4236;
 }
 /* Nord (nordtheme.com, MIT): polar night grounds, snow storm ink, frost and aurora accents. */
-:root[data-theme="nord"] {
+:root[data-theme="nord"], [data-theme-preview="nord"] {
   --bay: #252a34; --soot: #2e3440; --soot-1: #353c4a; --soot-2: #3c4454; --well: #272c36;
   --rule: #56607a; --rule-2: #3b4252;
   --bone: #eceff4; --bone-glow: #ffffff; --bone-night: #e5e9f0; --smoke: #cad0da; --ash: #adb5c6; --amber: #ebcb8b; --fur: #a3adbf; --bad: #eb9aa1;
@@ -139,8 +177,8 @@
   --selection: #4c566a; --lit-flash: #4d4836;
 }
 /* Tokyo Night (enkia/tokyo-night, MIT): deep indigo night, periwinkle ink, neon accents. */
-:root[data-theme="tokyo"] {
-  --bay: #13141c; --soot: #1a1b26; --soot-1: #1f2232; --soot-2: #292e42; --well: #16161e;
+:root[data-theme="tokyo"], [data-theme-preview="tokyo"] {
+  --bay: #101119; --soot: #1a1b26; --soot-1: #1f2232; --soot-2: #292e42; --well: #16161e;
   --rule: #3b4261; --rule-2: #262a3b;
   --bone: #c0caf5; --bone-glow: #e0e6ff; --bone-night: #b8c2ec; --smoke: #a9b0d5; --ash: #8f98c2; --amber: #e0af68; --fur: #8890b5; --bad: #f7768e;
   --ink-dns: #bb9af7; --ink-http: #ff9e64; --ink-https: #7aa2f7; --ink-smtp: #9ece6a; --ink-other: #a9b1d6;
@@ -153,7 +191,7 @@
 }
 /* Catppuccin Mocha (catppuccin.com, MIT): soft pastels on a blue-violet base. Mauve DNS, peach HTTP,
    blue HTTPS, green SMTP, yellow for new. All of its text colours already hold 4.5:1. */
-:root[data-theme="mocha"] {
+:root[data-theme="mocha"], [data-theme-preview="mocha"] {
   --bay: #151520; --soot: #1e1e2e; --soot-1: #252536; --soot-2: #313244; --well: #181825;
   --rule: #45475a; --rule-2: #2a2b3c;
   --bone: #cdd6f4; --bone-glow: #e6ebff; --bone-night: #c3cbea; --smoke: #afb7d2; --ash: #989fb9; --amber: #f9e2af; --fur: #9399b2; --bad: #f38ba8;
@@ -168,8 +206,8 @@
 /* Gruvbox Dark (morhetz/gruvbox, MIT): warm retro browns. Purple DNS, orange HTTP, blue HTTPS, aqua
    SMTP (its olive green sits too near the yellow that marks new). The selected-row fill is a step
    deeper than bg1, and red, purple and blue are lifted a little so they read on it. */
-:root[data-theme="gruvbox"] {
-  --bay: #1a1a1a; --soot: #282828; --soot-1: #32302f; --soot-2: #373331; --well: #1d2021;
+:root[data-theme="gruvbox"], [data-theme-preview="gruvbox"] {
+  --bay: #1a1a1a; --soot: #282828; --soot-1: #32302f; --soot-2: #3c3836; --well: #1d2021;
   --rule: #5a514b; --rule-2: #3a3634;
   --bone: #ebdbb2; --bone-glow: #fbf1c7; --bone-night: #e0d0a8; --smoke: #cebe9b; --ash: #b3a58a; --amber: #fabd2f; --fur: #a89984; --bad: #fd7f70;
   --ink-dns: #dc95a8; --ink-http: #fe8019; --ink-https: #8fb2a5; --ink-smtp: #8ec07c; --ink-other: #d5c4a1;
@@ -177,17 +215,19 @@
   --alarm-ground: #3c2421; --alarm-ink: #fbb5a8; --alarm-banner-ink: #fcc7bc; --alarm-border: #9d3a2e;
   --caution-ground: #3c3420; --caution-ink: #fadf9a; --caution-border: #8f7432;
   --syn-name: #a8b7c0; --syn-value: #c9d3a0;
-  --accent: #3c3836; --destructive: #cc241d;
+  --accent: #3a3634; --destructive: #cc241d;
   --selection: #504945; --lit-flash: #4a3e22;
 }
 /* Protocol inks, colour-blind safe (Okabe-Ito hues, tuned per ground): DNS, HTTP, HTTPS and SMTP stay
    apart under the common colour-vision deficiencies. The type is always written next to its colour too. */
-:root[data-inks="safe"] { --ink-dns: #d98cb8; --ink-http: #e69f00; --ink-https: #56b4e9; --ink-smtp: #2fbf91; }
-:root[data-inks="safe"][data-theme="contrast"] { --ink-dns: #e8a6cb; --ink-http: #f2b23a; --ink-https: #7cc6ef; --ink-smtp: #52d3a8; }
-:root[data-inks="safe"][data-theme="dracula"] { --ink-dns: #e6a3cb; --ink-http: #eaa52a; --ink-https: #6cc0ef; --ink-smtp: #3dcb9c; }
-:root[data-inks="safe"][data-theme="nord"] { --ink-dns: #eab0d2; --ink-http: #f2b445; --ink-https: #86ccf2; --ink-smtp: #55d6a9; }
-:root[data-inks="safe"]:is([data-theme="mocha"], [data-theme="gruvbox"]) { --ink-dns: #e6a3cb; --ink-http: #eaa52a; --ink-https: #6cc0ef; --ink-smtp: #3dcb9c; }
-:root[data-inks="safe"][data-theme="light"] { --ink-dns: #933d70; --ink-http: #7c4f00; --ink-https: #195f8f; --ink-smtp: #00704f; }
+/* The picker's preview tiles ([data-theme-preview], components/SettingsParts.tsx) take the same values, so a
+   tile always shows the theme as it is, safe inks included. */
+:root[data-inks="safe"], :root[data-inks="safe"] [data-theme-preview] { --ink-dns: #d98cb8; --ink-http: #e69f00; --ink-https: #56b4e9; --ink-smtp: #2fbf91; }
+:root[data-inks="safe"][data-theme="contrast"], :root[data-inks="safe"] [data-theme-preview="contrast"] { --ink-dns: #e8a6cb; --ink-http: #f2b23a; --ink-https: #7cc6ef; --ink-smtp: #52d3a8; }
+:root[data-inks="safe"][data-theme="nord"], :root[data-inks="safe"] [data-theme-preview="nord"] { --ink-dns: #eab0d2; --ink-http: #f2b445; --ink-https: #86ccf2; --ink-smtp: #55d6a9; }
+:root[data-inks="safe"]:is([data-theme="dracula"], [data-theme="mocha"], [data-theme="gruvbox"]), :root[data-inks="safe"] :is([data-theme-preview="dracula"], [data-theme-preview="mocha"], [data-theme-preview="gruvbox"]) { --ink-dns: #e6a3cb; --ink-http: #eaa52a; --ink-https: #6cc0ef; --ink-smtp: #3dcb9c; }
+:root[data-inks="safe"]:is([data-theme="light"], [data-theme="solarized"]), :root[data-inks="safe"] :is([data-theme-preview="light"], [data-theme-preview="solarized"]) { --ink-dns: #933d70; --ink-http: #7c4f00; --ink-https: #195f8f; --ink-smtp: #006c4c; }
+:root[data-inks="safe"][data-theme="latte"], :root[data-inks="safe"] [data-theme-preview="latte"] { --ink-dns: #8e396c; --ink-http: #7b4e00; --ink-https: #155c8c; --ink-smtp: #006545; }
 
 @theme inline {
   /* The four sizes (docs/DESIGN.md), in rem so a browser's default font size carries through, times
@@ -207,6 +247,7 @@
   --color-soot: var(--soot);
   --color-soot-1: var(--soot-1);
   --color-soot-2: var(--soot-2);
+  --color-band: var(--band);
   --color-well: var(--well);
   --color-rule: var(--rule);
   --color-rule-2: var(--rule-2);
@@ -416,4 +457,4 @@
    the crew's hues, clear of amber); the tile is quiet and the initial carries it. Drawn here, never
    fetched: a sender's logo would be a request to the target. */
 .org-mark { background: oklch(0.33 0.045 var(--org-h)); color: oklch(0.91 0.055 var(--org-h)); box-shadow: inset 0 0 0 1px oklch(0.44 0.05 var(--org-h)); }
-:root[data-theme="light"] .org-mark { background: oklch(0.93 0.03 var(--org-h)); color: oklch(0.37 0.09 var(--org-h)); box-shadow: inset 0 0 0 1px oklch(0.83 0.04 var(--org-h)); }
+:root[data-scheme="light"] .org-mark { background: oklch(0.93 0.03 var(--org-h)); color: oklch(0.37 0.09 var(--org-h)); box-shadow: inset 0 0 0 1px oklch(0.83 0.04 var(--org-h)); }

@@ -8,7 +8,7 @@ import { variantOf, SECTION_LABEL } from "@/lib/kit";
 import { toCurl } from "@/lib/curl";
 import type { Enrich, InteractionDetail } from "@/lib/types";
 import { uaShort } from "@/lib/headers";
-import { byteCount, isoMs, lineCount } from "@/lib/format";
+import { byteCount, isoMs, lineCount, stamp } from "@/lib/format";
 import { answeredBy, decode, evidence } from "@/lib/raw";
 import { DnsLine, DnsNameMarked, ExactLine, HttpParsed, MailLine, parseHttp, type Parsed } from "./HttpView";
 import { copy, toast } from "@/lib/toast";
@@ -192,7 +192,7 @@ export function HitDetail({ id }: { id: number }) {
           <span className="text-headline leading-6 font-bold tracking-[.01em]">#{d.id}</span>
           <TypeChip proto={d.protocol} />
           {d.id > open && !chatter && <Chip>new</Chip>}
-          <span className="text-smoke" title={`Captured ${d.timestamp}`}>Received <span className="text-bone">{d.timestamp.replace("T", " ").replace(/(\.\d{3})\d*Z$/, "$1 UTC")}</span></span>
+          <span className="text-smoke" title={`Captured ${d.timestamp}`}>Received <span className="text-bone">{stamp(d.timestamp, "ms")}</span></span>
           {/* the probe's own tag is already the pane's title; name it only when it says something new */}
           {d.tag && (d.tag !== s.sel || d.tagSource === "path") && <span className="text-smoke">tag <span className="font-mono text-bone"><Ultra text={d.tag} /></span>{d.tagSource === "path" ? " (from path)" : ""}</span>}
         </div>
@@ -341,7 +341,7 @@ export function HitDetail({ id }: { id: number }) {
           text={!web && decoded ? decode(d.rawResponse, d.protocol) : d.rawResponse} exact={d.rawResponse} />
       </div>
 
-      <div aria-label="Custody record" className="flex flex-none flex-wrap items-center gap-x-4 gap-y-1 rounded-[3px] border border-rule-2 bg-well px-3 py-1.5 text-label whitespace-nowrap max-[820px]:flex-col max-[820px]:items-start">
+      <div aria-label="Custody record" className="flex flex-none flex-wrap items-center gap-x-4 gap-y-1 rounded-[3px] border border-rule bg-well px-3 py-1.5 text-label whitespace-nowrap max-[820px]:flex-col max-[820px]:items-start">
         <b className="font-[650]">Custody</b>
         <span title={`Captured by ${d.answer ? "Colluder's edge" : "the engine"} ${d.timestamp}`}><span className="text-smoke">{d.answer ? "Edge " : "Engine "}</span><span className="font-mono">{d.timestamp}</span></span>
         <span title={`Received by dashboard ${d.receivedAt}`}>

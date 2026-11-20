@@ -7,7 +7,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronRight, Copy, Download, Trash2, X } from "lucide-react";
 import { api, deleteMail, fetchMail, onMail, save, useApp } from "@/store";
 import type { MailDetail, MailRow } from "@/lib/types";
-import { ago, dayOrTime, hm, isoMs, plural, setupCmd } from "@/lib/format";
+import { ago, dayKey, dayOrTime, hm, isLocalZone, isoMs, plural, setupCmd, stamp, zoneName } from "@/lib/format";
 import { copy, toast } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -73,11 +73,11 @@ function OrgMark({ org, size = 28 }: { org: string; size?: number }) {
   );
 }
 
-// the day a message arrived, as the archive groups it (UTC, like every time on the page)
-const DAY = new Intl.DateTimeFormat("en-US", { timeZone: "UTC", weekday: "short", month: "short", day: "numeric" });
+// the day a message arrived, as the archive groups it (in the zone the page shows, like every time on it)
 function dayLabel(ts: string) {
-  const d = ts.slice(0, 10), now = new Date().toISOString().slice(0, 10), y = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
-  return d === now ? "Today" : d === y ? "Yesterday" : DAY.format(new Date(ts));
+  const d = dayKey(ts), now = dayKey(new Date().toISOString()), y = dayKey(new Date(Date.now() - 864e5).toISOString());
+  return d === now ? "Today" : d === y ? "Yesterday"
+    : new Intl.DateTimeFormat("en-US", { timeZone: isLocalZone() ? undefined : "UTC", weekday: "short", month: "short", day: "numeric" }).format(new Date(isoMs(ts)));
 }
 
 export function Mailbox({ arg }: { arg: string | null }) {
@@ -238,7 +238,7 @@ export function Mailbox({ arg }: { arg: string | null }) {
                 {older.length > 0 && (
                   <>
                     <button type="button" aria-expanded={showArchive} onClick={() => { setArchiveOpen(!showArchive); save("colluder.mailArchiveOpen", !showArchive); }}
-                      title="Older mail, by the day it arrived (UTC)" className={cn(sectionLabel, "w-full hover:text-bone max-[820px]:min-h-11")}>
+                      title={`Older mail, by the day it arrived (${zoneName()})`} className={cn(sectionLabel, "w-full hover:text-bone max-[820px]:min-h-11")}>
                       {showArchive ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}Archive <span className="font-medium text-ash">{older.length}</span>
                     </button>
                     {showArchive && days.map(([d, list]) => (
@@ -436,7 +436,7 @@ function Message({ id, look, count, onAddress, onOrg, orgCount, onDelete }: { id
               )}
             </span>
           </dd>
-          <dt className="text-smoke">Received</dt><dd className="text-bone"><time dateTime={m.receivedAt}>{m.receivedAt.replace("T", " ").slice(0, 19)} UTC</time>
+          <dt className="text-smoke">Received</dt><dd className="text-bone"><time dateTime={m.receivedAt}>{stamp(m.receivedAt, "s")}</time>
             <span className="text-ash"> · from <span className="font-mono">{m.remoteAddress}</span>{m.helo ? <> (<span className="font-mono">{m.helo}</span>)</> : null} · {m.tls ? m.tls : "no TLS"} · {plural(m.size, "byte")}</span></dd>
           {m.attachments.length > 0 && <><dt className="text-smoke">Attached</dt><dd className="text-bone">{m.attachments.map((a) => `${a.filename ?? "unnamed"} (${a.contentType}, ${plural(a.size, "byte")})`).join(" · ")}</dd></>}
         </dl>
@@ -444,7 +444,7 @@ function Message({ id, look, count, onAddress, onOrg, orgCount, onDelete }: { id
       </header>
 
       {(m.code || numbers.length > 0 || m.link || otherLinks.length > 0) && (
-        <div className="mt-4 grid grid-cols-[72px_minmax(0,1fr)] items-start gap-x-4 gap-y-3 border-y border-rule-2 py-3.5 text-body">
+        <div className="mt-4 grid grid-cols-[72px_minmax(0,1fr)] items-start gap-x-4 gap-y-3 border-y border-rule py-3.5 text-body">
           {(m.code || numbers.length > 0) && <>
             <span className="pt-1 text-smoke">Code</span>
             <div className="min-w-0">
@@ -498,7 +498,7 @@ function Message({ id, look, count, onAddress, onOrg, orgCount, onDelete }: { id
           <Button variant="ghost" size="icon-sm" aria-label="Delete this message" title="Delete this message…" onClick={() => onDelete(m)}><Trash2 /></Button>
         </span>
       </div>
-      <pre className={cn("mt-2 max-h-[60vh] overflow-auto rounded-[3px] border border-rule-2 bg-well p-3 text-body break-words whitespace-pre-wrap text-bone", view === "message" ? "font-sans leading-[1.5]" : "font-mono leading-[18px]")}>
+      <pre className={cn("mt-2 max-h-[60vh] overflow-auto rounded-[3px] border border-rule bg-well p-3 text-body break-words whitespace-pre-wrap text-bone", view === "message" ? "font-sans leading-[1.5]" : "font-mono leading-[18px]")}>
         {absent ? <span className="font-sans text-ash">{view === "message" ? "No text in it." : "No HTML part."}</span>
           : view === "headers" || view === "raw" ? <MailText text={body.length > MAX_SHOWN ? body.slice(0, MAX_SHOWN) : body} allHead={view === "headers"} />
           : <span className={cn(view === "message" && "block max-w-[78ch]")}>{body.length > MAX_SHOWN ? body.slice(0, MAX_SHOWN) : body}</span>}
