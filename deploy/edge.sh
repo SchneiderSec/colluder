@@ -9,7 +9,7 @@ umask 077
 
 . "$(dirname "$0")/lib.sh"   # the operator, paths, public IP and domain, from config.yaml
 BIN=$SERVER_BIN
-ORIGIN_HDR=X-Colluder-Origin-IP
+ORIGIN_HDR=$(origin_header)   # a secret name (lib.sh): interactsh believes that header from anyone
 FORCE=0; CHECKED=0; UNDO=0
 for a in "$@"; do case "$a" in --force) FORCE=1 ;; --checked) CHECKED=1 ;; --undo|--rollback) UNDO=1 ;; *) echo "unknown option $a" >&2; exit 2 ;; esac; done
 
@@ -127,7 +127,7 @@ ok "interactsh on $UP_HTTP (http) and $UP_HTTPS (https); DNS, SMTP, LDAP unchang
 /usr/local/libexec/colluder-cert-sync | sed 's/^/   /'
 ok "certificate copied for the edge"
 install -o $U -g $U -m 600 /dev/null $H/.config/colluder/edge.env
-printf 'COLLUDER_EDGE_HTTP=%s:80\nCOLLUDER_EDGE_HTTPS=%s:443\nCOLLUDER_UPSTREAM_HTTP=%s\nCOLLUDER_UPSTREAM_HTTPS=%s\n' "$PUB" "$PUB" "$UP_HTTP" "$UP_HTTPS" > $H/.config/colluder/edge.env
+printf 'COLLUDER_EDGE_HTTP=%s:80\nCOLLUDER_EDGE_HTTPS=%s:443\nCOLLUDER_UPSTREAM_HTTP=%s\nCOLLUDER_UPSTREAM_HTTPS=%s\nCOLLUDER_ORIGIN_HEADER=%s\n' "$PUB" "$PUB" "$UP_HTTP" "$UP_HTTPS" "$ORIGIN_HDR" > $H/.config/colluder/edge.env
 
 say "5/6 start the edge, the certificate timer, and the engine"
 systemctl enable -q --now colluder-cert-sync.timer

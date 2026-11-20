@@ -8,7 +8,7 @@
 import net from "node:net";
 import tls from "node:tls";
 import { isUtf8 } from "node:buffer";
-import { readFileSync, openSync, writeSync, writeFileSync, renameSync, watchFile, existsSync, mkdirSync, readdirSync, statSync, fsyncSync, closeSync } from "node:fs";
+import { readFileSync, openSync, writeSync, writeFileSync, renameSync, watchFile, existsSync, mkdirSync, readdirSync, statSync, statfsSync, fsyncSync, closeSync } from "node:fs";
 import { X509Certificate, createHash } from "node:crypto";
 import { join } from "node:path";
 import { Reader, readHead, readBody, lenientHead, HttpError, LIMITS } from "./lib/http1.mjs";
@@ -43,6 +43,9 @@ const CFG = {
   smtp: [...listOf(env.COLLUDER_EDGE_SMTP).map((a) => ({ ...addr(a), implicitTls: false })),
     ...listOf(env.COLLUDER_EDGE_SMTPS).map((a) => ({ ...addr(a), implicitTls: true }))],
   spool: env.COLLUDER_MAIL_SPOOL || join(DATA, "mail-spool"),
+  // what the dashboard has stored of mail (it writes this file; lib/store.mjs mailBytes)
+  mailUsage: env.COLLUDER_MAIL_USAGE || join(DATA, "mail-usage.json"),
+  mailLimits: mailLimits(C),
   cert: C["tls.cert"],
   key: C["tls.key"],
   // one wildcard per extra domain, <dir>/<domain>/{fullchain,privkey}.pem (deploy/cert-sync.sh);
@@ -55,8 +58,28 @@ const CFG = {
   maxConns: 512,
   maxDelayed: 64,
 };
-export const ORIGIN = "X-Colluder-Origin-IP";
-const ORIGIN_LC = ORIGIN.toLowerCase();
+// The header the edge puts the real client address in, for interactsh (-oih). Its name is a secret
+// (deploy/origin.sh makes one and writes it to edge.env and interactsh's ports.env): interactsh
+// believes whatever that header says, so a client that knew the name could choose its own source
+// address on anything that reaches interactsh without the edge (its ports are on the public IP) or
+// past it. The old fixed name stays the fallback until the box is moved to a secret one.
+export const LEGACY_ORIGIN = "X-Colluder-Origin-IP";
+export const ORIGIN_RE = /^X-Colluder-Origin-[A-Za-z0-9-]{1,64}$/i;
+export const ORIGIN = ORIGIN_RE.test(env.COLLUDER_ORIGIN_HEADER || "") ? env.COLLUDER_ORIGIN_HEADER : LEGACY_ORIGIN;
+// any header a client sends whose name could be the origin header (the old name or a secret one) is
+// removed before relaying, whatever this edge's own name is
+const isOriginName = (n) => /^x-colluder-origin/i.test(n);
+
+// the SMTP limits from config.yaml's mail: section (lib/smtp.mjs SMTP_LIMITS has what each means)
+export function mailLimits(c) {
+  const pos = (v, d) => (Number.isFinite(v) && v > 0 ? v : d);
+  const MB = 1024 * 1024;
+  return {
+    maxSize: pos(c["mail.max_message_kb"], 2048) * 1024, maxRcpt: Math.floor(pos(c["mail.max_recipients"], 10)),
+    perIpMessages: pos(c["mail.per_ip_messages"], 60), perIpBytes: pos(c["mail.per_ip_mb"], 50) * MB,
+    storageBytes: pos(c["mail.storage_mb"], 500) * MB, minFreeBytes: (Number.isFinite(c["mail.min_free_mb"]) && c["mail.min_free_mb"] >= 0 ? c["mail.min_free_mb"] : 1024) * MB,
+  };
+}
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 const stats = { own: 0, relayed: 0, errors: 0, tlsErrors: 0, startedAt: new Date().toISOString() };
@@ -192,17 +215,45 @@ function durable(path, bytes) {
   const fd = openSync(path, "wx", 0o600);
   try { writeSync(fd, bytes); fsyncSync(fd); } finally { closeSync(fd); }
 }
+// Whether new mail must wait: everything stored (the spool not yet taken in, plus what the dashboard
+// reports it holds) at the cap, or the disk nearly full. Looked at no more than every 5 s. When it
+// can't tell (no usage file yet), it doesn't refuse.
+let storage = { at: 0, full: null };
+export function storageVerdict({ spoolBytes, storedBytes, freeBytes }, L) {
+  const mb = (n) => `${Math.round(n / 1048576)} MB`;
+  if (spoolBytes + storedBytes >= L.storageBytes) return `mail storage full: ${mb(spoolBytes + storedBytes)} of ${mb(L.storageBytes)}`;
+  if (freeBytes != null && freeBytes < L.minFreeBytes) return `disk nearly full: ${mb(freeBytes)} free`;
+  return null;
+}
+function mailStorageFull() {
+  const now = Date.now();
+  if (now - storage.at < 5000) return storage.full;
+  let spoolBytes = 0, storedBytes = 0, freeBytes = null;
+  try { for (const f of readdirSync(CFG.spool)) { try { spoolBytes += statSync(join(CFG.spool, f)).size; } catch { /* taken in meanwhile */ } } } catch { /* no spool */ }
+  try { storedBytes = Number(JSON.parse(readFileSync(CFG.mailUsage, "utf8")).bytes) || 0; } catch { /* not written yet */ }
+  try { const f = statfsSync(CFG.spool); freeBytes = Number(f.bavail) * Number(f.bsize); } catch { /* unknown */ }
+  const full = storageVerdict({ spoolBytes, storedBytes, freeBytes }, CFG.mailLimits);
+  if (full !== storage.full) log(full ? `smtp: new mail waits: ${full}` : "smtp: mail storage has room again");
+  storage = { at: now, full };
+  stats.smtpFull = full;
+  return full;
+}
 function syncDir(dir) { try { const fd = openSync(dir, "r"); try { fsyncSync(fd); } finally { closeSync(fd); } } catch { /* best effort */ } }
+// One file per message, however many recipients: each recipient's line carries its own Received line,
+// which the dashboard puts in front of the file's bytes (the stored message is what it always was).
+// part/parts let the dashboard remove the file once the last recipient is in.
 async function deliverMail(m) {
   const hostname = `mail.${state.domains[0] || CFG.domain}`;
+  const file = `${m.id}.eml`;
+  durable(join(CFG.spool, file), m.data);
   const lines = m.rcpts.map((r, i) => {
-    const file = `${m.id}-${i}.eml`;
-    const bytes = Buffer.concat([Buffer.from(receivedLine(m, r.address, hostname), "latin1"), m.data]);
-    durable(join(CFG.spool, file), bytes);
+    const received = receivedLine(m, r.address, hostname);
+    const rec = Buffer.from(received, "latin1");
     return {
       protocol: "smtp", "unique-id": r.own.uniqueId, "full-id": r.own.fullId, "smtp-from": m.mailFrom,
       "raw-request": "", "raw-response": "", "remote-address": m.remoteAddress, timestamp: m.at,
-      "colluder-mail": { file, size: bytes.length, sha256: createHash("sha256").update(bytes).digest("hex"), rcpt: r.address, helo: m.helo, tls: m.tls, port: m.port, id: m.id },
+      "colluder-mail": { file, received, part: i, parts: m.rcpts.length, size: rec.length + m.data.length, sha256: createHash("sha256").update(rec).update(m.data).digest("hex"),
+        rcpt: r.address, helo: m.helo, tls: m.tls, port: m.port, id: m.id },
     };
   });
   syncDir(CFG.spool);
@@ -215,18 +266,44 @@ const ipOf = (sock) => String(sock.remoteAddress || "").replace(/^::ffff:/, "");
 // the request as recorded: text, plus the exact bytes when the text would be a lossy view of them
 const rawFields = (buf) => ({ "raw-request": buf.toString("utf8"), ...(isUtf8(buf) ? {} : { "raw-request-b64": buf.toString("base64") }) });
 
+// What the edge adds after the request line of everything it relays: the real peer, and
+// Connection: close, so interactsh answers this one request and closes. Without it, a second request
+// on the same connection would reach interactsh as raw bytes, past the edge, carrying whatever origin
+// header the client wrote. (Go's server closes when any Connection value is "close", even next to a
+// client's keep-alive.)
+const relayHeaders = (ip, name) => `${name}: ${ip}\r\nConnection: close\r\n`;
+
 // The origin header on a request relayed without a parsed head (one the strict parser refused):
-// whatever the client sent under that name is removed, and the real peer added after the first line.
-// Returns null when the head can't be found in what was read (then the request is refused).
-export function withOrigin(buf, ip) {
+// whatever the client sent under an origin-like name is removed, and the real peer added after the
+// first line. Returns null when the head can't be found in what was read and an origin-like header is
+// in it, or there isn't even a first line (then the request is refused).
+export function withOrigin(buf, ip, name = ORIGIN) {
   const text = buf.toString("latin1");
   const m = /\r?\n\r?\n/.exec(text);
   const headEnd = m ? m.index + m[0].length : -1;
-  if (headEnd === -1) return text.toLowerCase().includes(ORIGIN_LC) ? null : buf;
-  const head = text.slice(0, headEnd).replace(new RegExp(`(\\n)${ORIGIN_LC}[ \\t]*:[^\\n]*\\n`, "gi"), "$1");
+  const firstNl = text.indexOf("\n") + 1;
+  if (!firstNl) return null;
+  if (headEnd === -1) {
+    if (/x-colluder-origin/i.test(text)) return null;
+    // the rest of the head is still on its way: ours goes first, and a header's first value is what
+    // Go reads, so nothing later in the stream can override it
+    return Buffer.concat([buf.subarray(0, firstNl), Buffer.from(relayHeaders(ip, name), "latin1"), buf.subarray(firstNl)]);
+  }
+  const head = text.slice(0, headEnd).replace(/(\n)x-colluder-origin[^:\r\n]*:[^\n]*\n/gi, "$1");
   const nl = head.indexOf("\n") + 1;
-  if (!nl) return buf;
-  return Buffer.concat([Buffer.from(head.slice(0, nl) + `${ORIGIN}: ${ip}\r\n` + head.slice(nl), "latin1"), buf.subarray(headEnd)]);
+  return Buffer.concat([Buffer.from(head.slice(0, nl) + relayHeaders(ip, name) + head.slice(nl), "latin1"), buf.subarray(headEnd)]);
+}
+
+// A parsed head as relayed: the edge's lines after the request line; the client's own origin-like
+// headers, if any, dropped (the head is rebuilt then); otherwise its bytes untouched.
+export function relayHead(head, ip, name = ORIGIN) {
+  const nl = head.raw.indexOf("\n") + 1;
+  if (head.headers.some(([n]) => isOriginName(n))) {
+    const lines = [head.raw.subarray(0, nl).toString("latin1").replace(/\r?\n$/, ""), ...relayHeaders(ip, name).split("\r\n").filter(Boolean),
+      ...head.headers.filter(([n]) => !isOriginName(n)).map(([n, v]) => `${n}: ${v}`)];
+    return Buffer.from(lines.join("\r\n") + "\r\n\r\n", "latin1");
+  }
+  return Buffer.concat([head.raw.subarray(0, nl), Buffer.from(relayHeaders(ip, name), "latin1"), head.raw.subarray(nl)]);
 }
 const plain = (status) => Buffer.from(`HTTP/1.1 ${status} ${reason(status)}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`, "latin1");
 
@@ -314,18 +391,7 @@ function relay(sock, r, head, scheme) {
     rest = withOrigin(rest, ipOf(sock));
     if (!rest) { stats.errors++; return sock.end(plain(400)); }
   }
-  if (head) {
-    const ip = ipOf(sock);
-    const nl = head.raw.indexOf("\n") + 1;
-    if (head.headers.some(([n]) => n.toLowerCase() === ORIGIN_LC)) {
-      // a client-supplied origin header is never trusted: rebuild the head without it
-      const lines = [head.raw.subarray(0, nl).toString("latin1").replace(/\r?\n$/, ""), `${ORIGIN}: ${ip}`,
-        ...head.headers.filter(([n]) => n.toLowerCase() !== ORIGIN_LC).map(([n, v]) => `${n}: ${v}`)];
-      first = Buffer.from(lines.join("\r\n") + "\r\n\r\n", "latin1");
-    } else {
-      first = Buffer.concat([head.raw.subarray(0, nl), Buffer.from(`${ORIGIN}: ${ip}\r\n`, "latin1"), head.raw.subarray(nl)]);
-    }
-  }
+  if (head) first = relayHead(head, ipOf(sock)); // a client-supplied origin header is never trusted
   const up = scheme === "https"
     ? tls.connect({ host: CFG.upHttps.host, port: CFG.upHttps.port, servername: sock.servername || undefined, rejectUnauthorized: false, ALPNProtocols: ["http/1.1"] })
     : net.connect({ host: CFG.upHttp.host, port: CFG.upHttp.port });
@@ -506,6 +572,7 @@ function start() {
       owns: (domain) => ownership(domain, state.cids, state.shortIds, state.domains),
       tlsOptions: () => (c ? { cert: c.def.cert, key: c.def.key, SNICallback: sni } : null),
       deliver: deliverMail,
+      limits: CFG.mailLimits, storageFull: mailStorageFull,
     });
     mail.listen().then(() => log(`edge smtp on ${CFG.smtp.map((l) => `${l.host}:${l.port}${l.implicitTls ? " (tls)" : ""}`).join(", ")}${c ? "" : " (no TLS)"}`))
       .catch((e) => { log("smtp listener error:", e.message); process.exit(1); });
@@ -519,6 +586,7 @@ function start() {
   }
 
   const writeStatus = (stopped = false) => {
+    if (CFG.smtp.length) mailStorageFull(); // so the dashboard sees room come back without waiting for mail
     const tmp = CFG.statusFile + ".tmp";
     try {
     writeFileSync(tmp, JSON.stringify({
@@ -527,6 +595,7 @@ function start() {
         smtp: CFG.smtp.length ? CFG.smtp.map((l) => `${l.host}:${l.port}${l.implicitTls ? "/tls" : ""}`) : null },
       upstream: { http: `${CFG.upHttp.host}:${CFG.upHttp.port}`, https: `${CFG.upHttps.host}:${CFG.upHttps.port}`, dns: CFG.dns ? `${CFG.upDns.host}:${CFG.upDns.port}` : null },
       cert: certInfo, rules: Object.keys(state.rules).length, rulesGeneratedAt: state.generatedAt, code: CODE,
+      originSecret: ORIGIN !== LEGACY_ORIGIN, // never the name itself: the status file is read by the dashboard
     }), { mode: 0o600 });
     renameSync(tmp, CFG.statusFile);
     } catch (e) { log("status file not written:", e.message); }

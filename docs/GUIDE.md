@@ -147,6 +147,14 @@ relayed or sent. Read it in the Mailbox tool, through the API
 (`GET /api/mail/latest?local=orca-attacker&since=<time>&wait=30` returns the newest message with
 the one-time code and magic link found in it), or with the MCP's `wait_for_mail`.
 
+The mailbox address is in every payload's name, so anyone can send to it. The edge keeps that from
+filling the disk, under `mail:` in `config.yaml`: one message up to 2 MB, up to 10 different
+recipients per message (the same address twice is stored once), 60 messages and 50 MB an hour from
+any one sending address, and 500 MB of mail in all (the mailbox plus mail sent to probes) or less
+than 1 GB of free disk before new mail waits. Over a limit a sender is told to try again later (a
+4xx reply), so a real mail server retries and nothing is lost; the Mailbox says when mail is waiting.
+Only a message bigger than the size limit is refused for good.
+
 Mail is deleted after the retention period. To delete it sooner, use **Clear mailbox** beside the message count, the trash icon by "n matches" for just the filtered messages, or the one on a message. Deleting is permanent (download the .eml first to keep a copy), and Claude can't delete mail.
 
 ## Discord alerts
@@ -195,10 +203,17 @@ file that way (`deploy/lib.sh`), and the unit files in `deploy/` are templates t
 | `nuclei.config` | `COLLUDER_NUCLEI_CONFIG` | none (another interactsh client's config, such as nuclei's; Settings shows its server) |
 | `nuclei.token_file` / `token_var` | | none (an env file whose token setup's web step also updates when it rotates it) |
 | `mail_days` | `COLLUDER_MAIL_DAYS` | `7` |
+| `mail.max_message_kb` / `max_recipients` | `COLLUDER_MAIL_MAX_KB` / `COLLUDER_MAIL_MAX_RCPT` | `2048` / `10` |
+| `mail.per_ip_messages` / `per_ip_mb` | `COLLUDER_MAIL_PER_IP_MESSAGES` / `COLLUDER_MAIL_PER_IP_MB` | `60` / `50` (per hour, per sending address) |
+| `mail.storage_mb` / `min_free_mb` | `COLLUDER_MAIL_STORAGE_MB` / `COLLUDER_MAIL_MIN_FREE_MB` | `500` / `1024` (`0`: no free-disk check) |
 
 Secrets stay out of it. `~/.config/colluder/colluder.env` (600) holds `DISCORD_WEBHOOK_URL` and
 `COLLUDER_CHECK_MINUTES` (Settings writes both); `engine.yaml` (600) holds the interactsh server and
-token. The edge's listeners come from `~/.config/colluder/edge.env`, which the deploy scripts write.
+token. The edge's listeners come from `~/.config/colluder/edge.env`, which the deploy scripts write. It
+also holds `COLLUDER_ORIGIN_HEADER`: the secret name of the header the edge puts each relayed
+request's real source address in. interactsh believes that header from whoever sends it, and its
+internal ports (8081, 8444) are on the public IP, so only the edge may know the name. Boxes set up
+before it existed get one from `./colluder setup` (`deploy/origin.sh`, which restarts interactsh).
 
 **Settings** saves each change where it already lives, so a restart, a deploy script and a hand edit
 agree with it: the payload domain (config.yaml and engine.yaml, then the engine restarts), the

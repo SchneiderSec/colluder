@@ -184,7 +184,9 @@ export function Mailbox({ arg }: { arg: string | null }) {
             title={[mb.live && `Receiving on ${mb.smtp!.join(", ")}`, mb.hosts.length > 1 && `Also @${mb.hosts.filter((h) => h !== mb.host).join(", @")}`,
               mb.lastLookup && `Last looked up ${ago(Date.now() - isoMs(mb.lastLookup.at))} (${mb.lastLookup.protocol.toUpperCase()})`].filter(Boolean).join("\n") || undefined}>
             <LineForm kind={mb.live ? "live" : "down"} signal="sparse" className={mb.live ? "text-bone" : "text-bad"} />
-            {mb.live
+            {mb.live && mb.waiting
+              ? <span className="text-bad" title="Senders are told to try again later (a 4xx reply), so mail arrives once there is room. Clear old mail, or raise mail.storage_mb in config.yaml">Not taking new mail: {mb.waiting}</span>
+              : mb.live
               ? <span>Receiving</span>
               : <span className="text-bad">Not receiving yet: mail for this box still goes to interactsh. The operator runs <code className="font-mono text-bone">{setupCmd(st?.app)}</code> (without --no-mail)</span>}
             <span className="text-ash">· {plural(mb.count, "message")}, kept {plural(mb.retentionDays, "day")}</span>

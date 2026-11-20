@@ -318,6 +318,20 @@ test("report: what the edge served, the XXE file data, payloads that fired, quer
   assert.match(md, /`cm9vdDp4OjA6MA==` decodes as base64url to `root:x:0:0`/, "padding kept");
 });
 
+test("report: file data sent to kx0 never lands in a sentence, only in its fenced block", () => {
+  const at = (s) => `2026-11-05T11:00:${String(s).padStart(2, "0")}.000Z`;
+  const evil = "[click](https://evil.example/) ![](https://evil.example/px.gif) <img src=x>";
+  const hit = { id: 1, protocol: "http", uniqueId: ID, fullId: `kx0.x1.${ID}`, remoteAddress: "203.0.113.9", timestamp: at(1), tag: "x1",
+    rawRequest: `GET /d?d=${encodeURIComponent(evil)} HTTP/1.1\r\nHost: kx0.x1.${ID}.${D}\r\n\r\n`, rawResponse: "HTTP/1.1 200 OK\r\n\r\n", reqSha256: "a",
+    answer: { by: "colluder", mode: "redirect", version: 1, tag: "x1" } };
+  const md = probeReport({ probe: { tag: "x1", plantedAt: at(0), target: "", note: "" }, hits: [hit], enrich: () => null, domain: D, payloadId: ID, now: at(9) });
+  assert.match(md, /file data arrived \(quoted under "File data read through XXE"\), to `203\.0\.113\.9`/);
+  // the text appears only quoted: in a fenced block or inline code, never as Markdown
+  const outside = md.replace(/```[^\n]*\n[\s\S]*?\n```/g, "").replace(/`[^`\n]*`/g, "");
+  assert.doesNotMatch(outside, /evil\.example/);
+  assert.match(md, /```\n\[click\]\(https:\/\/evil\.example\/\)/);
+});
+
 test("store: who planted a probe and who saved each rule version", () => {
   const s = new Store(":memory:");
   s.plant("mine", "app.example", "callback", "2026-11-06T10:00:00Z");
