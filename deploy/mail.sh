@@ -23,7 +23,6 @@ ok()   { printf '   ok    %s\n' "$*"; }
 bad()  { printf '   FAIL  %s\n' "$*"; FAILED=1; }
 warn() { printf '   WARN  %s\n' "$*"; }
 die()  { printf '\n   STOP  %s\n' "$*" >&2; exit 1; }
-as_user() { sudo -u "$U" XDG_RUNTIME_DIR=/run/user/$UID_U DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$UID_U/bus "$@"; }
 FAILED=0
 
 [[ $EUID -eq 0 ]] || die "run with sudo"
@@ -38,7 +37,6 @@ set_env() { # set_env KEY [VALUE]: no VALUE removes the line (edge.env stays the
 # wait_tcp PORT REGEX [PROC]: something (named PROC) listens on tcp PORT at an address matching REGEX
 wait_tcp() { for _ in $(seq 1 40); do ss -ltnpH "sport = :$1" | grep -E "$2" | grep -q "${3:-.}" && return 0; sleep 0.5; done; return 1; }
 greeting() { timeout 8 bash -c "exec 3<>/dev/tcp/$PUB/$1; IFS= read -r -t 6 l <&3; printf '%s' \"\$l\"" 2>/dev/null || true; }
-restart_engine() { as_user systemctl --user restart colluder-engine.service && ok "engine restarted: it registers its id with interactsh again"; }
 
 rollback() {
   say "undo: interactsh back on :25/:587/:465, the edge off them"

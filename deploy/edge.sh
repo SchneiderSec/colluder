@@ -17,7 +17,6 @@ say()  { local t="$*"; printf '   \033[2m-- %s\033[0m\n' "${t#[0-9]/[0-9] }"; }
 ok()   { printf '   ok    %s\n' "$*"; }
 bad()  { printf '   FAIL  %s\n' "$*"; FAILED=1; }
 die()  { printf '\n   STOP  %s\n' "$*" >&2; exit 1; }
-as_user() { sudo -u "$U" XDG_RUNTIME_DIR=/run/user/$UID_U DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$UID_U/bus "$@"; }
 FAILED=0
 
 [[ $EUID -eq 0 ]] || die "run with sudo"
@@ -28,6 +27,7 @@ if (( UNDO )); then
   systemctl disable --now colluder-edge.service 2>/dev/null || true
   printf 'INTERACTSH_PORT_FLAGS=\n' > /etc/interactsh/ports.env
   systemctl restart interactsh.service
+  restart_engine
   # interactsh listens only after it has tried for its certificate (a first try can take minutes)
   for _ in $(seq 1 180); do ss -ltnH "sport = :80" | grep -q "$PUB" && break; sleep 1; done
   for _ in $(seq 1 10); do ss -ltnH "sport = :443" | grep -q "$PUB" && break; sleep 0.5; done

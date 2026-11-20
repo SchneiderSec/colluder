@@ -21,7 +21,6 @@ say()  { local t="$*"; printf '   \033[2m-- %s\033[0m\n' "${t#[0-9]/[0-9] }"; }
 ok()   { printf '   ok    %s\n' "$*"; }
 bad()  { printf '   FAIL  %s\n' "$*"; FAILED=1; }
 die()  { printf '\n   STOP  %s\n' "$*" >&2; exit 1; }
-as_user() { sudo -u "$U" XDG_RUNTIME_DIR=/run/user/$UID_U DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$UID_U/bus "$@"; }
 FAILED=0
 
 [[ $EUID -eq 0 ]] || die "run with sudo"
@@ -45,6 +44,7 @@ rollback() {
   systemctl daemon-reload
   systemctl restart interactsh.service
   if wait_udp 8053; then ok "interactsh is back"; else printf '   FAIL  interactsh did not come back: journalctl -u interactsh\n'; fi
+  restart_engine
   systemctl restart colluder-edge.service
   as_user systemctl --user restart colluder.service
   ok "edge and dashboard restarted on one domain (the new cert-sync stays: it handles one domain too)"
@@ -95,6 +95,7 @@ systemctl daemon-reload
 systemctl restart interactsh.service
 wait_udp 8053 || { echo "   interactsh did not come back (journalctl -u interactsh)"; false; }
 ok "interactsh restarted"
+restart_engine
 for _ in $(seq 1 90); do ls "$STORE"/*/"wildcard_.$NEW"/*.crt >/dev/null 2>&1 && break; sleep 2; done
 ls "$STORE"/*/"wildcard_.$NEW"/*.crt >/dev/null 2>&1 || { echo "   no certificate for *.$NEW after 3 minutes (journalctl -u interactsh | grep -i certificate)"; false; }
 ok "Let's Encrypt issued *.$NEW"

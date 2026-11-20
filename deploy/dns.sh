@@ -18,7 +18,6 @@ say()  { local t="$*"; printf '   \033[2m-- %s\033[0m\n' "${t#[0-9]/[0-9] }"; }
 ok()   { printf '   ok    %s\n' "$*"; }
 bad()  { printf '   FAIL  %s\n' "$*"; FAILED=1; }
 die()  { printf '\n   STOP  %s\n' "$*" >&2; exit 1; }
-as_user() { sudo -u "$U" XDG_RUNTIME_DIR=/run/user/$UID_U DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$UID_U/bus "$@"; }
 FAILED=0
 
 [[ $EUID -eq 0 ]] || die "run with sudo"
@@ -43,6 +42,7 @@ rollback() {
   sed -i -E "s/ ?-dns-port [0-9]+//" "$PORTS"
   systemctl restart interactsh.service
   if wait_udp 53 "^($PUB|0\.0\.0\.0|\*|\[::\]):53$"; then ok "interactsh answers DNS on :53 again"; else printf '   FAIL  interactsh is not on :53: journalctl -u interactsh\n'; fi
+  restart_engine
   dig +short +time=3 +tries=1 @"$PUB" A "rollback-check.$DOMAIN" | grep -q . && ok "the domain resolves" || printf '   FAIL  no answer from %s:53\n' "$PUB"
   as_user systemctl --user restart colluder.service
   ok "dashboard restarted: payloads go back to the long id"
@@ -69,6 +69,7 @@ wait_udp $UP_PORT ":$UP_PORT$" || { echo "   interactsh did not come up on :$UP_
 UP=$(ss -lunH "sport = :$UP_PORT" | awk '{print $4}' | head -1)
 UP=${UP/#\*:/127.0.0.1:}; UP=${UP/#0.0.0.0:/127.0.0.1:}; UP=${UP/#\[::\]:/127.0.0.1:}
 ok "interactsh DNS on $UP (udp and tcp)"
+restart_engine
 
 say "3/4 the edge on $PUB:53"
 set_env COLLUDER_EDGE_DNS "$PUB:53"

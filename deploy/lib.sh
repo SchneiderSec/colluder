@@ -31,6 +31,19 @@ CLIENT_BIN=$(cfg paths.interactsh_client)
 SERVER_BIN=$(cfg paths.interactsh_server)
 [[ -n "$PUB" && -n "$DOMAIN" ]] || { echo "$CONFIG needs domain and public_ip" >&2; exit 1; }
 
+# run a user-level systemctl (and the like) as the operator, from a root script
+as_user() { sudo -u "$U" XDG_RUNTIME_DIR=/run/user/$UID_U DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$UID_U/bus "$@"; }
+# interactsh keeps client registrations in memory: after it restarts, the engine has to register its
+# id again or it records nothing. The dashboard's engine check would restart it within about two
+# minutes; doing it here closes that gap. Not fatal: if it fails, the engine check still recovers.
+restart_engine() {
+  # it registers over HTTPS, which interactsh opens only once it has its certificate: wait for that
+  # (8444 behind the edge, 443 without it), up to 30 s; past that, systemd's retries take over
+  local _; for _ in $(seq 1 60); do ss -ltnpH "( sport = :8444 or sport = :443 )" 2>/dev/null | grep -q interactsh && break; sleep 0.5; done
+  if as_user systemctl --user restart colluder-engine.service; then printf '   ok    %s\n' "engine restarted: it registers its id with interactsh again"
+  else printf '   WARN  %s\n' "couldn't restart the engine; the dashboard's engine check restarts it within a few minutes (journalctl --user -u colluder-engine)"; fi
+}
+
 # where cert-sync puts the certificates, from config.yaml: the edge's default next to tls.cert, the
 # others under tls.cert_dir (the file names are always fullchain.pem and privkey.pem)
 write_cert_defaults() {
