@@ -49,3 +49,14 @@ render_unit() {
 render_unit_stdout() {
   local t; t=$(mktemp -d); render_unit "$1" "$t/u"; cat "$t/u"; rm -rf "$t"
 }
+
+# The name of the header the edge puts the client's address in, which interactsh believes (-oih).
+# A secret: interactsh would believe that header from anyone, and its ports are on the public IP.
+# Prints the one already in /etc/interactsh/ports.env when it is a secret one, else a new one.
+ORIGIN_LEGACY=X-Colluder-Origin-IP
+origin_header() {
+  local cur
+  cur=$(sed -nE 's/^INTERACTSH_PORT_FLAGS=.*-oih ([A-Za-z0-9-]+).*$/\1/p' /etc/interactsh/ports.env 2>/dev/null | head -1 || true)
+  if [[ "$cur" =~ ^X-Colluder-Origin-[A-Za-z0-9-]{1,64}$ && "$cur" != "$ORIGIN_LEGACY" ]]; then echo "$cur"
+  else echo "X-Colluder-Origin-$(od -An -N12 -tx1 /dev/urandom | tr -d ' \n')"; fi
+}

@@ -106,12 +106,16 @@ cmd_setup() {
   fi
 
   local todo=0
-  edge_live || todo=1; edge_env COLLUDER_EDGE_DNS || todo=1; (( NO_MAIL )) || edge_env COLLUDER_EDGE_SMTP || todo=1
+  edge_live || todo=1; edge_env COLLUDER_ORIGIN_HEADER || todo=1; edge_env COLLUDER_EDGE_DNS || todo=1; (( NO_MAIL )) || edge_env COLLUDER_EDGE_SMTP || todo=1
   (( todo )) && get_sudo
   local f=(); (( FORCE )) && f=(--force)
 
   bold "[4/$n] web: interactsh and the edge on :80/:443"
-  if edge_live; then ok "already live"; else sudo env COLLUDER_IN_SETUP=1 "$ROOT/deploy/edge.sh" --checked "${f[@]}"; fi
+  if edge_live; then
+    ok "already live"
+    # a box set up before the origin header was a secret: give interactsh one (deploy/origin.sh)
+    edge_env COLLUDER_ORIGIN_HEADER || sudo env COLLUDER_IN_SETUP=1 "$ROOT/deploy/origin.sh" "${f[@]}"
+  else sudo env COLLUDER_IN_SETUP=1 "$ROOT/deploy/edge.sh" --checked "${f[@]}"; fi
   bold "[5/$n] DNS: short payloads and DNS hits"
   if edge_env COLLUDER_EDGE_DNS; then ok "already on"; else sudo env COLLUDER_IN_SETUP=1 "$ROOT/deploy/dns.sh" "${f[@]}"; fi
   if (( ! NO_MAIL )); then
@@ -131,6 +135,7 @@ cmd_update() {
   if systemctl is-active -q colluder-edge 2>/dev/null; then
     if edge_stale; then get_sudo; sudo systemctl restart colluder-edge; ok "edge restarted: its code changed"
     else ok "edge code unchanged: no restart needed"; fi
+    edge_env COLLUDER_ORIGIN_HEADER || note "one step left: run ./colluder setup to give interactsh a secret origin header (it restarts interactsh for a few seconds)"
   fi
 }
 

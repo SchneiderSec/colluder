@@ -12,7 +12,8 @@ import { fileURLToPath } from "node:url";
 import { PassThrough } from "node:stream";
 import { validateHttpRule, respond, serialize, describeRule, describeDecoy, xxeParts } from "../lib/rules.mjs";
 import { Reader, readHead, readBody, HttpError } from "../lib/http1.mjs";
-import { ownership, sniOf, withOrigin, routeOf } from "../edge.mjs";
+import { ownership, sniOf, withOrigin, relayHead, routeOf, LEGACY_ORIGIN } from "../edge.mjs";
+import { parseHead } from "../lib/http1.mjs";
 import { lenientHead } from "../lib/http1.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -180,6 +181,8 @@ test("edge: ownership needs a 33-char label starting with one of our correlation
 // ---------- integration ----------
 const freePort = () => new Promise((ok) => { const s = net.createServer().listen(0, "127.0.0.1", () => { const p = s.address().port; s.close(() => ok(p)); }); });
 let dir, edge, ports = {}, upSeen = [], upHttp, upHttps;
+// the edge under test runs with a secret origin header name, as deploy/origin.sh sets one up
+const SECRET = "X-Colluder-Origin-T3st5ecret";
 
 function fakeUpstream(secure, cert) {
   const onConn = (sock) => {
@@ -218,7 +221,7 @@ before(async () => {
   edge = spawn(process.execPath, [join(HERE, "..", "edge.mjs")], {
     env: { ...process.env, COLLUDER_CONFIG: join(dir, "none.yaml"), COLLUDER_DOMAIN: "oob.example", COLLUDER_DATA: dir, COLLUDER_EDGE_HTTP: `127.0.0.1:${ports.http}`, COLLUDER_EDGE_HTTPS: `127.0.0.1:${ports.https}`,
       COLLUDER_UPSTREAM_HTTP: `127.0.0.1:${ports.upHttp}`, COLLUDER_UPSTREAM_HTTPS: `127.0.0.1:${ports.upHttps}`,
-      COLLUDER_EDGE_CERT: join(dir, "cert.pem"), COLLUDER_EDGE_KEY: join(dir, "key.pem") },
+      COLLUDER_EDGE_CERT: join(dir, "cert.pem"), COLLUDER_EDGE_KEY: join(dir, "key.pem"), COLLUDER_ORIGIN_HEADER: SECRET },
     stdio: ["ignore", "pipe", "inherit"],
   });
   await new Promise((ok) => { let seen = ""; edge.stdout.on("data", (d) => { seen += d; if (seen.includes("edge https on")) ok(); }); });
@@ -279,17 +282,38 @@ test("edge: a decoy for the first request, then the rule; a new version counts a
 
 test("edge: foreign traffic is relayed with the real client IP; a spoofed origin header is replaced", async () => {
   const other = "zzzzzzzzzzzzzzzzzzzzklmnopqrstuvw";
-  const res = await request(ports.http, `GET /x HTTP/1.1\r\nHost: t.${other}.${DOMAIN}\r\nX-Colluder-Origin-IP: 6.6.6.6\r\n\r\n`);
+  const res = await request(ports.http, `GET /x HTTP/1.1\r\nHost: t.${other}.${DOMAIN}\r\n${SECRET}: 6.6.6.6\r\nX-Colluder-Origin-IP: 7.7.7.7\r\n\r\n`);
   assert.match(res, /upstream$/);
   const seen = upSeen.at(-1);
   assert.equal(seen.secure, false);
-  assert.match(seen.bytes, /^GET \/x HTTP\/1\.1\r\nX-Colluder-Origin-IP: 127\.0\.0\.1\r\nHost: t\./);
-  assert.doesNotMatch(seen.bytes, /6\.6\.6\.6/);
+  assert.match(seen.bytes, new RegExp(`^GET /x HTTP/1\\.1\\r\\n${SECRET}: 127\\.0\\.0\\.1\\r\\nConnection: close\\r\\nHost: t\\.`));
+  assert.doesNotMatch(seen.bytes, /6\.6\.6\.6|7\.7\.7\.7/, "the secret name and the old one are both dropped when a client sends them");
 
   const res2 = await request(ports.https, `GET / HTTP/1.1\r\nHost: ${other}.${DOMAIN}\r\nAccept: */*\r\n\r\n`, true);
   assert.match(res2, /upstream$/);
   assert.equal(upSeen.at(-1).secure, true, "HTTPS stays HTTPS to interactsh");
-  assert.equal(upSeen.at(-1).bytes, `GET / HTTP/1.1\r\nX-Colluder-Origin-IP: 127.0.0.1\r\nHost: ${other}.${DOMAIN}\r\nAccept: */*\r\n\r\n`, "otherwise untouched");
+  assert.equal(upSeen.at(-1).bytes, `GET / HTTP/1.1\r\n${SECRET}: 127.0.0.1\r\nConnection: close\r\nHost: ${other}.${DOMAIN}\r\nAccept: */*\r\n\r\n`, "otherwise untouched");
+});
+
+test("edge: a relayed connection carries one request: a second one can't slip past with its own origin header", async () => {
+  const other = "zzzzzzzzzzzzzzzzzzzzklmnopqrstuvw";
+  await request(ports.http, `GET /one HTTP/1.1\r\nHost: ${DOMAIN}\r\nConnection: keep-alive\r\n\r\nGET /two HTTP/1.1\r\nHost: t-${other}.${DOMAIN}\r\n${SECRET}: 6.6.6.6\r\n\r\n`);
+  // interactsh (Go) closes after answering a request whose Connection values include close, so the
+  // bytes after the first head are never read as a request
+  const first = upSeen.at(-1).bytes.split("\r\n\r\n")[0];
+  assert.match(first, /\r\nConnection: close\r\n/);
+  assert.match(first, new RegExp(`^GET /one HTTP/1\\.1\\r\\n${SECRET}: 127\\.0\\.0\\.1\\r\\n`));
+});
+
+test("edge: relay heads, unit", () => {
+  const h = parseHead(Buffer.from("GET / HTTP/1.1\r\nHost: a.example\r\nX-COLLUDER-ORIGIN-whatever: 1.1.1.1\r\n\r\n"));
+  assert.equal(relayHead(h, "9.9.9.9", "X-Colluder-Origin-S").toString("latin1"), "GET / HTTP/1.1\r\nX-Colluder-Origin-S: 9.9.9.9\r\nConnection: close\r\nHost: a.example\r\n\r\n");
+  const plain = parseHead(Buffer.from("GET / HTTP/1.1\r\nhost:  a.example \r\n\r\n"));
+  assert.equal(relayHead(plain, "9.9.9.9", "X-Colluder-Origin-S").toString("latin1"), "GET / HTTP/1.1\r\nX-Colluder-Origin-S: 9.9.9.9\r\nConnection: close\r\nhost:  a.example \r\n\r\n", "bytes kept when nothing is dropped");
+  // a head still arriving: the edge's lines go first (Go reads a header's first value)
+  assert.equal(withOrigin(Buffer.from("GET / HTTP/1.1\r\nHost: a"), "9.9.9.9", "X-Colluder-Origin-S").toString("latin1"), "GET / HTTP/1.1\r\nX-Colluder-Origin-S: 9.9.9.9\r\nConnection: close\r\nHost: a");
+  assert.equal(withOrigin(Buffer.from("no newline at all"), "9.9.9.9"), null);
+  assert.equal(LEGACY_ORIGIN, "X-Colluder-Origin-IP");
 });
 
 test("edge: TLS for the apex (interactsh's polling API) passes through untouched", async () => {
@@ -316,11 +340,11 @@ test("edge: server name is read from the ClientHello", () => {
 test("edge: unparseable foreign requests reach interactsh with the real origin, never a client-supplied one", async () => {
   const res = await request(ports.http, "NOT HTTP AT ALL\r\n\r\n");
   assert.match(res, /upstream$/);
-  assert.equal(upSeen.at(-1).bytes, "NOT HTTP AT ALL\r\nX-Colluder-Origin-IP: 127.0.0.1\r\n\r\n");
+  assert.equal(upSeen.at(-1).bytes, `NOT HTTP AT ALL\r\n${SECRET}: 127.0.0.1\r\nConnection: close\r\n\r\n`);
   const other = "zzzzzzzzzzzzzzzzzzzzklmnopqrstuvw";
   await request(ports.http, `M-SEARCH * HTTP/1.1\r\nHost: t.${other}.${DOMAIN}\r\nX-Colluder-Origin-IP: 203.0.113.77\r\nbad header line\r\n\r\n`);
   assert.doesNotMatch(upSeen.at(-1).bytes, /203\.0\.113\.77/);
-  assert.match(upSeen.at(-1).bytes, /^M-SEARCH \* HTTP\/1\.1\r\nX-Colluder-Origin-IP: 127\.0\.0\.1\r\n/);
+  assert.match(upSeen.at(-1).bytes, new RegExp(`^M-SEARCH \\* HTTP/1\\.1\\r\\n${SECRET}: 127\\.0\\.0\\.1\\r\\nConnection: close\\r\\n`));
   assert.equal(withOrigin(Buffer.from("GET / HTTP/1.1\r\nx-colluder-origin-ip: 1.2.3.4"), "9.9.9.9"), null, "no head end: refused when the header is there");
 });
 

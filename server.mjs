@@ -25,7 +25,7 @@ import { OutsideCheck, CHECK_TAG, checkAlert } from "./lib/selfcheck.mjs";
 import { WEBHOOK_RE, ALERT_KINDS, CHECK_MINUTES, webhookHint, alertKinds, writeEnv, writeEngineServer, nucleiServer } from "./lib/settings.mjs";
 import { execFile } from "node:child_process";
 import { readMail, splitAddress } from "./lib/mime.mjs";
-import { MAILBOX_TAG, mailDeleteRequest, mailQuery } from "./lib/mailbox.mjs";
+import { MAILBOX_TAG, mailDeleteRequest, mailQuery, SPOOL_NAME, storedMessage, lastPart } from "./lib/mailbox.mjs";
 import { EngineCheck } from "./lib/enginecheck.mjs";
 import { Resolver } from "node:dns/promises";
 import { loadConfig, requireConfig, configPath, writeConfig } from "./lib/config.mjs";
@@ -56,6 +56,7 @@ const CFG = {
   engineConfig: env.COLLUDER_ENGINE_CONFIG || join(homedir(), ".config/colluder/engine.yaml"),
   nucleiConfig: C["nuclei.config"],
   spool: env.COLLUDER_MAIL_SPOOL || join(DATA, "mail-spool"),
+  mailUsage: env.COLLUDER_MAIL_USAGE || join(DATA, "mail-usage.json"),
   // the mailbox keeps mail this many days
   mailDays: Math.max(C.mail_days || 7, 1),
   extraHosts: C["dashboard.allowed_hosts"],
@@ -127,8 +128,8 @@ function ingest(line, source = "engine") {
   }
   // mail to a probe is a hit like any other, with the message (from the spool) as its request
   if (mail) {
-    if (store.seenLine(line)) return dropSpool(mail.file);
-    const raw = readSpool(mail.file);
+    if (store.seenLine(line)) return doneWithSpool(mail);
+    const raw = readSpool(mail);
     if (raw) {
       const text = raw.toString("utf8");
       it.rawRequest = text;
@@ -142,7 +143,7 @@ function ingest(line, source = "engine") {
   }
   const receivedAt = nowIso();
   const res = store.insert(line, it, receivedAt);
-  if (mail) dropSpool(mail.file); // in the database now (or already was)
+  if (mail) { doneWithSpool(mail); mailUsageSoon(); } // in the database now (or already was)
   if (!res) return;
   const { row, probeCreated } = res;
   if (!live) return;
@@ -167,20 +168,37 @@ function ingest(line, source = "engine") {
 // The edge leaves each message in the spool, named in its log line; it moves into the database here
 // and the file goes. A file whose line never arrived (the box dropped in between) is swept after
 // MAIL_DAYS like the mail itself.
-const SPOOL_NAME = /^[a-z0-9]{6,40}-\d{1,3}\.eml$/;
-function readSpool(file) {
+// the message as stored for this recipient (lib/mailbox.mjs: one spool file per message, or per
+// recipient from an older edge)
+function readSpool(m) {
+  const file = m.file;
   if (!SPOOL_NAME.test(String(file))) { log(`mail: odd spool name refused: ${String(file).slice(0, 60)}`); return null; }
-  try { return readFileSync(join(CFG.spool, file)); } catch (e) { log(`mail: ${file} missing from the spool (${e.code}): kept without its body`); return null; }
+  let bytes;
+  try { bytes = readFileSync(join(CFG.spool, file)); } catch (e) { log(`mail: ${file} missing from the spool (${e.code}): kept without its body`); return null; }
+  return storedMessage(m, bytes);
 }
 function dropSpool(file) {
   if (!SPOOL_NAME.test(String(file))) return;
   try { unlinkSync(join(CFG.spool, file)); } catch (e) { if (e.code !== "ENOENT") log(`mail: couldn't remove ${file}: ${e.code}`); }
 }
+function doneWithSpool(m) { if (lastPart(m)) dropSpool(m.file); }
+// what the edge reads to decide whether new mail must wait (edge.mjs mailStorageFull)
+let usageTimer = null;
+function mailUsageSoon() {
+  if (usageTimer) return;
+  usageTimer = setTimeout(() => { usageTimer = null; writeMailUsage().catch((e) => log("mail: usage not written:", e.message)); }, 1000);
+  usageTimer.unref?.();
+}
+async function writeMailUsage() {
+  const tmp = CFG.mailUsage + ".tmp";
+  await writeFile(tmp, JSON.stringify({ bytes: store.mailBytes(), at: nowIso() }), { mode: 0o600 });
+  await rename(tmp, CFG.mailUsage);
+}
 const mailEvents = new EventEmitter();
 mailEvents.setMaxListeners(200);
 function ingestMail(line, obj, it, m) {
-  if (store.seenLine(line)) return dropSpool(m.file);
-  const raw = readSpool(m.file) ?? Buffer.alloc(0);
+  if (store.seenLine(line)) return doneWithSpool(m);
+  const raw = readSpool(m) ?? Buffer.alloc(0);
   const parsed = readMail(raw);
   const { local, domain } = splitAddress(m.rcpt);
   const row = store.insertMail(line, {
@@ -189,7 +207,8 @@ function ingestMail(line, obj, it, m) {
     raw, sha256: createHash("sha256").update(raw).digest("hex"),
     parsed: { ...parsed, text: parsed.text ?? (parsed.textView || null) },
   }, nowIso());
-  dropSpool(m.file);
+  doneWithSpool(m);
+  mailUsageSoon();
   if (!row) return;
   log(`mail ${row.id} for ${row.rcpt} from ${row.mailFrom || "<>"} (${row.size} bytes)${row.code ? ", code found" : ""}${row.link ? ", link found" : ""}`);
   if (!live) return;
@@ -203,6 +222,8 @@ function mailboxOut() {
   return {
     tag: MAILBOX_TAG, host: `${MAILBOX_TAG}-${SHORT_ID}.${CFG.domain}`, hosts: DOMAINS.map((d) => `${MAILBOX_TAG}-${SHORT_ID}.${d}`),
     live: Boolean(smtp?.length), smtp, retentionDays: CFG.mailDays, ...store.mailStats(), lastLookup: seen,
+    // the edge is telling senders to retry later (mail storage at its cap, or the disk nearly full)
+    waiting: (smtp?.length && edgeStatus.smtp?.full) || null,
   };
 }
 async function pruneMail() {
@@ -217,6 +238,7 @@ async function pruneMail() {
     }
   } catch { /* no spool yet */ }
   if (n || files) { log(`mail: ${n} message(s) older than ${CFG.mailDays} days removed${files ? `, ${files} stray spool file(s)` : ""}`); broadcast("mailbox", mailboxOut()); }
+  await writeMailUsage().catch((e) => log("mail: usage not written:", e.message));
 }
 
 const rdnsInflight = new Map();
@@ -467,7 +489,8 @@ async function readEdgeStatus() {
     let codeStale = false;
     try { codeStale = state === "running" && s.code !== edgeCodeHash(); } catch { /* files mid-write: decide next time */ }
     edgeStatus = { state, listen: s.listen, cert: s.cert, heartbeatAt: s.heartbeatAt, startedAt: s.startedAt, own: s.own, relayed: s.relayed, errors: s.errors, codeStale,
-      smtp: s.listen?.smtp ? { messages: s.smtpMessages || 0, recipients: s.smtpOwn || 0, refused: s.smtpRefused || 0, errors: s.smtpErrors || 0 } : null };
+      smtp: s.listen?.smtp ? { messages: s.smtpMessages || 0, recipients: s.smtpOwn || 0, refused: s.smtpRefused || 0, errors: s.smtpErrors || 0, deferred: s.smtpDeferred || 0, full: typeof s.smtpFull === "string" ? s.smtpFull.slice(0, 200) : null } : null,
+      originSecret: s.originSecret === true };
   } catch (e) {
     edgeStatus = { state: e.code === "ENOENT" ? "absent" : "unreadable", detail: e.code === "ENOENT" ? undefined : e.message };
   }
@@ -637,7 +660,7 @@ const server = http.createServer(async (req, res) => {
       if (q.error) return json(res, 400, { error: q.error });
       const gone = q.ids ? store.deleteMails(q.ids) : null;
       const n = gone ? gone.length : store.clearMail(q.upTo);
-      if (n) broadcast("mail-deleted", gone ? { ids: gone } : { upTo: q.upTo });
+      if (n) { broadcast("mail-deleted", gone ? { ids: gone } : { upTo: q.upTo }); mailUsageSoon(); }
       broadcast("mailbox", mailboxOut());
       log(`mail: ${n} message(s) deleted from the dashboard`);
       return json(res, 200, { deleted: n });
@@ -654,6 +677,7 @@ const server = http.createServer(async (req, res) => {
       }
       if (req.method === "DELETE" && !m[2]) {
         if (!store.deleteMail(id)) return json(res, 404, { error: "no such message" });
+        mailUsageSoon();
         broadcast("mail-deleted", { id });
         return json(res, 200, { deleted: id });
       }
@@ -753,6 +777,7 @@ const server = http.createServer(async (req, res) => {
       if (!probe) return json(res, 404, { error: "no such probe" });
       if (probe.registered && !probe.retiredAt) return json(res, 409, { error: `Retire "${m[1]}" before deleting it.` });
       const hits = store.deleteProbe(m[1]);
+      mailUsageSoon(); // mail to a probe counts toward the edge's mail storage
       await publishRules();
       log(`probe deleted: ${m[1]} (${hits} hits)`);
       broadcast("probe-deleted", { tag: m[1], hits });

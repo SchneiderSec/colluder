@@ -160,6 +160,7 @@ export interface EngineCheck { state: "ok" | "failing" | "restarted"; at: string
 export interface Mailbox {
   tag: string; host: string; hosts: string[]; live: boolean; smtp: string[] | null; retentionDays: number;
   count: number; lastAt: string | null; lastLookup: { at: string; protocol: string; count: number } | null;
+  waiting?: string | null;
 }
 export interface MailCode { value: string; score: number; context: string }
 export interface MailLink { url: string; label: string | null; score: number }

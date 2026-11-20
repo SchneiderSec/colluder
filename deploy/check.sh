@@ -141,6 +141,11 @@ else
   ok "no host firewall active"
 fi
 note "a cloud firewall (AWS security groups, Hetzner Firewalls and the like) must allow the same ports"
+# interactsh believes its origin header from anyone who can reach 8081/8444: only the edge may know its name
+if systemctl is-active -q colluder-edge 2>/dev/null; then
+  if grep -q '^COLLUDER_ORIGIN_HEADER=' "$HOME/.config/colluder/edge.env" 2>/dev/null; then ok "interactsh's origin header is a secret only the edge knows"
+  else warn "interactsh's origin header still has the public name: anyone reaching ports 8081/8444 can choose a hit's source address. ./colluder setup fixes it (deploy/origin.sh)"; fi
+fi
 
 # ---- the dashboard and engine are user services: they keep running after you log out only with lingering
 if [[ "$(loginctl show-user "$USER" -p Linger --value 2>/dev/null)" == "yes" ]]; then ok "lingering on for $USER"
