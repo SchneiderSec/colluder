@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { shownId } from "@/lib/kit";
 import { nightNow, useDisplay } from "@/lib/display";
 import { Ultra } from "@/components/Ultra";
+import { answerWords, stillAnswering, stopAnswering, tabName } from "./ProbeTabs";
 
 // The rail holds tools that work across probes. What a single probe answers (HTTP response,
 // hosted files, DNS and rebinding) lives in tabs on the probe itself.
@@ -212,6 +213,34 @@ export function Banners() {
           ? <>The engine's correlation id changed at {ch.replace("T", " ").slice(0, 16)} UTC. Older payloads still bring HTTP(S) hits here through Colluder's edge, but not their DNS lookups; copy fresh ones for DNS.</>
           : <>The engine's correlation id changed at {ch.replace("T", " ").slice(0, 16)} UTC. Payloads planted before then no longer reach this dashboard; copy fresh ones.</>}
         <Button variant="ghost" className="ml-auto" onClick={() => { try { localStorage.setItem("colluder.ackCorr", JSON.stringify(ch)); } catch { /* */ } bump((n) => n + 1); }}>Got it</Button>
+      </div>,
+    );
+  }
+  // retired probes whose rule the edge still serves: whoever finds their payloads gets the answer.
+  // "Keep answering" is remembered for exactly this set (tag and rule version), so a new one shows.
+  const live = ed?.state === "running" ? stillAnswering(s) : [];
+  const liveKey = live.map((p) => `${p.tag}@${p.httpRule!.version}`).sort().join("|");
+  let keptKey = "";
+  try { keptKey = localStorage.getItem("colluder.keepAnswering") ?? ""; } catch { /* */ }
+  if (live.length && liveKey !== keptKey) {
+    const shown = live.slice(0, 3);
+    out.push(
+      <div key="retired-answering" className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-md border border-caution-border bg-caution-ground px-4 py-[9px] max-[820px]:px-3.5 text-body text-caution-ink">
+        <span className="min-w-0 flex-1">
+          <b className="font-semibold">{live.length === 1 ? "A retired probe still answers HTTP" : `${live.length} retired probes still answer HTTP`}: </b>
+          {shown.map((p, i) => (
+            <Fragment key={p.tag}>
+              {i > 0 && ", "}
+              <button type="button" className="cursor-pointer font-mono underline decoration-caution-border underline-offset-2 hover:decoration-caution-ink" onClick={() => select(p.tag)}>{tabName(p.tag) ?? p.tag}</button>
+              {" "}({answerWords(p)})
+            </Fragment>
+          ))}
+          {live.length > shown.length && ` and ${live.length - shown.length} more`}. Anyone who finds {live.length === 1 ? "its payloads" : "their payloads"} still gets that answer.
+        </span>
+        <span className="flex flex-none items-center gap-1.5">
+          <Button variant="quiet" onClick={() => stopAnswering(live.map((p) => p.tag))}>Stop answering</Button>
+          <Button variant="ghost" title="Hide this until another retired probe is left answering" onClick={() => { try { localStorage.setItem("colluder.keepAnswering", liveKey); } catch { /* */ } bump((n) => n + 1); }}>Keep {live.length === 1 ? "it" : "them"} answering</Button>
+        </span>
       </div>,
     );
   }

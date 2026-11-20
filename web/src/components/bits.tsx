@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Cloud, CornerUpRight, FileCode2, FileText, PhoneIncoming, type LucideIcon } from "lucide-react";
-import { onToast } from "@/lib/toast";
+import { onToast, dismiss, type Toast } from "@/lib/toast";
 import { protoKey } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -30,6 +30,20 @@ const TECHNIQUES: Record<string, [string, LucideIcon]> = {
   redirect: ["Redirect", CornerUpRight], file: ["Hosted file", FileText],
 };
 export const techniqueLabel = (t?: string | null) => TECHNIQUES[t ?? ""]?.[0] ?? null;
+export const techniqueIcon = (t?: string | null) => TECHNIQUES[t ?? ""]?.[1] ?? null;
+
+// Claude Code's mark (the pixel robot), for probes Claude planted through the MCP, in Claude's own
+// orange (--claude, #D97757) so it reads as Claude at a glance. The fill is the colour itself, not
+// currentColor: menus colour every icon inside them (`[&_svg]:text-smoke`), and this one must stay orange.
+const CLAUDE_CODE = "M20.998 10.949H24v3.102h-3v3.028h-1.487V20H18v-2.921h-1.487V20H15v-2.921H9V20H7.488v-2.921H6V20H4.487v-2.921H3V14.05H0V10.95h3V5h17.998v5.949zM6 10.949h1.488V8.102H6v2.847zm10.51 0H18V8.102h-1.49v2.847z";
+export function ClaudeMark({ className, title = "Planted by Claude" }: { className?: string; title?: string | null }) {
+  return (
+    <svg viewBox="0 0 24 24" className={cn("size-3.5 flex-none", className)} role={title ? "img" : undefined} aria-label={title ?? undefined} aria-hidden={title ? undefined : true}>
+      {title && <title>{title}</title>}
+      <path d={CLAUDE_CODE} fill="var(--claude)" fillRule="evenodd" clipRule="evenodd" />
+    </svg>
+  );
+}
 export function TechniqueMark({ technique, className }: { technique?: string | null; className?: string }) {
   const t = TECHNIQUES[technique ?? ""];
   if (!t) return null;
@@ -73,13 +87,20 @@ export function LineForm({ kind, signal = "pulse", seed, className }: { kind: "l
 }
 
 export function Toaster() {
-  const [t, setT] = useState<{ id: number; msg: string; bad: boolean } | null>(null);
-  useEffect(() => onToast(setT), []);
+  const [t, setT] = useState<Toast | null>(null);
+  // the last toast stays rendered while it fades out, so it doesn't blank mid-transition
+  const [last, setLast] = useState<Toast | null>(null);
+  useEffect(() => onToast((x) => { setT(x); if (x) setLast(x); }), []);
+  const shown = t ?? last;
   return (
     <div role="status" aria-live="polite"
-      className={cn("pointer-events-none fixed bottom-[92px] left-1/2 z-50 -translate-x-1/2 rounded px-3.5 py-[7px] text-body font-semibold text-soot shadow-[0_6px_18px_rgba(0,0,0,.4)] transition-all duration-300 ease-out-expo",
-        t ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0", t?.bad ? "bg-alarm-ink" : "bg-bone")}>
-      {t?.msg}
+      className={cn("fixed bottom-[92px] left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded px-3.5 py-[7px] text-body font-semibold text-soot shadow-[0_6px_18px_rgba(0,0,0,.4)] transition-[opacity,translate] duration-300 ease-out-expo",
+        t ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-3 opacity-0", !t?.action && "pointer-events-none", shown?.bad ? "bg-alarm-ink" : "bg-bone")}>
+      <span>{shown?.msg}</span>
+      {t?.action && (
+        <button type="button" onClick={() => { const a = t.action!; dismiss(); a.run(); }}
+          className="-my-1 -mr-1.5 cursor-pointer rounded-sm px-2 py-1 underline decoration-soot/50 underline-offset-2 hover:bg-soot/10 hover:decoration-soot focus-visible:outline-2 focus-visible:outline-soot">{t.action.label}</button>
+      )}
     </div>
   );
 }

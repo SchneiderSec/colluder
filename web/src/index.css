@@ -18,6 +18,7 @@
   --well: #141518;
   --rule: #3a3e45;
   --rule-2: #2a2d32;
+  --claude: #d97757; /* Claude's own orange: only its spark, on probes Claude planted */
   --bone: #eceef1;
   --smoke: #b5bac1;
   --ash: #979da5;
@@ -222,6 +223,7 @@
   --color-other: var(--ink-other);
   --color-bone-glow: var(--bone-glow);
   --color-hover: var(--hover);
+  --color-claude: var(--claude);
   --color-child: var(--child);
   --color-mark: var(--mark);
   --color-alarm-ground: var(--alarm-ground);

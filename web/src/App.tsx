@@ -5,6 +5,7 @@ import { UNTAGGED } from "@/lib/types";
 import { Rail, StatusBar, Banners } from "@/components/Shell";
 import { Composer } from "@/components/Composer";
 import { ProbeList } from "@/components/ProbeList";
+import { ProbeTabs, plantNew, tabId, useListFolded } from "@/components/ProbeTabs";
 import { ProbePane } from "@/components/ProbePane";
 import { Settings } from "@/components/Pages";
 import { PayloadKit } from "@/components/PayloadKit";
@@ -39,6 +40,9 @@ export default function App() {
   const night = nightNow(useDisplay());
   const favSrc = useRef<HTMLDivElement>(null);
   const planting = useApp((s) => s.planting);
+  // reading a hit trades the side list for probe tabs on top of the pane, so the pane gets the width
+  const folded = useListFolded();
+  const sel = useApp((x) => x.sel);
 
   useEffect(() => { loadState(); connect(); }, []);
 
@@ -52,17 +56,13 @@ export default function App() {
     return () => removeEventListener("keydown", onKey);
   }, []);
 
-  // "p" or "/" anywhere opens the plant form (it focuses its tag field)
+  // "p" anywhere opens the plant form (it focuses its tag field) without changing the view; "/" and
+  // "o" find a probe (ProbeTabs' keys)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const typing = /^(INPUT|TEXTAREA|SELECT)$/.test((document.activeElement as HTMLElement)?.tagName) || document.querySelector("[role=dialog],[role=alertdialog],[role=menu]");
       if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
-      if (e.key === "p" || e.key === "/") {
-        e.preventDefault();
-        if (location.hash && !location.hash.startsWith("#probes")) location.hash = "#probes";
-        if (getState().planting) document.querySelector<HTMLInputElement>('[aria-label="Plant a probe"] input')?.focus();
-        else setPlanting(true);
-      }
+      if (e.key === "p") { e.preventDefault(); plantNew(); }
     };
     addEventListener("keydown", onKey);
     return () => removeEventListener("keydown", onKey);
@@ -104,9 +104,14 @@ export default function App() {
           {route.view === "probes" ? (
             <>
               {planting && <Composer />}
-              <div className="grid min-h-0 flex-1 grid-cols-[400px_minmax(0,1fr)] gap-x-2 p-2 max-[1180px]:grid-cols-[320px_minmax(0,1fr)] max-[820px]:flex max-[820px]:flex-col max-[820px]:gap-2 max-[820px]:p-1.5">
-                <ProbeList />
-                <ProbePane />
+              <div className={cn("grid min-h-0 flex-1 gap-x-2 p-2 max-[820px]:flex max-[820px]:flex-col max-[820px]:gap-2 max-[820px]:p-1.5", folded ? "grid-cols-[minmax(0,1fr)]" : "grid-cols-[400px_minmax(0,1fr)] max-[1180px]:grid-cols-[320px_minmax(0,1fr)]")}>
+                {/* the list stays mounted while folded, so its filter, groups and scroll survive */}
+                <ProbeList hidden={folded} />
+                {/* one place in the tree for the pane, so folding never resets its filters or open hit */}
+                <div className="flex min-h-0 min-w-0 flex-col">
+                  {folded && <ProbeTabs />}
+                  <div id="probe-panel" role={folded ? "tabpanel" : undefined} aria-labelledby={folded && sel ? tabId(sel) : undefined} className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)]"><ProbePane /></div>
+                </div>
               </div>
             </>
           ) : route.view === "settings" ? <Settings /> : route.view === "mailbox" ? <Mailbox arg={route.arg} /> : <PayloadKit section={route.arg} />}

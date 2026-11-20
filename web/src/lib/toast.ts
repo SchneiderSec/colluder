@@ -1,6 +1,8 @@
 // Tiny toast bus + clipboard with a fallback. Plain http on the tailnet is not a secure context,
 // so navigator.clipboard is unavailable there; a selection copy still works.
-type Toast = { id: number; msg: string; bad: boolean };
+// An action (Undo) keeps the toast up longer and makes it clickable.
+export type ToastAction = { label: string; run: () => void };
+export type Toast = { id: number; msg: string; bad: boolean; action?: ToastAction };
 let listeners: ((t: Toast | null) => void)[] = [];
 let n = 0;
 let timer: ReturnType<typeof setTimeout> | undefined;
@@ -9,12 +11,13 @@ export function onToast(fn: (t: Toast | null) => void) {
   listeners.push(fn);
   return () => { listeners = listeners.filter((l) => l !== fn); };
 }
-export function toast(msg: string, bad = false) {
-  const t = { id: ++n, msg, bad };
+export function toast(msg: string, bad = false, action?: ToastAction) {
+  const t = { id: ++n, msg, bad, action };
   listeners.forEach((l) => l(t));
   clearTimeout(timer);
-  timer = setTimeout(() => listeners.forEach((l) => l(null)), 1800);
+  timer = setTimeout(dismiss, action ? 7000 : 1800);
 }
+export function dismiss() { clearTimeout(timer); listeners.forEach((l) => l(null)); }
 
 export async function copy(text: string, what: string) {
   try {

@@ -8,7 +8,7 @@ import { variantOf, SECTION_LABEL } from "@/lib/kit";
 import { toCurl } from "@/lib/curl";
 import type { Enrich, InteractionDetail } from "@/lib/types";
 import { uaShort } from "@/lib/headers";
-import { byteCount, lineCount } from "@/lib/format";
+import { byteCount, isoMs, lineCount } from "@/lib/format";
 import { answeredBy, decode, evidence } from "@/lib/raw";
 import { DnsLine, DnsNameMarked, ExactLine, HttpParsed, MailLine, parseHttp, type Parsed } from "./HttpView";
 import { copy, toast } from "@/lib/toast";
@@ -55,12 +55,14 @@ function RawPane({ title, sub, text, exact, http, proto, p, tag, domain, capture
   let inHead = http || proto === "smtp";
   const lines = shown ? shown.split(/\r?\n/) : [];
   return (
-    <div className="@container/pane relative flex min-h-[220px] min-w-0 flex-col rounded-[3px] border border-rule bg-well max-[820px]:min-h-[200px]">
+    <div className="@container/pane relative flex min-h-[220px] min-w-0 flex-col rounded-[3px] border border-rule bg-well @max-[900px]/detail:min-h-[120px]">
       <div className="flex h-8 flex-none items-center gap-2 border-b border-rule-2 pr-1.5 pl-3 text-body font-[650]">
         {title}<span className="truncate text-label font-normal text-ash">{sub}</span>
         <Button variant="ghost" size="sm" className="ml-auto" onClick={() => copy(exact, title.toLowerCase())}><Copy />Copy</Button>
       </div>
-      <div ref={box} tabIndex={0} className={cn("raw min-h-0 flex-1 overflow-auto px-3 font-mono text-body leading-[1.125rem] text-bone [tab-size:4]", p ? "py-2.5" : "py-2 whitespace-pre in-[.wrap]:break-all in-[.wrap]:whitespace-pre-wrap")}>
+      {/* side by side, the panes take the strip's height and scroll inside it: contain-size keeps a long
+          capture from setting the strip's minimum, so the strip always holds its panes */}
+      <div ref={box} tabIndex={0} className={cn("raw min-h-0 flex-1 overflow-auto px-3 @min-[900px]/detail:contain-size font-mono text-body leading-[1.125rem] text-bone [tab-size:4]", p ? "py-2.5" : "py-2 whitespace-pre in-[.wrap]:break-all in-[.wrap]:whitespace-pre-wrap")}>
         {!shown && <span className="font-sans text-ash">Empty</span>}
         {p ? <HttpParsed p={p} tag={tag} domain={domain} capture={capture} clientHttp2={clientHttp2} /> : lines.map((ln, idx) => {
           const head = inHead;
@@ -143,7 +145,7 @@ export function HitDetail({ id }: { id: number }) {
 
   // Strip Bay: the detail sits on the bay, as two strips: what happened (header, lead, fields, notes),
   // then the bytes (view controls, request and response, custody)
-  const box = "@container relative flex min-h-0 flex-col gap-2 overflow-auto border-t border-rule bg-bay p-2 max-[820px]:p-1.5";
+  const box = "@container/detail relative flex min-h-0 flex-col gap-2 overflow-auto border-t border-rule bg-bay p-2 max-[820px]:p-1.5";
   const strip = "flex flex-none flex-col gap-2.5 rounded-md border border-rule bg-soot py-3 pr-4 pl-5 max-[820px]:px-3";
   const d = s.details.get(id);
   if (!d) return <article className={box}><p className={cn(strip, "text-ash")}>{err ? `Could not load #${id}: ${err}` : `Loading #${id}…`}</p></article>;
@@ -169,19 +171,35 @@ export function HitDetail({ id }: { id: number }) {
   const http2 = web && /^\S+ \S+ HTTP\/2/.test(d.rawRequest);
   const reqWho = capture === "edge" ? "exact, as received by the edge" : "as logged by interactsh-client";
   const size = (t: string) => `${lineCount(t)} lines · ${byteCount(t)} bytes`;
+  // what went back, in one line: the status, the type and size, and who sent it
+  const resHead = web && !tlsOnly ? (resP ?? parseHttp(cut(d.rawResponse))) : null;
+  const answered = resHead?.status ? {
+    code: resHead.status, reason: resHead.reason ?? "", bytes: byteCount(resHead.body),
+    type: (resHead.headers.find(([k]) => k.toLowerCase() === "content-type")?.[1] ?? "").split(";")[0].trim(),
+    by: answeredBy(d.answer),
+  } : null;
+  // other web hits from this address within 10 s, in time order: one firing, step by step
+  const near = web && !fromBox ? s.list.filter((i) => i.id !== d.id && (i.protocol === "http" || i.protocol === "https") && i.remoteAddress === d.remoteAddress
+    && Math.abs(isoMs(i.timestamp) - isoMs(d.timestamp)) <= 10_000).sort((x, y) => isoMs(x.timestamp) - isoMs(y.timestamp)) : [];
   const webSub = (t: string, pp: Parsed | null, who: string) => (parsed ? (pp ? `parsed · ${byteCount(t)} bytes` : `couldn't parse as HTTP · exact lines · ${size(t)}`) : `${who} · ${size(t)}`);
 
   return (
     <article aria-label={`Hit ${d.id}`} className={cn(box, wrap && "wrap")}>
       <div className={strip}>
-      <div className="flex min-h-[30px] flex-none flex-wrap items-center gap-3">
-        <span className="text-headline font-bold tracking-[.01em]">#{d.id}</span>
-        <TypeChip proto={d.protocol} />
-        {d.id > open && !chatter && <Chip>new</Chip>}
-        <span className="text-smoke">Received <span className="text-bone">{d.timestamp.replace("T", " ").replace(/(\.\d{3})\d*Z$/, "$1 UTC")}</span></span>
-        {d.tag && <span className="text-smoke">tag <span className="font-mono text-bone"><Ultra text={d.tag} /></span>{d.tagSource === "path" ? " (from path)" : ""}</span>}
-        <Button className="ml-auto" onClick={() => copy(evidence(d, e, probe, s.status?.payload?.domain), "evidence block")}><FileText />Copy as evidence</Button>
-        <Button variant="ghost" size="icon" className="-mr-2 text-smoke" aria-label={`Close hit #${d.id}`} title="Close (Esc)" onClick={() => selectHit(null)}><X /></Button>
+      {/* the facts wrap among themselves; the actions keep the first line's right end */}
+      <div className="flex min-h-[30px] flex-none items-start gap-3">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 pt-[3px]">
+          <span className="text-headline leading-6 font-bold tracking-[.01em]">#{d.id}</span>
+          <TypeChip proto={d.protocol} />
+          {d.id > open && !chatter && <Chip>new</Chip>}
+          <span className="text-smoke" title={`Captured ${d.timestamp}`}>Received <span className="text-bone">{d.timestamp.replace("T", " ").replace(/(\.\d{3})\d*Z$/, "$1 UTC")}</span></span>
+          {/* the probe's own tag is already the pane's title; name it only when it says something new */}
+          {d.tag && (d.tag !== s.sel || d.tagSource === "path") && <span className="text-smoke">tag <span className="font-mono text-bone"><Ultra text={d.tag} /></span>{d.tagSource === "path" ? " (from path)" : ""}</span>}
+        </div>
+        <div className="flex flex-none items-center gap-1">
+          <Button onClick={() => copy(evidence(d, e, probe, s.status?.payload?.domain), "evidence block")}><FileText />Copy as evidence</Button>
+          <Button variant="ghost" size="icon" className="-mr-2 text-smoke" aria-label={`Close hit #${d.id}`} title="Close (Esc)" onClick={() => selectHit(null)}><X /></Button>
+        </div>
       </div>
 
       <What d={d} />
@@ -213,6 +231,29 @@ export function HitDetail({ id }: { id: number }) {
           )}
         </span>
       </div>
+      {answered && (
+        <p className="flex flex-none flex-wrap items-baseline gap-x-2 text-body text-smoke">
+          <span className="text-label font-[550] tracking-[.03em] text-ash">Answered</span>
+          <span><b className="font-mono font-[650] text-bone">{answered.code}</b> {answered.reason && <span className="text-bone">{answered.reason}</span>}{answered.type && <> · <span className="font-mono text-bone">{answered.type}</span></>} · {answered.bytes.toLocaleString("en-US")} {answered.bytes === 1 ? "byte" : "bytes"}</span>
+          <span className="text-ash">{answered.by}</span>
+        </p>
+      )}
+      {near.length > 0 && (
+        <p className="flex flex-none flex-wrap items-baseline gap-x-2 gap-y-1 text-body text-smoke">
+          <span className="text-label font-[550] tracking-[.03em] text-ash" title="Web hits from this same address within 10 s: most likely one firing, step by step">Same source</span>
+          {near.slice(0, 4).map((n) => {
+            const ms = isoMs(n.timestamp) - isoMs(d.timestamp);
+            return (
+              <button key={n.id} type="button" onClick={() => selectHit(n.id)} title={n.summary}
+                className="cursor-pointer text-left underline decoration-rule underline-offset-2 hover:text-bone hover:decoration-bone">
+                <span className="font-semibold text-bone">#{n.id}</span> <span className="font-mono">{n.summary.split(" · ")[0].replace(/ HTTP\/[\d.]+$/, "")}</span>{n.tag !== d.tag && n.tag ? <span className="text-ash"> on {n.tag}</span> : null}
+                <span className="text-ash"> {Math.abs(ms) < 1000 ? `${Math.abs(ms)} ms` : `${(Math.abs(ms) / 1000).toFixed(1)} s`} {ms < 0 ? "before" : "after"}</span>
+              </button>
+            );
+          })}
+          {near.length > 4 && <span className="text-ash">+{near.length - 4} more</span>}
+        </p>
+      )}
       {chatter && (
         <p className="flex-none text-body text-smoke">
           <b className="font-semibold text-bone">Likely resolver chatter.</b> A lookup of the bare payload id within 10 s of a hit on <span className="font-mono text-bone">{chatter}</span>: a resolver walking the name label by label (QNAME minimisation), or a client resolving the HTTPS host. Kept, but not counted as new.
@@ -256,7 +297,9 @@ export function HitDetail({ id }: { id: number }) {
       )}
 
       </div>
-      <div className={cn(strip, "min-h-0", (d.protocol !== "dns" || dnsBytes) && "flex-1 max-[820px]:flex-none")}>
+      {/* no min-h-0: the strip never shrinks below its panes (it used to, and the panes spilled out of
+          it); when there isn't room the detail scrolls instead */}
+      <div className={cn(strip, (d.protocol !== "dns" || dnsBytes) && "flex-1 max-[820px]:flex-none")}>
       {d.protocol === "dns" && !dnsBytes ? (
         <button type="button" onClick={() => { setDnsBytes(true); save("colluder.dnsBytes", true); }}
           className="mt-0.5 flex flex-none items-center gap-1.5 self-start text-body text-smoke hover:text-bone">
@@ -289,7 +332,7 @@ export function HitDetail({ id }: { id: number }) {
         {d.protocol === "dns" && <Button variant="ghost" className="text-ash" onClick={() => { setDnsBytes(false); save("colluder.dnsBytes", false); }}>Fold</Button>}
       </div>
 
-      <div className="grid min-h-[220px] flex-1 grid-cols-2 gap-3 @max-[900px]:flex-none @max-[900px]:grid-cols-1 @max-[900px]:[&>*]:max-h-[360px]">
+      <div className="grid min-h-[220px] flex-1 grid-cols-2 gap-3 @max-[900px]/detail:flex-none @max-[900px]/detail:grid-cols-1 @max-[900px]/detail:[&>*]:max-h-[360px]">
         <RawPane title={d.protocol === "dns" ? "Query" : "Request"} http={web} proto={d.protocol} p={reqP} tag={d.tag} domain={s.status?.payload?.domain} capture={capture}
           sub={web ? webSub(d.rawRequest, reqP, reqWho) : decoded ? "decoded view · copy stays exact" : `${capture === "edge" ? "as received by the edge" : "as logged by interactsh-client"} · ${size(d.rawRequest)}`}
           text={!web && decoded ? decode(d.rawRequest, d.protocol) : d.rawRequest} exact={d.rawRequest} />

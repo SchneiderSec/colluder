@@ -6,14 +6,16 @@ import { useApp, getState, fetchRule, previewRule, saveRule, setRuleDraft, takeR
 import type { Decoy, HttpRule, Probe, RuleMode, RuleState, RuleVersion } from "@/lib/types";
 import { reachOf } from "@/lib/reach";
 import { METADATA, redirectable } from "@/lib/metadata";
-import { dayOrTime, plural, setupCmd } from "@/lib/format";
+import { dayOrTime, lineCount, plural, setupCmd } from "@/lib/format";
 import { copy, toast } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { Chip } from "./bits";
 import { tagged } from "@/lib/kit";
+import { hostedFile } from "@/lib/plant";
 
 const DEFAULT: HttpRule = { mode: "default", delayMs: 0, schemes: { http: true, https: true } };
 const MODE_DEFAULTS: Record<RuleMode, Partial<HttpRule>> = {
@@ -102,14 +104,25 @@ const seg = "h-[26px] rounded-none border-l border-rule px-[11px] text-body text
 
 const Row = ({ label, children, help, error }: { label: string; children: ReactNode; help?: ReactNode; error?: string | null }) => (
   <>
-    <dt className="pt-[5px] text-body font-[550] text-smoke">{label}</dt>
-    <dd className="flex min-w-0 flex-col gap-1.5">
+    <div className="pt-[5px] text-body font-[550] text-smoke">{label}</div>
+    <div className="flex min-w-0 flex-col gap-1.5">
       {children}
       {error && <p role="alert" className="max-w-[64ch] text-label leading-4 text-bad">{error}</p>}
       {help && <p className="max-w-[64ch] text-label leading-4 text-ash">{help}</p>}
-    </dd>
+    </div>
   </>
 );
+
+// the form reads in groups (what it serves, where to point the target, options), each under a small
+// heading on a hairline, so a long form has a shape
+const Group = ({ title, note }: { title: string; note?: string }) => (
+  <h3 className="col-span-full mt-2 flex items-center gap-3 text-label font-[650] tracking-[.03em] text-smoke">
+    {title}{note && <span className="font-normal tracking-normal text-ash">{note}</span>}<span className="h-px flex-1 bg-rule-2" />
+  </h3>
+);
+
+const KB = 1024;
+const sizeOf = (n: number) => (n < KB ? `${n} bytes` : `${(n / KB).toFixed(n < 10 * KB ? 1 : 0)} KB`);
 
 function Seg<T extends string>({ value, onChange, items, label, mono }: { value: T; onChange: (v: T) => void; items: [T, string][]; label: string; mono?: boolean }) {
   return (
@@ -214,6 +227,25 @@ export function HttpRuleTab({ p }: { p: Probe }) {
   const errF = pending ? null : errorField(preview.error);
   const errFor = (f: string) => (errF === f ? preview.error!.replace(/^Can't answer like this yet: /, "") : null);
   const bad = (f: string) => errF === f && "border-bad";
+  // a template's body that has been rewritten since is the user's own file now
+  const tplEdited = !!draft.template && !!tpl[draft.template] && (draft.body !== tpl[draft.template].body || draft.contentType !== tpl[draft.template].contentType);
+  const { urls: fetchUrls, plant } = hostedFile(draft, p.tag, host);
+  const body = draft.body ?? "";
+  const bodyBytes = draft.bodyEncoding === "base64" ? Math.floor(body.replace(/[^A-Za-z0-9+/]/g, "").length * 3 / 4) : new TextEncoder().encode(body).length;
+  const bodyRow = (
+    <Row label="Body" error={errFor("body")} help={draft.bodyEncoding === "base64" ? "Base64 is decoded before sending, for binary bodies." : undefined}>
+      {/* a well like the raw panes: a title bar with the size and encoding, then the text unwrapped,
+          so markup keeps its lines */}
+      <div className={cn("flex min-w-0 flex-col rounded-[3px] border border-rule bg-well focus-within:border-smoke", bad("body"))}>
+        <div className="flex h-8 flex-none items-center gap-2 border-b border-rule-2 pr-1 pl-2.5">
+          <span className="truncate text-label text-ash">{body ? `${lineCount(body)} ${lineCount(body) === 1 ? "line" : "lines"} · ${sizeOf(bodyBytes)}` : "Empty"} of 256 KB{draft.bodyEncoding === "base64" ? " decoded" : ", sent as UTF-8"}</span>
+          <span className="ml-auto"><Seg label="Body encoding" value={draft.bodyEncoding ?? "text"} onChange={(v) => set({ bodyEncoding: v })} items={[["text", "Text"], ["base64", "Base64"]]} /></span>
+        </div>
+        <textarea aria-label="Body" aria-invalid={errF === "body"} spellCheck={false} wrap="off" rows={Math.min(Math.max(lineCount(body) + 1, 6), 20)} value={body} onChange={(e) => set({ body: e.target.value })}
+          className="min-h-[160px] w-full resize-y overflow-auto bg-transparent px-2.5 py-2 font-mono text-body leading-[1.125rem] whitespace-pre text-bone outline-none [tab-size:2]" />
+      </div>
+    </Row>
+  );
 
   return (
     // the panel is the container: the two columns collapse on its own width, not the window's
@@ -230,8 +262,8 @@ export function HttpRuleTab({ p }: { p: Probe }) {
           <b className="font-semibold">The edge isn't answering.</b> Your probes get no HTTP reply and their hits aren't captured until it's back (sudo systemctl restart colluder-edge).
         </p>
       )}
-      <dl onBlurCapture={onLeave} className="m-0 grid grid-cols-[96px_minmax(0,1fr)] content-start gap-x-[18px] gap-y-4 pb-4 max-[820px]:grid-cols-1 max-[820px]:gap-y-1.5">
-        <Row label="Answer with" help={draft.mode === "default" ? `interactsh's standard reply: 200, CORS headers, the id reversed in the body.${live ? " Sent by Colluder's edge, so the hit records exactly what went out." : ""}` : "For HTTP and HTTPS hits on this probe. DNS lookups still get interactsh's answer."}>
+      <div onBlurCapture={onLeave} className="grid grid-cols-[96px_minmax(0,1fr)] content-start gap-x-[18px] gap-y-4 pb-4 max-[820px]:grid-cols-1 max-[820px]:gap-y-1.5">
+        <Row label="Answer with" help={draft.mode === "default" ? `interactsh's standard reply: 200, CORS headers, the id reversed in the body.${live ? " Sent by Colluder's edge, so the hit records exactly what went out." : ""}` : "HTTP and HTTPS hits only; DNS lookups keep interactsh's answer."}>
           {draft.mode === "preset"
             ? <div className="flex flex-wrap items-center gap-2"><span className="text-body font-semibold">XXE preset</span><Button variant="ghost" size="sm" onClick={() => setMode("default")}>Use another kind of answer</Button></div>
             : <Seg label="Answer with" value={draft.mode} onChange={setMode} items={MODES} />}
@@ -239,6 +271,7 @@ export function HttpRuleTab({ p }: { p: Probe }) {
 
         {draft.mode === "redirect" && (
           <>
+            <Group title="The redirect" />
             <Row label="Status" error={errFor("status")} help="302 and 303 usually turn a POST into a GET; 307 and 308 keep the method and body.">
               <div className="flex flex-wrap items-center gap-2">
                 <Seg label="Redirect status" mono value={String(draft.status)} onChange={(v) => set({ status: Number(v) })} items={["301", "302", "303", "307", "308"].map((s) => [s, s])} />
@@ -293,6 +326,7 @@ export function HttpRuleTab({ p }: { p: Probe }) {
 
         {draft.mode === "custom" && (
           <>
+            <Group title="The response" />
             <Row label="Status" error={errFor("status")}><Num label="Status" invalid={errF === "status"} value={draft.status ?? 200} max={599} onChange={(n) => set({ status: n })} /></Row>
             <Row label="Headers" error={errFor("headers")} help="Content-Length is computed and Connection is always close. Server stays your payload domain unless you set one.">
               {(draft.headers ?? []).map(([n, v], i) => (
@@ -304,46 +338,48 @@ export function HttpRuleTab({ p }: { p: Probe }) {
               ))}
               <Button variant="ghost" size="sm" className="w-fit" disabled={(draft.headers ?? []).length >= 30} onClick={() => set({ headers: [...(draft.headers ?? []), ["", ""]] })}><Plus />Add header</Button>
             </Row>
+            {bodyRow}
           </>
         )}
 
         {draft.mode === "file" && (
           <>
-            <Row label="Template" help="Fills the type and body with this probe's own payload host, so fetches it causes come back here as hits.">
-              <Select value={draft.template || ""} onValueChange={(v) => set({ template: v, contentType: tpl[v].contentType, body: tpl[v].body, bodyEncoding: "text" })}>
-                <SelectTrigger aria-label="Template" className="h-[30px] w-fit min-w-[280px] gap-1.5 rounded-[3px] border-rule bg-transparent px-2.5 text-body"><SelectValue placeholder="Start from a template" /></SelectTrigger>
-                <SelectContent>{Object.entries(tpl).map(([k, t]) => <SelectItem key={k} value={k}>{t.label}</SelectItem>)}</SelectContent>
-              </Select>
+            <Group title="Point the target at it" note={dirty ? "from your unsaved changes: save before you plant it" : "served at any path under the probe, over HTTP and HTTPS"} />
+            {plant && <Row label="Plant this">{<CopyLine text={plant[0]} what={plant[1]} strong />}</Row>}
+            <Row label="Fetch URL">
+              {fetchUrls.map((u) => <CopyLine key={u} text={u} what="fetch URL" />)}
             </Row>
-            {draft.template && plantHint(draft.template, p.tag, host) && <Row label="Plant this">{plantHint(draft.template, p.tag, host)}</Row>}
-            <Row label="Fetch URL" help="The file is served at any path under the probe, over HTTP and HTTPS.">
-              {[`http://${tagged(p.tag, host)}/x`, `https://${tagged(p.tag, host)}/x`].map((u) => <CopyLine key={u} text={u} what="fetch URL" />)}
+
+            <Group title="The file" />
+            <Row label="Template" help={tplEdited ? "Edited since: Save keeps your version. Picking a template again replaces the type and body." : "Fills the type and body with this probe's own payload host, so whatever it makes the target fetch comes back here as hits."}>
+              <div className="flex flex-wrap items-center gap-2">
+                <Select value={draft.template || ""} onValueChange={(v) => set({ template: v, contentType: tpl[v].contentType, body: tpl[v].body, bodyEncoding: "text" })}>
+                  <SelectTrigger aria-label="Template" className="h-[30px] w-fit min-w-[280px] gap-1.5 rounded-[3px] border-rule bg-transparent px-2.5 text-body"><SelectValue placeholder="Start from a template" /></SelectTrigger>
+                  <SelectContent>{Object.entries(tpl).map(([k, t]) => <SelectItem key={k} value={k}>{t.label}</SelectItem>)}</SelectContent>
+                </Select>
+                {tplEdited && <Chip grey>edited</Chip>}
+              </div>
             </Row>
             <Row label="Content type" error={errFor("contentType")}><label className={cn(fld, bad("contentType"))}><input aria-label="Content type" spellCheck={false} value={draft.contentType ?? ""} className={inputCls} onChange={(e) => set({ contentType: e.target.value })} /></label></Row>
-          </>
-        )}
+            {bodyRow}
 
-        {(draft.mode === "custom" || draft.mode === "file") && (
-          <Row label="Body" error={errFor("body")} help={`Up to 256 KB. ${draft.bodyEncoding === "base64" ? "Base64 is decoded before sending, for binary bodies." : "Sent as UTF-8."}`}>
-            <textarea aria-label="Body" aria-invalid={errF === "body"} spellCheck={false} rows={8} value={draft.body ?? ""} onChange={(e) => set({ body: e.target.value })}
-              className={cn("min-h-[120px] w-full resize-y rounded-[3px] border border-rule bg-well", "px-2.5 py-2 font-mono text-body leading-[1.125rem] text-bone outline-none focus:border-smoke", bad("body"))} />
-            <Seg label="Body encoding" value={draft.bodyEncoding ?? "text"} onChange={(v) => set({ bodyEncoding: v })} items={[["text", "Text"], ["base64", "Base64"]]} />
-          </Row>
+          </>
         )}
 
         {draft.mode !== "default" && (
           <>
-            <Row label="Delay" error={errFor("delay")} help="Hold the answer to probe timeouts, up to 60 s.">
-              <div className="flex items-center gap-2"><Num label="Delay in milliseconds" invalid={errF === "delay"} value={draft.delayMs} max={60000} w="w-[84px]" onChange={(n) => set({ delayMs: n })} /><span className="text-body text-smoke">ms before answering</span></div>
+            <Group title="Options" />
+            <Row label="Delay" error={errFor("delay")}>
+              <div className="flex items-center gap-2"><Num label="Delay in milliseconds" invalid={errF === "delay"} value={draft.delayMs} max={60000} w="w-[84px]" onChange={(n) => set({ delayMs: n })} /><span className="text-body text-smoke">ms before answering</span><span className="text-label text-ash">up to 60 s, to test timeouts</span></div>
             </Row>
-            <Row label="Applies to" error={errFor("schemes")} help="A scheme that's off gets the default reply.">
+            <Row label="Applies to" error={errFor("schemes")}>
               <div className="flex items-center gap-4 text-body">
                 {(["http", "https"] as const).map((k) => (
                   <label key={k} className="flex cursor-pointer items-center gap-[7px]">
                     <input type="checkbox" className="size-3.5 accent-bone" checked={draft.schemes[k]} onChange={(e) => set({ schemes: { ...draft.schemes, [k]: e.target.checked } })} />{k.toUpperCase()}
                   </label>
                 ))}
-                <span className="text-smoke">any path under the probe</span>
+                <span className="text-label text-ash">a scheme that's off gets the default reply</span>
               </div>
             </Row>
             <Row label="Decoy" error={errFor("decoy")} help={draft.decoy ? <>Matching requests get interactsh's default reply at once, so a validator that fetches the URL before saving it sees nothing odd; everyone else gets the rule. The first-requests count starts again with each saved version{live ? " and if the edge restarts" : ""}.</> : "Send a harmless reply to some requests first: beats validators that fetch the URL before accepting it."}>
@@ -364,7 +400,7 @@ export function HttpRuleTab({ p }: { p: Probe }) {
             </Row>
           </>
         )}
-      </dl>
+      </div>
 
       <aside className="flex min-w-0 flex-col gap-3.5 pb-4" aria-label="Preview and history">
         <div className="flex flex-col rounded-[3px] border border-rule-2 bg-well">
@@ -421,21 +457,13 @@ export function HttpRuleTab({ p }: { p: Probe }) {
   );
 }
 
-function CopyLine({ text, what }: { text: string; what: string }) {
+function CopyLine({ text, what, strong }: { text: string; what: string; strong?: boolean }) {
   return (
     <div className="flex min-w-0 items-center gap-1">
-      <code className="truncate font-mono text-body text-smoke" title={text}>{text}</code>
+      <code className={cn("font-mono text-body", strong ? "break-all text-bone" : "truncate text-smoke")} title={text}>{text}</code>
       <Button variant="ghost" size="icon-sm" aria-label={`Copy ${what}`} onClick={() => copy(text, what)}><Copy /></Button>
     </div>
   );
-}
-
-// what to put in the target so it fetches the hosted file
-function plantHint(template: string, tag: string, host: string) {
-  if (template === "xxe-dtd") return <CopyLine text={`<!DOCTYPE x SYSTEM "http://${tagged(tag, host)}/x.dtd">`} what="DOCTYPE line" />;
-  if (template === "svg") return <CopyLine text={`<img src="https://${tagged(tag, host)}/x.svg">`} what="image tag" />;
-  if (template === "headless-page") return <CopyLine text={`https://${tagged(tag, host)}/page.html`} what="page URL" />;
-  return null;
 }
 
 function HistoryRow({ v, current, live, onLoad }: { v: RuleVersion; current: boolean; live: boolean; onLoad: () => void }) {

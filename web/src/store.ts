@@ -181,7 +181,21 @@ export function setTab(tab: ProbeTab, push = true) {
 }
 export const selectHit = (id: number | null, picked = true) => set({ hit: id, hitPicked: picked && id != null });
 // the plant form: opened from the Plant button (or p, /), folded again once the probe is planted
-export const setPlanting = (planting: boolean) => { if (state.planting !== planting) set({ planting }); };
+// Opening the plant form remembers what opened it (+, a Plant button, the page for the p key), so
+// cancelling gives focus back there; a plant moves focus to the new probe's next step instead.
+let plantOpener: HTMLElement | null = null;
+export const setPlanting = (planting: boolean) => {
+  if (state.planting === planting) return;
+  if (planting) plantOpener = document.activeElement as HTMLElement | null;
+  set({ planting });
+};
+export function cancelPlanting() {
+  const back = plantOpener && plantOpener !== document.body && plantOpener.isConnected ? plantOpener
+    : document.querySelector<HTMLElement>("[role=tab][aria-selected=true], [data-plant-new]");
+  plantOpener = null;
+  setPlanting(false);
+  requestAnimationFrame(() => back?.focus());
+}
 
 export async function loadDetail(id: number) {
   if (state.details.has(id)) return;
