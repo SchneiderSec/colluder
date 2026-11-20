@@ -5,7 +5,8 @@
 # random one, only the edge knows it. Without the header, interactsh records the real peer address.
 # ./colluder setup runs this once on a box set up before it existed; by hand, as root:
 #   sudo deploy/origin.sh [--force]    --force: go ahead despite a running nuclei scan
-# interactsh restarts (a few seconds without callbacks), then the edge. Nothing else changes.
+# interactsh restarts (a few seconds without callbacks), then the engine (it registers again), then
+# the edge. Nothing else changes.
 set -euo pipefail
 umask 077
 
@@ -42,9 +43,10 @@ sed -i -E "s/-oih [A-Za-z0-9-]+/-oih $NAME/" "$PORTS"
 grep -q -- "-oih $NAME" "$PORTS" || { mv -f "$PORTS.bak" "$PORTS"; die "couldn't change $PORTS (restored)"; }
 systemctl restart interactsh.service
 for _ in $(seq 1 60); do ss -ltnH "sport = :8081" | grep -q . && break; sleep 0.5; done
-ss -ltnH "sport = :8081" | grep -q . || { mv -f "$PORTS.bak" "$PORTS"; systemctl restart interactsh.service; die "interactsh didn't come back on 8081 (journalctl -u interactsh); the old header is restored"; }
+ss -ltnH "sport = :8081" | grep -q . || { mv -f "$PORTS.bak" "$PORTS"; systemctl restart interactsh.service; restart_engine; die "interactsh didn't come back on 8081 (journalctl -u interactsh); the old header is restored"; }
 rm -f "$PORTS.bak"
 ok "interactsh restarted"
+restart_engine
 
 say "2/3 the edge: send it"
 set_env COLLUDER_ORIGIN_HEADER "$NAME"
