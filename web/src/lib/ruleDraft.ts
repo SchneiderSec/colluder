@@ -59,3 +59,35 @@ export function decoyOf(d?: Decoy | null): Decoy | null {
 }
 
 export const sameRule = (a: HttpRule, b: HttpRule) => JSON.stringify(effective(a)) === JSON.stringify(effective(b));
+
+// what changed between two saved versions, in the form's words ("location, delay"); empty when nothing did
+const FIELD_WORDS: Record<string, string> = { mode: "kind of answer", delayMs: "delay", schemes: "schemes", status: "status", location: "location", loop: "loop", hopStatuses: "hop codes",
+  headers: "headers", body: "body", bodyEncoding: "body encoding", contentType: "content type", template: "template", kind: "preset", params: "preset file", decoy: "decoy" };
+export function ruleChanges(from: HttpRule, to: HttpRule): string[] {
+  const a = effective(from) as unknown as Record<string, unknown>, b = effective(to) as unknown as Record<string, unknown>;
+  if (a.mode !== b.mode) return ["kind of answer"];
+  return [...new Set([...Object.keys(a), ...Object.keys(b)])].filter((k) => JSON.stringify(a[k]) !== JSON.stringify(b[k])).map((k) => FIELD_WORDS[k] ?? k);
+}
+
+// Clone: the next free tag after this one ("avatar" -> "avatar-2", "avatar-2" -> "avatar-3"), kept to
+// the 32 characters a tag may have
+export function cloneTag(tag: string, taken: (t: string) => boolean): string {
+  const m = /^(.*?)-(\d+)$/.exec(tag);
+  const stem = m ? m[1] : tag;
+  for (let n = m ? Number(m[2]) + 1 : 2; n < 1000; n++) {
+    const t = `${stem.slice(0, 31 - String(n).length).replace(/-+$/, "")}-${n}`;
+    if (!taken(t)) return t;
+  }
+  return "";
+}
+// a cloned answer points at the new probe: every mention of the old probe's host (a template's
+// callback, a redirect back to itself, the XXE preset's host) becomes the new one's
+export function retarget(rule: HttpRule, fromHost: string, toHost: string): HttpRule {
+  const swap = (v: string) => v.split(fromHost).join(toHost);
+  const out: HttpRule = { ...rule };
+  if (out.location) out.location = swap(out.location);
+  if (out.body && out.bodyEncoding !== "base64") out.body = swap(out.body);
+  if (out.headers) out.headers = out.headers.map(([k, v]) => [k, swap(v)]);
+  if (out.params) out.params = { ...out.params, host: swap(out.params.host) };
+  return out;
+}

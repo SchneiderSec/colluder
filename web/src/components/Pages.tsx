@@ -3,12 +3,12 @@
 // what to paste, who hears about hits, whether callbacks get through, how it looks, then the
 // machinery underneath.
 import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
-import { Copy, RotateCcw, Trash2 } from "lucide-react";
-import { useApp, clearAll, restoreClear } from "@/store";
+import { Copy, Plus, RotateCcw, Trash2, X } from "lucide-react";
+import { useApp, clearAll, restoreClear, setMine } from "@/store";
 import { AlertsSection, CheckSection, DisplaySection, Group, PayloadSection, Row, Section, THEME_NAMES, checkWord, fail } from "./SettingsParts";
 import { LineForm } from "./bits";
 import { plural, setupCmd } from "@/lib/format";
-import { copy } from "@/lib/toast";
+import { copy, toast } from "@/lib/toast";
 import { useDisplay } from "@/lib/display";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -47,6 +47,38 @@ function SystemSection({ st }: { st: Status | null }) {
   );
 }
 
+// Self-test addresses: this box (from config, read only) and the ones you marked as yours, so a stale one
+// (a VPN or home IP that rotated) can go, and a new one can be added before testing from it
+function SelfTests({ st }: { st: Status | null }) {
+  const [ip, setIp] = useState("");
+  const [busy, setBusy] = useState(false);
+  const mark = (v: string, mine: boolean) => {
+    setBusy(true);
+    return setMine(v, mine).then(() => { toast(mine ? `${v} is marked as yours: its hits are self-tests now.` : `${v} is no longer marked as yours.`); if (mine) setIp(""); }, fail).finally(() => setBusy(false));
+  };
+  const box = st?.selfIps ?? [], mine = st?.mineIps ?? [];
+  return (
+    <Group title="Self-test addresses" note="Hits from these are self-tests: left out of the report's first request, reach, and the chime. Mark your browser's or proxy's public address, as the edge sees it (a hit's Source).">
+      <Row dense label="This box">{box.length ? box.map((x) => <code key={x} className="font-mono text-bone">{x}</code>) : <span className="text-ash">none configured</span>}</Row>
+      <Row dense label="Yours">
+        {mine.length ? mine.map((x) => (
+          <span key={x} className="flex items-center gap-0.5"><code className="font-mono text-bone">{x}</code>
+            <Button variant="ghost" size="icon-sm" aria-label={`Unmark ${x}`} title="Its hits count as targets again" disabled={busy} onClick={() => void mark(x, false)}><X /></Button></span>
+        )) : <span className="text-ash">none yet</span>}
+      </Row>
+      <Row dense label="Add">
+        <form className="flex items-center gap-2" onSubmit={(e) => { e.preventDefault(); if (ip.trim()) void mark(ip.trim(), true); }}>
+          <label className="flex h-7 w-[220px] items-center rounded-[3px] border border-rule bg-well px-2 focus-within:border-smoke">
+            <input aria-label="IP address to mark as yours" value={ip} spellCheck={false} placeholder="203.0.113.7 or 2001:db8::7" onChange={(e) => setIp(e.target.value)}
+              className="min-w-0 flex-1 bg-transparent font-mono text-body text-bone outline-none placeholder:font-sans placeholder:text-ash" />
+          </label>
+          <Button type="submit" variant="quiet" size="sm" disabled={busy || !ip.trim()}><Plus />Mark as mine</Button>
+        </form>
+      </Row>
+    </Group>
+  );
+}
+
 function DataSection({ count, st }: { count: number; st: Status | null }) {
   const [confirm, setConfirm] = useState(false);
   return (
@@ -58,6 +90,7 @@ function DataSection({ count, st }: { count: number; st: Status | null }) {
           <Button variant="destructive" disabled={!count} onClick={() => setConfirm(true)}><Trash2 />Clear all hits…</Button>
         </Row>
       </Group>
+      <div className="mt-5"><SelfTests st={st} /></div>
       <AlertDialog open={confirm} onOpenChange={setConfirm}>
         <AlertDialogContent className="max-w-[460px] border-rule bg-soot-1">
           <AlertDialogHeader>

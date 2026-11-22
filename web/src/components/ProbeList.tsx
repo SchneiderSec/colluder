@@ -1,7 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Archive, ArrowDownToLine, Bell, BellOff, Check, ChevronDown, ChevronRight, PanelLeftClose, Rows3, Rows4, Search, Trash2, X } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { CardOnCrew, NameEditor, ProbeActions, ProbeMarks, isSilent, retireMany, marksLabel, setFolded, setFoldMode, startRename, useFoldMode, useProbeSnap } from "./ProbeTabs";
+import { CardOnCrew, FACETS, FacetChips, HitMatch, clearFacets, useHitSearch, NameEditor, ProbeActions, ProbeMarks, facetMatch, isSilent, retireMany, marksLabel, setFolded, setFoldMode, startRename, toggleFacet, useFacets, useFoldMode, useProbeSnap } from "./ProbeTabs";
 import { useApp, select, unreadFor, setDiscord, lateHit, deleteProbe, setPlanting, save, type AppState } from "@/store";
 import { probeState, quietLine } from "@/lib/probeState";
 import { Button } from "@/components/ui/button";
@@ -184,22 +184,26 @@ export function ProbeList({ hidden }: { hidden?: boolean }) {
   const [q, setQ] = useState("");
   const [delAll, setDelAll] = useState(false);
   useTick(30000);
+  const fs = useFacets();
+  const found = useHitSearch(q.trim());
+  // a facet narrows like the text filter: retired probes that match show, Silent opens
   const needle = q.trim().toLowerCase();
+  const narrowing = !!needle || fs.length > 0;
   const { names } = useProbeSnap();
   const every = [...s.probes.values()];
   // a tag nobody planted is only worth a row while it has hits
-  const all = every.filter((p) => p.registered || p.hits > 0)
+  const all = every.filter((p) => p.registered || p.hits > 0).filter((p) => facetMatch(p, s, fs))
     .filter((p) => !needle || [p.tag, p.target, p.note, names[p.tag]].some((x) => (x ?? "").toLowerCase().includes(needle)));
   // a retired probe that hears something again comes back up: late hits are often the real bug
   const live = all.filter((p) => !p.retiredAt || lateHit(p)).sort((a, b) => activity(b) - activity(a));
   const quiet = live.filter((p) => silent(p, s));
   const active = live.filter((p) => !silent(p, s));
   // the selected probe is never hidden inside a folded group
-  const showSilent = silentOpen || !!needle || quiet.some((p) => p.tag === s.sel);
+  const showSilent = silentOpen || narrowing || quiet.some((p) => p.tag === s.sel);
   const retired = all.filter((p) => p.retiredAt && !lateHit(p)).sort((a, b) => activity(b) - activity(a));
   // Retired probes stay out of the list unless a search asks for them (like All probes in the tabs
   // view). Never hidden: one with unread hits, or the one that's open.
-  const shownRetired = needle ? retired : retired.filter((p) => unreadFor(s, p.tag) || p.tag === s.sel);
+  const shownRetired = narrowing ? retired : retired.filter((p) => unreadFor(s, p.tag) || p.tag === s.sel);
   const hiddenRetired = retired.length - shownRetired.length;
   const deletable = [...retired, ...every.filter((p) => !p.registered && !p.hits)];
   const deletableHits = deletable.reduce((n, p) => n + p.hits, 0);
@@ -251,6 +255,11 @@ export function ProbeList({ hidden }: { hidden?: boolean }) {
       <DropdownMenuContent align="end" className="min-w-[250px]">
         <DropdownMenuItem onSelect={() => { setDense(true); save("colluder.listDense", true); }}><Check className={dense ? "" : "invisible"} />One line per probe<span className="ml-auto text-label text-ash">compact</span></DropdownMenuItem>
         <DropdownMenuItem onSelect={() => { setDense(false); save("colluder.listDense", false); }}><Check className={dense ? "invisible" : ""} />Two lines per probe<span className="ml-auto text-label text-ash">target, kinds</span></DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <div className="px-2 pt-1 pb-0.5 text-label font-semibold text-smoke">Show only</div>
+        {FACETS.map(([f, label, what]) => (
+          <DropdownMenuItem key={f} title={what} onSelect={(e) => { e.preventDefault(); toggleFacet(f); }}><Check className={fs.includes(f) ? "" : "invisible"} />{label}</DropdownMenuItem>
+        ))}
         {/* phones never fold: the list sits above the pane there */}
         <DropdownMenuSeparator className="max-[820px]:hidden" />
         <DropdownMenuItem className="max-[820px]:hidden" onSelect={() => setFoldMode(mode === "auto" ? "open" : "auto")}><Check className={mode === "auto" ? "" : "invisible"} />Tabs while reading a hit</DropdownMenuItem>
@@ -272,11 +281,12 @@ export function ProbeList({ hidden }: { hidden?: boolean }) {
         <span className="flex flex-none items-center">{alerts}{view}</span>
         <Button variant={s.planting ? "secondary" : "default"} size="sm" title="Plant a new probe (p)" aria-label="Plant" onClick={() => setPlanting(!s.planting)}><ArrowDownToLine /><span className="min-[821px]:max-[1180px]:hidden">Plant</span></Button>
       </div>
+      {fs.length > 0 && <FacetChips className="mr-[14px] flex-none px-1" />}
       <div ref={listRef} onKeyDown={onListKey} className="flex min-h-0 flex-1 flex-col overflow-auto">
-        {needle && !active.length && !retired.length && (
-          <p className="px-5 py-[18px] text-body text-smoke">No probe matches “{q.trim()}”. <button type="button" className="underline decoration-ash underline-offset-2 hover:decoration-bone" onClick={() => setQ("")}>Clear the filter</button></p>
+        {narrowing && !active.length && !quiet.length && !retired.length && !found.length && (
+          <p className="px-5 py-[18px] text-body text-smoke">No probe matches {needle ? `“${q.trim()}”${fs.length ? " with these filters" : ""}` : "these filters"}. <button type="button" className="underline decoration-ash underline-offset-2 hover:decoration-bone" onClick={() => { setQ(""); clearFacets(); }}>Clear the filter</button></p>
         )}
-        {s.loaded && !needle && !active.length && !s.untagged?.hits && !retired.length && (
+        {s.loaded && !narrowing && !active.length && !s.untagged?.hits && !retired.length && (
           <div className="max-w-[46ch] px-5 py-[22px] text-body leading-[1.1875rem] text-smoke">
             <b className="mb-1 block text-title font-semibold text-bone">No probes yet.</b>
             Plant one: a tag (e.g. avatar) and where you'll put it. Then copy a payload into the target. Hits show up here the moment something calls back.
@@ -297,17 +307,23 @@ export function ProbeList({ hidden }: { hidden?: boolean }) {
                 {showSilent ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}<span id={silentId} className="flex-none whitespace-nowrap">Silent <span className="font-medium text-ash">{quiet.length}</span></span>
                 {!showSilent && <span className="truncate font-mono text-label text-ash">{quiet.map((p) => names[p.tag] || p.tag).join(" · ")}</span>}
               </button>
-              {!needle && <Button variant="ghost" size="sm" className="flex-none text-smoke" title="Retire every probe in Silent (Undo in the message)" onClick={() => retireMany(quiet.map((p) => p.tag), "silent probes")}><Archive />Retire all</Button>}
+              {!narrowing && <Button variant="ghost" size="sm" className="flex-none text-smoke" title="Retire every probe in Silent (Undo in the message)" onClick={() => retireMany(quiet.map((p) => p.tag), "silent probes")}><Archive />Retire all</Button>}
             </div>
             {showSilent && <div role="listbox" aria-labelledby={silentId} className="flex flex-col">{quiet.map((p) => <Brief key={p.tag} s={s} p={p} />)}</div>}
+          </>
+        )}
+        {found.length > 0 && (
+          <>
+            <h3 className="mr-[14px] mb-1.5 flex min-w-0 items-center gap-1.5 border-b border-rule px-1 pt-2 pb-1.5 text-label font-semibold tracking-[.02em] text-smoke">Matching hits <span className="font-medium text-ash">across every probe{found.length === 8 ? ", newest 8" : ""}</span></h3>
+            <div role="listbox" aria-label="Matching hits" className="mr-[14px] flex flex-col">{found.map((h) => <HitMatch key={h.id} i={h} />)}</div>
           </>
         )}
         <div className="flex-1" />
         {!!shownRetired.length && <h3 id={retiredId} className="flex min-w-0 items-center gap-1.5 mr-[14px] mb-1.5 border-b border-rule px-1 pt-2 pb-1.5 text-label font-semibold tracking-[.02em] text-smoke">Retired <span className="font-medium text-ash">{shownRetired.length}</span></h3>}
         {!!shownRetired.length && <div role="listbox" aria-labelledby={retiredId} className="flex flex-col">{shownRetired.map((p) => unreadFor(s, p.tag) ? <Row key={p.tag} s={s} p={p} k={p.tag} dense={dense} /> : <Brief key={p.tag} s={s} p={p} />)}</div>}
         <DeleteRetired tags={deletable.map((p) => p.tag)} hits={deletableHits} open={delAll} onOpenChange={setDelAll} />
-        {!!s.untagged?.hits && <div role="listbox" aria-label="Hits with no tag" className="flex flex-col"><Row s={s} p={s.untagged} k={UNTAGGED} dense={dense} /></div>}
-        {!needle && (hiddenRetired > 0 || deletable.length > 0) && (
+        {!!s.untagged?.hits && !fs.length && <div role="listbox" aria-label="Hits with no tag" className="flex flex-col"><Row s={s} p={s.untagged} k={UNTAGGED} dense={dense} /></div>}
+        {!narrowing && (hiddenRetired > 0 || deletable.length > 0) && (
           <div className="mr-[14px] flex min-h-8 items-center gap-2 px-1 pt-1.5 text-label text-ash">
             {hiddenRetired > 0 && <span className="min-w-0 flex-1">{plural(hiddenRetired, "retired probe")} not shown: search finds them.</span>}
             {deletable.length > 0 && <Button variant="ghost" size="sm" className="ml-auto flex-none text-ash hover:text-bone" onClick={() => setDelAll(true)}><Trash2 />Delete retired…</Button>}

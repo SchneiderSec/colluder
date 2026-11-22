@@ -45,6 +45,13 @@ export function xxeValue(h: Hit): XxeValue | null {
   if (strict && "text" in strict) return { text: strict.text, base64: true };
   return strict ? { text: v, base64: false, binary: strict.bytes } : { text: v, base64: false };
 }
+// the hit detail's one line when the file is shown in full below it (the report and the MCP say the same)
+export function xxeArrived(v: XxeValue): string {
+  if (!v.text) return "file data arrived: empty (the DTD ran; the read returned nothing)";
+  const n = new TextEncoder().encode(v.text).length;
+  const lines = v.text.replace(/\r?\n$/, "").split(/\r?\n/).length;
+  return `file data arrived: ${n.toLocaleString("en-US")} ${n === 1 ? "byte" : "bytes"}${lines > 1 ? `, ${lines} lines` : ""}${v.base64 ? ", base64-decoded" : v.binary ? `, base64 of ${v.binary} bytes that aren't text` : ""}`;
+}
 const esc = (t: string) => t.replace(/\r/g, "\\r").replace(/\n/g, "\\n").replace(/\t/g, "\\t");
 export function xxeData(h: Hit): string | null {
   const v = xxeValue(h);

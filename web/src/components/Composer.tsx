@@ -1,27 +1,25 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { ArrowDownToLine, ChevronDown, Copy, Dices, RefreshCw, X } from "lucide-react";
-import { useApp, plant, save, setPlanting, cancelPlanting } from "@/store";
+import { useApp, plant, save, setPlanting, cancelPlanting, takeClone } from "@/store";
+import { cloneTag, retarget } from "@/lib/ruleDraft";
 import { TAG_RE } from "@/lib/types";
 import { quickTag } from "@/lib/quicktag";
 import { variants } from "@/lib/raw";
 import { hostOf } from "@/lib/metadata";
 import { CLOUDS, XXE_FILES, ssrfRule, xxeRule } from "@/lib/presets";
-import { ssrfPayloads, xxePayloads, jsonEscape, xmlEscape, tagged, shownId, type Payload } from "@/lib/kit";
+import { ssrfPayloads, xxePayloads, tagged, shownId, type Enc, type Payload } from "@/lib/kit";
 import { copy } from "@/lib/toast";
 import { dayOrTime } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { LineForm, TypeChip } from "./bits";
-import { Marked } from "./PayloadKit";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { EncPicker, Marked, copyAs as copyEnc } from "./PayloadKit";
 import { cn } from "@/lib/utils";
 
 const BAD_TAG = "Letters, digits and hyphens; can't start or end with a hyphen.";
 
 const PRESET_LABEL: Record<string, string> = { "ssrf-metadata": "SSRF", xxe: "XXE" };
-type CopyAs = "raw" | "url" | "json" | "xml";
-const asCopy = (s: string, c: CopyAs) => (c === "url" ? encodeURIComponent(s) : c === "json" ? jsonEscape(s) : c === "xml" ? xmlEscape(s) : s);
 
 // "Show payloads" is remembered per browser and shared by the header's copy buttons and the rows
 // under it, so it lives outside either component
@@ -81,7 +79,7 @@ export function PayloadCopy({ tag, brief }: { tag: string; brief?: boolean }) {
 export function PayloadRows({ tag, previewTechnique, className, compact }: { tag: string | null; previewTechnique?: string; className?: string; compact?: boolean }) {
   const { s, vs, presetRows, technique, unsaved, probe, reading, pinned, folded } = usePayloads(tag, previewTechnique);
   const preview = !!previewTechnique;
-  const [copyAs, setCopyAs] = useState<CopyAs>("raw");
+  const [enc, setEnc] = useState<Enc>("raw");
   const [plain, setPlain] = useState(false);
   const [allRows, setAllRows] = useState(false);
   const [retiredOpen, setRetiredOpen] = useState(false);
@@ -107,17 +105,13 @@ export function PayloadRows({ tag, previewTechnique, className, compact }: { tag
             <div key={p.code} className="contents">
               <span title={p.note} className="flex items-center gap-2 text-body whitespace-nowrap text-smoke max-[820px]:col-span-full"><TypeChip proto={/^https:/.test(p.text) ? "https" : "http"} />{p.name}</span>
               <span className="truncate font-mono text-body text-smoke" title={compact && p.note ? `${p.text}\n${p.note}` : p.text}><Marked text={p.text} tag={tag!} code={p.code} /></span>
-              <Button data-copy variant="ghost" size="icon-sm" aria-label={`Copy ${p.name} payload`} onClick={() => copy(asCopy(p.text, copyAs), `${p.name} payload${copyAs === "raw" ? "" : `, ${copyAs === "url" ? "URL-encoded" : copyAs === "json" ? "JSON-escaped" : "XML-escaped"}`}`)}><Copy /></Button>
+              <Button data-copy variant="ghost" size="icon-sm" aria-label={`Copy ${p.name} payload`} onClick={() => copyEnc(p.text, enc, `${p.name} payload`)}><Copy /></Button>
               {!compact && <span className="truncate pl-2 text-label text-ash max-[1180px]:hidden" title={p.note}>{p.note}</span>}
             </div>
           ))}
           <div className="col-span-full mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-label text-ash">
             <span className="flex items-center gap-2">Copy
-              <ToggleGroup type="single" value={copyAs} onValueChange={(v) => v && setCopyAs(v as CopyAs)} aria-label="Copy as" className="overflow-hidden rounded-[3px] border border-rule">
-                {([["raw", "as is"], ["url", "URL-encoded"], ["json", "JSON"], ["xml", "XML"]] as [CopyAs, string][]).map(([v, l]) => (
-                  <ToggleGroupItem key={v} value={v} className="h-[22px] rounded-none border-l border-rule px-2 text-label text-smoke first:border-l-0 data-[state=on]:bg-soot-2 data-[state=on]:font-semibold data-[state=on]:text-bone">{l}</ToggleGroupItem>
-                ))}
-              </ToggleGroup>
+              <EncPicker small value={enc} onChange={setEnc} />
             </span>
             {presetRows.length > 3 && <Button variant="ghost" size="sm" className="text-smoke" onClick={() => setAllRows(!allRows)}>{allRows ? "Show fewer" : `Show all ${presetRows.length} payloads`}</Button>}
             <Button variant="ghost" size="sm" className="text-ash" onClick={() => setPlain(true)}>Plain callbacks</Button>
@@ -145,7 +139,7 @@ export function PayloadRows({ tag, previewTechnique, className, compact }: { tag
                   <span className="flex gap-0.5">
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <Button data-copy variant="ghost" size="icon-sm" aria-label={`Copy ${v.proto.toUpperCase()} payload`} onClick={() => copy(v.value, `${v.proto.toUpperCase()} payload`)}><Copy /></Button>
+                        <Button data-copy variant="ghost" size="icon-sm" aria-label={`Copy ${v.proto.toUpperCase()} payload`} onClick={() => copyEnc(v.value, enc, `${v.proto.toUpperCase()} payload`)}><Copy /></Button>
                       </TooltipTrigger>
                       <TooltipContent>Copy {v.proto.toUpperCase()} payload</TooltipContent>
                     </Tooltip>
@@ -153,7 +147,7 @@ export function PayloadRows({ tag, previewTechnique, className, compact }: { tag
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <Button variant="ghost" size="icon-sm" aria-label="Copy DNS payload with a fresh label"
-                            onClick={() => copy(`${Math.random().toString(36).slice(2, 6).padEnd(4, "x")}.${v.value}`, "DNS payload with a fresh label")}><RefreshCw /></Button>
+                            onClick={() => copyEnc(`${Math.random().toString(36).slice(2, 6).padEnd(4, "x")}.${v.value}`, enc, "DNS payload with a fresh label")}><RefreshCw /></Button>
                         </TooltipTrigger>
                         <TooltipContent>Copy with a fresh random label in front, so no resolver can answer from cache</TooltipContent>
                       </Tooltip>
@@ -162,6 +156,7 @@ export function PayloadRows({ tag, previewTechnique, className, compact }: { tag
                   {!compact && <span className="truncate pl-2 text-label text-ash max-[1180px]:hidden">{v.note}</span>}
                 </div>
               ))}
+              {!preview && <div className="col-span-full flex h-6 items-center gap-2 text-label text-ash">Copy <EncPicker small value={enc} onChange={setEnc} /></div>}
               {preview && <p className="col-span-full text-label text-ash">Not planted yet: these already work, but Plant records the tag and target so the hits read as a story.</p>}
               {presetRows && plain && <Button variant="ghost" size="sm" className="col-span-full justify-self-start text-ash" onClick={() => setPlain(false)}>{PRESET_LABEL[technique ?? ""] ?? "Preset"} payloads</Button>}
               {fold && <div className="col-span-full justify-self-start">{fold}</div>}
@@ -177,9 +172,11 @@ export function PayloadRows({ tag, previewTechnique, className, compact }: { tag
 // reading what came back is the everyday job.
 export function Composer() {
   const s = useApp((x) => x);
-  const [tag, setTag] = useState("");
-  const [target, setTarget] = useState("");
-  const [technique, setTechnique] = useState("callback");
+  // opened by Clone: filled from that probe (a fresh tag, its target and technique, its saved answer)
+  const [clone, setClone] = useState(takeClone);
+  const [tag, setTag] = useState(() => (clone ? cloneTag(clone.tag, (t) => s.probes.has(t)) : ""));
+  const [target, setTarget] = useState(clone?.target ?? "");
+  const [technique, setTechnique] = useState(clone?.technique || "callback");
   const [cloud, setCloud] = useState(CLOUDS[0].id);
   const [headDecoy, setHeadDecoy] = useState(true);
   const [xxeFile, setXxeFile] = useState(XXE_FILES[0][0]);
@@ -203,7 +200,13 @@ export function Composer() {
     try {
       const c = CLOUDS.find((x) => x.id === cloud)!;
       const file = xxeFile === "custom" ? xxeCustom.trim() : xxeFile;
-      if (technique === "ssrf-metadata") await plant(tag_, target.trim(), technique, ssrfRule(c.url, headDecoy), `302 → ${hostOf(c.url)} (${c.provider}: ${c.name}) after 2 hops`);
+      // a clone keeps its source's answer while the technique is the source's, pointed at the new probe
+      const cloned = clone?.rule && technique === clone.technique ? clone.rule : null;
+      if (cloned) {
+        if (!host) throw new Error("No payload host yet: wait for the engine.");
+        await plant(tag_, target.trim(), technique, retarget(cloned, tagged(clone!.tag, host), tagged(tag_, host)), `a copy of ${clone!.tag}'s answer (v${clone!.version})`);
+      }
+      else if (technique === "ssrf-metadata") await plant(tag_, target.trim(), technique, ssrfRule(c.url, headDecoy), `302 → ${hostOf(c.url)} (${c.provider}: ${c.name}) after 2 hops`);
       else if (technique === "xxe") {
         if (!host) throw new Error("No payload host yet: wait for the engine.");
         await plant(tag_, target.trim(), technique, xxeRule(tagged(tag_, host), file), `an XXE DTD reading ${file}`);
@@ -295,6 +298,12 @@ export function Composer() {
         ? <Button variant="ghost" size="icon" className="ml-2 self-start text-smoke max-[820px]:col-start-2 max-[820px]:row-start-1" aria-label="Close the plant form" title="Close (Esc)" onClick={cancelPlanting}><X /></Button>
         : <span />}
       {err && <p id="tag-err" className="col-start-2 -mt-1 text-body text-alarm-ink max-[820px]:col-start-1">{err}</p>}
+      {clone && (
+        <p className="col-start-2 flex flex-wrap items-center gap-x-2 text-body text-smoke max-[820px]:col-span-full max-[820px]:col-start-1">
+          <span>A copy of <span className="font-mono text-bone">{clone.tag}</span>: its target and technique{clone.rule ? (technique === clone.technique ? <>, and its answer (v{clone.version}) pointed at the new probe</> : ", without its answer (the technique changed)") : ""}.</span>
+          <button type="button" className="cursor-pointer text-ash underline decoration-rule underline-offset-2 hover:text-bone" onClick={() => setClone(null)}>Without its answer</button>
+        </p>
+      )}
       {preview && <PayloadRows tag={preview} previewTechnique={technique} className="col-start-2 max-[820px]:col-span-full max-[820px]:col-start-1" />}
     </section>
   );

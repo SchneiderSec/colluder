@@ -198,8 +198,11 @@ export function variantOf(h: { extraLabels?: string[]; summary?: string; rawRequ
 }
 
 // ---------- encoding for a payload that goes inside a parameter ----------
-export type Enc = "raw" | "once" | "twice";
+export type Enc = "raw" | "once" | "twice" | "json" | "xml";
+// one set of copy encodings, everywhere a payload is copied: [value, label, what the copy toast says]
+export const ENCODINGS: [Enc, string, string][] = [["raw", "as is", ""], ["once", "URL", "URL-encoded"], ["twice", "URL ×2", "URL-encoded twice"], ["json", "JSON", "JSON-escaped"], ["xml", "XML", "XML-escaped"]];
+export const encName = (e: Enc) => ENCODINGS.find(([v]) => v === e)?.[2] ?? "";
 // for a payload pasted into JSON or XML: escaped for that context, nothing else changed
 export const jsonEscape = (s: string) => JSON.stringify(s).slice(1, -1);
 export const xmlEscape = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
-export const encode = (s: string, e: Enc) => (e === "raw" ? s : e === "once" ? encodeURIComponent(s) : encodeURIComponent(encodeURIComponent(s)));
+export const encode = (s: string, e: Enc) => (e === "raw" ? s : e === "once" ? encodeURIComponent(s) : e === "twice" ? encodeURIComponent(encodeURIComponent(s)) : e === "json" ? jsonEscape(s) : xmlEscape(s));

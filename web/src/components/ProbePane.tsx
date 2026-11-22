@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CircleStop, Bell, BellOff, ChevronRight, Copy, Download, Ellipsis, Eraser, FileText, Pencil, RotateCcw, Search, Trash2, Archive, X } from "lucide-react";
-import { useApp, getState, keyOf, markSeen, selectHit, patchProbe, saveRule, fetchRule, fetchTrigger, fetchReport, chatterOf, setTab, unreadFor, loadOlder, searchHits, exportUrl, deleteProbe, clearProbe, restoreProbe, PROBE_TABS, type AppState, type ProbeTab } from "@/store";
+import { CircleStop, CopyPlus, Bell, BellOff, ChevronRight, Copy, Download, Ellipsis, Eraser, FileText, Pencil, RotateCcw, Search, Trash2, Archive, X } from "lucide-react";
+import { useApp, getState, cloneProbe, keyOf, markSeen, selectHit, patchProbe, saveRule, fetchRule, fetchTrigger, fetchReport, chatterOf, setTab, unreadFor, loadOlder, searchHits, exportUrl, deleteProbe, clearProbe, restoreProbe, PROBE_TABS, type AppState, type ProbeTab } from "@/store";
 import { lastClearFor, probeState } from "@/lib/probeState";
 import { dnsSteps, mostSpecific } from "@/lib/dns";
 import { stageOf } from "@/lib/stage";
@@ -11,6 +11,7 @@ import { ago, dayKey, dayLabel, dayOrTime, exact, hm, isoMs, newestFirst, plural
 import { groupHits } from "@/lib/raw";
 import { copy, toast } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
@@ -72,6 +73,10 @@ function Head({ s }: { s: AppState }) {
   const [del, setDel] = useState(false);
   const [clr, setClr] = useState(false);
   const [resetRule, setResetRule] = useState(true);
+  // the trigger and note, open or folded, per probe for the session
+  const [openNotes, setOpenNotes] = useState<Set<string>>(new Set());
+  const notesOpen = !!s.sel && openNotes.has(s.sel);
+  const setNotesOpen = (v: boolean) => setOpenNotes((o) => { const n = new Set(o); if (v) n.add(s.sel!); else n.delete(s.sel!); return n; });
   const plantLine = usePlant(s.sel && s.sel !== UNTAGGED ? s.probes.get(s.sel) : undefined);
   const { names, editing, editingAt } = useProbeSnap(); // your name for the probe, from its tab or list row
   // two fixed rows: who the probe is and its actions on the first (one line, the target truncates),
@@ -129,6 +134,7 @@ function Head({ s }: { s: AppState }) {
           <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" aria-label={`More for ${p.tag}`} title="Edit, mute, clear, retire"><Ellipsis /></Button></DropdownMenuTrigger>
           <DropdownMenuContent>
             <DropdownMenuItem onSelect={() => setEdit(true)}><Pencil />Edit target, note, trigger…</DropdownMenuItem>
+            {st !== "unplanted" && <DropdownMenuItem onSelect={() => void cloneProbe(p.tag)}><CopyPlus />Clone probe…</DropdownMenuItem>}
             {s.status?.discord.available && <DropdownMenuItem onSelect={mute}>{p.muted ? <><Bell />Unmute Discord alerts</> : <><BellOff />Mute Discord alerts</>}</DropdownMenuItem>}
             {!!p.hits && <DropdownMenuItem onSelect={() => setClr(true)}><Eraser />Clear hits…</DropdownMenuItem>}
             {st !== "unplanted" && <DropdownMenuItem onSelect={() => (p.retiredAt ? patchProbe(p.tag, { retired: false }).then(() => toast(`Restored ${p.tag}`), fail) : setRetire(true))}>{p.retiredAt ? <><RotateCcw />Restore</> : <><Archive />Retire…</>}</DropdownMenuItem>}
@@ -137,11 +143,20 @@ function Head({ s }: { s: AppState }) {
         </DropdownMenu>
       </div>
     </div>
-    {/* the second row: the line to plant (when the saved answer has one), then the callbacks */}
+    {/* the second row: the line to plant (when the saved answer has one), then the callbacks; the
+        trigger and note, when there are any, at its end */}
     <div className="flex min-w-0 items-center gap-x-5 gap-y-1.5 pr-6 pb-3 pl-[60px] empty:hidden max-[820px]:flex-wrap max-[820px]:px-3.5">
       {plantLine && <PlantLine p={p} line={plantLine} />}
       <PayloadCopy tag={p.tag} brief={!!plantLine} />
+      {(!!p.triggerBytes || !!p.note) && (
+        <Button variant="ghost" size="sm" className="ml-auto flex-none text-smoke" aria-expanded={notesOpen} onClick={() => setNotesOpen(!notesOpen)}
+          title={p.triggerBytes ? "The request that made the target call back, and your note" : "Your note on this probe"}>
+          <ChevronRight className={cn("transition-transform", notesOpen && "rotate-90")} />
+          {[p.triggerBytes ? `Trigger · ${p.triggerBytes < 1024 ? `${p.triggerBytes} bytes` : `${(p.triggerBytes / 1024).toFixed(1)} KB`}` : null, p.note ? "Note" : null].filter(Boolean).join(" · ")}
+        </Button>
+      )}
     </div>
+    {notesOpen && (!!p.triggerBytes || !!p.note) && <TriggerAndNote p={p} onEdit={() => setEdit(true)} />}
     <PayloadRows compact tag={p.tag} className="pr-6 pb-3 pl-[60px] max-[820px]:px-3.5" />
       <AlertDialog open={del} onOpenChange={setDel}>
         <AlertDialogContent className="max-w-[460px] border-rule bg-soot-1">
@@ -182,6 +197,38 @@ function Head({ s }: { s: AppState }) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+    </div>
+  );
+}
+
+// What Claude (or you) sent to make the target call back, and the note, read in place: the trigger is
+// text someone pasted or recorded, so it's shown inert, exactly as stored
+function TriggerAndNote({ p, onEdit }: { p: Probe; onEdit: () => void }) {
+  const [trigger, setTrigger] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    setTrigger(null); setErr(null);
+    if (!p.triggerBytes) return;
+    let live = true;
+    fetchTrigger(p.tag).then((t) => { if (live) setTrigger(t); }, (e) => { if (live) setErr((e as Error).message); });
+    return () => { live = false; };
+  }, [p.tag, p.triggerBytes]);
+  return (
+    <div className="flex min-w-0 flex-col gap-2 pr-6 pb-3 pl-[60px] max-[820px]:px-3.5">
+      {p.note && <p className="max-w-[90ch] text-body whitespace-pre-wrap text-smoke"><span className="text-label font-[550] tracking-[.03em] text-ash">Note </span><span className="text-bone">{p.note}</span></p>}
+      {!!p.triggerBytes && (
+        <div className="flex min-w-0 flex-col rounded-[3px] border border-rule bg-well">
+          <div className="flex h-8 flex-none items-center gap-2 border-b border-rule-2 pr-1 pl-3">
+            <b className="text-body font-[650]">Trigger request</b>
+            <span className="truncate text-label text-ash">{p.plantedBy === "claude" ? "recorded by Claude" : "saved with the probe"} · in the report</span>
+            <span className="ml-auto flex flex-none items-center">
+              <Button variant="ghost" size="sm" disabled={trigger === null} onClick={() => trigger !== null && copy(trigger, "trigger request")}><Copy />Copy</Button>
+              <Button variant="ghost" size="sm" onClick={onEdit}><Pencil />Edit</Button>
+            </span>
+          </div>
+          <pre className="m-0 max-h-[220px] overflow-auto px-3 py-2 font-mono text-body leading-[1.125rem] whitespace-pre text-bone">{err ? <span className="text-bad">Couldn't load it: {err}</span> : trigger ?? "Loading…"}</pre>
+        </div>
+      )}
     </div>
   );
 }
@@ -357,9 +404,12 @@ export function ProbePane() {
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const hitsHeight = useDisplay().hits;
   const [q, setQ] = useState("");
+  // the protocol filter and "hide self-tests" stay as you switch probes (triaging one kind of hit
+  // across several probes); the search is about one probe, so it starts empty on each
   const [kinds, setKinds] = useState<string[]>([]);
+  const [hideSelf, setHideSelf] = useState(false);
   const [results, setResults] = useState<Interaction[] | null>(null);
-  useEffect(() => { setExpanded(new Set()); setQ(""); setKinds([]); setResults(null); }, [s.sel]);
+  useEffect(() => { setExpanded(new Set()); setQ(""); setResults(null); }, [s.sel]);
 
   // the pane's rows: live hits, older pages loaded on demand, and (on a tagged probe) the resolver
   // chatter around it, which belongs to its story even though it carries no tag
@@ -381,7 +431,13 @@ export function ProbePane() {
     const t = setTimeout(() => { searchHits(s.sel!, q.trim(), types).then(setResults, () => setResults([])); }, 250);
     return () => clearTimeout(t);
   }, [s.sel, q, kinds, filtering, s.list[0]?.id]);
-  const hits = filtering ? results ?? [] : all;
+  const boxIps = new Set(s.status?.selfIps ?? []), mineIps = new Set(s.status?.mineIps ?? []);
+  const selfOf = (ip: string) => (boxIps.has(ip) ? "box" as const : mineIps.has(ip) ? "mine" as const : undefined);
+  const shownBefore = filtering ? results ?? [] : all;
+  // self-tests (this box, sources marked yours): the toggle shows only when this probe has one
+  const selfCount = all.reduce((n, i) => n + (selfOf(i.remoteAddress) ? 1 : 0), 0);
+  const hits = hideSelf && selfCount ? shownBefore.filter((i) => !selfOf(i.remoteAddress)) : shownBefore;
+  const selfHidden = shownBefore.length - hits.length;
 
   // keyboard: j / k move through hits
   useEffect(() => {
@@ -495,8 +551,6 @@ export function ProbePane() {
       last.set(i.remoteAddress, i);
     }
   }
-  const boxIps = new Set(s.status?.selfIps ?? []), mineIps = new Set(s.status?.mineIps ?? []);
-  const selfOf = (ip: string) => (boxIps.has(ip) ? "box" as const : mineIps.has(ip) ? "mine" as const : undefined);
   // with no row selected (a filter hid it), the first row is the table's tab stop
   const selShown = hits.some((i) => i.id === hitId);
   let stopGiven = selShown;
@@ -574,7 +628,12 @@ export function ProbePane() {
           placeholder="Search names, paths, bodies, IPs" className="h-full w-full min-w-0 bg-transparent font-mono text-body text-bone outline-none placeholder:font-sans placeholder:text-ash" />
         {q && <button type="button" aria-label="Clear search" onClick={() => setQ("")} className="flex-none cursor-pointer text-ash hover:text-bone"><X className="size-3.5" strokeWidth={1.5} /></button>}
       </label>
-      {filtering && <span className="text-label whitespace-nowrap text-ash">{results === null ? "searching…" : `${results.length}${results.length === 500 ? "+" : ""} ${results.length === 1 ? "match" : "matches"}`}</span>}
+      {selfCount > 0 && (
+        <label className="flex flex-none cursor-pointer items-center gap-[7px] text-label text-smoke" title="Hits from this box or from sources you marked as yours">
+          <Switch checked={hideSelf} onCheckedChange={setHideSelf} aria-label="Hide self-tests" />Hide self-tests{hideSelf && selfHidden > 0 && <span className="text-ash">({selfHidden} hidden)</span>}
+        </label>
+      )}
+      {filtering && <span className="text-label whitespace-nowrap text-ash">{results === null ? "searching…" : `${hits.length}${results.length === 500 ? "+" : ""} ${hits.length === 1 ? "match" : "matches"}`}</span>}
       <Button variant="ghost" size="sm" asChild className="flex-none"><a href={exportUrl(s.sel!)} download title="Every stored hit of this probe as JSON lines, raw bytes included"><Download />Export</a></Button>
     </>
   );
@@ -605,7 +664,13 @@ export function ProbePane() {
             e.preventDefault(); el.focus(); el.click();
           }}>
             {rows}
-            {filtering && results?.length === 0 && <tr><td colSpan={5} className="px-6 py-3 text-body text-ash">No stored hits match. Search covers names, request lines, raw requests and source IPs.</td></tr>}
+            {(filtering ? results !== null : selfHidden > 0) && hits.length === 0 && (
+              <tr><td colSpan={5} className="px-6 py-3 text-body text-ash">
+                {kinds.length && !q.trim() ? `No ${kinds.map((k) => (k === "web" ? "HTTP(S)" : k.toUpperCase())).join(" or ")} hits on this probe.` : "No stored hits match. Search covers names, request lines, raw requests and source IPs."}
+                {selfHidden > 0 && ` ${plural(selfHidden, "self-test")} hidden.`}
+                {" "}<button type="button" className="cursor-pointer text-smoke underline decoration-ash underline-offset-2 hover:text-bone" onClick={() => { setKinds([]); setQ(""); setHideSelf(false); }}>Show all</button>
+              </td></tr>
+            )}
           </tbody>
         </table>
         {!filtering && !s.olderDone[s.sel] && ownCount < (p ? p.hits : s.untagged?.hits ?? 0) && (
