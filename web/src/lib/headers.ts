@@ -39,3 +39,39 @@ export function uaShort(ua: string): string {
   }
   return s.length > 48 ? `${s.slice(0, 47)}…` : s;
 }
+
+// Redirect hops: what the client's HTTP library changed between one request and the next from the same
+// source. Credentials and custom headers that survive a redirect to another host are a finding; a
+// method that turned from POST into GET says which redirect codes it rewrites. Header names only (the
+// values are in each hit's own request).
+const HOP_IGNORED = new Set(["host", "content-length", "content-type", "transfer-encoding", "connection", "keep-alive"]);
+const CREDENTIALS = new Set(["authorization", "cookie", "proxy-authorization"]);
+const headerNames = (raw: string) => {
+  const out = new Map<string, string>(); // lowercase -> as sent
+  for (const ln of raw.split(/\r?\n\r?\n/)[0].split(/\r?\n/).slice(1)) {
+    const m = /^([^:\s]+):/.exec(ln);
+    if (m && !out.has(m[1].toLowerCase())) out.set(m[1].toLowerCase(), m[1]);
+  }
+  return out;
+};
+const methodOf = (raw: string) => /^([A-Z]{2,12}) /.exec(raw)?.[1] ?? "";
+export type HopDiff = { method: [string, string] | null; kept: string[]; dropped: string[]; added: string[] };
+export function hopDiff(prevRaw: string, curRaw: string): HopDiff {
+  const a = headerNames(prevRaw), b = headerNames(curRaw);
+  const ma = methodOf(prevRaw), mb = methodOf(curRaw);
+  const notable = (k: string) => CREDENTIALS.has(k) || !isStandardHeader(k) && !HOP_IGNORED.has(k) && k !== "user-agent";
+  // credentials first, then the rest in the order sent
+  const order = (ks: string[]) => [...ks.filter((k) => CREDENTIALS.has(k)), ...ks.filter((k) => !CREDENTIALS.has(k))];
+  return {
+    method: ma && mb && ma !== mb ? [ma, mb] : null,
+    kept: order([...a.keys()].filter((k) => b.has(k) && notable(k))).map((k) => b.get(k)!),
+    dropped: order([...a.keys()].filter((k) => !b.has(k) && notable(k))).map((k) => a.get(k)!),
+    added: order([...b.keys()].filter((k) => !a.has(k) && notable(k))).map((k) => b.get(k)!),
+  };
+}
+// "method POST → GET · kept Authorization, Cookie · dropped X-Api-Key"; "same method and headers"
+export function hopWords(d: HopDiff): string {
+  const parts = [d.method && `method ${d.method[0]} → ${d.method[1]}`, d.kept.length && `kept ${d.kept.join(", ")}`,
+    d.dropped.length && `dropped ${d.dropped.join(", ")}`, d.added.length && `added ${d.added.join(", ")}`].filter(Boolean);
+  return parts.length ? parts.join(" · ") : "same method and headers";
+}

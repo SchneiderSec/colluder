@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronRight, Copy, Dices, Download, Trash2, X } from "lucide-react";
 import { api, deleteMail, fetchMail, markMailSeen, MAIL_PAGE, onMail, readMailSeen, save, useApp } from "@/store";
 import { quickTag } from "@/lib/quicktag";
+import { typingOrModal } from "@/lib/shortcuts";
 import type { MailDetail, MailRow } from "@/lib/types";
 import { ago, dayLabel, dayOrTime, exact, hm, isoMs, plural, setupCmd, stamp, zoneName } from "@/lib/format";
 import { copy, toast } from "@/lib/toast";
@@ -144,6 +145,7 @@ export function Mailbox({ arg }: { arg: string | null }) {
     || (r.subject ?? "").toLowerCase().includes(needle) || (r.from ?? "").toLowerCase().includes(needle) || (r.mailFrom ?? "").toLowerCase().includes(needle))), [rows, addr, org, needle]);
   const sel = arg && /^\d+$/.test(arg) ? Number(arg) : shown[0]?.id ?? null;
   const listRef = useRef<HTMLDivElement>(null);
+  const findRef = useRef<HTMLInputElement>(null);
   // what's shown, in words, for the dialog: "to acme-victim, from acme.example, matching “x”"
   const scope = [addr !== ALL && `to ${addr}`, org !== ALL && `from ${org}`, needle && `matching “${filter.trim()}”`].filter(Boolean).join(", ");
   const total = Math.max(mb?.count ?? 0, rows?.length ?? 0);
@@ -166,7 +168,24 @@ export function Mailbox({ arg }: { arg: string | null }) {
       toast(`Deleted ${plural(r.deleted, "message")}`);
     } catch (e) { toast(`Couldn't delete: ${(e as Error).message}`, true); }
   };
-  useEffect(() => { listRef.current?.scrollTo({ top: 0 }); }, [addr, org, needle]);   // a new filter starts at its newest
+  useEffect(() => { listRef.current?.scrollTo({ top: 0 }); }, [addr, org, needle]);
+  // keys: / finds mail; j and k step through the messages as listed (an open archive included)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (typingOrModal(e)) return;
+      if (e.key === "/") { e.preventDefault(); findRef.current?.focus(); return; }
+      if (e.key !== "j" && e.key !== "k") return;
+      const links = [...(listRef.current?.querySelectorAll<HTMLAnchorElement>('a[href^="#mailbox/"]') ?? [])];
+      if (!links.length) return;
+      const at = links.findIndex((a) => a.getAttribute("aria-current") === "true");
+      const next = links[at === -1 ? 0 : Math.min(Math.max(at + (e.key === "j" ? 1 : -1), 0), links.length - 1)];
+      e.preventDefault();
+      location.hash = next.getAttribute("href")!;
+      next.scrollIntoView({ block: "nearest" });
+    };
+    addEventListener("keydown", onKey);
+    return () => removeEventListener("keydown", onKey);
+  }, []);   // a new filter starts at its newest
 
   const recent = narrowed ? shown : shown.slice(0, RECENT);
   const older = narrowed ? [] : shown.slice(RECENT);
@@ -198,7 +217,7 @@ export function Mailbox({ arg }: { arg: string | null }) {
           )}
           <label className="ml-auto flex h-[30px] w-[240px] items-center gap-2 rounded-[3px] border border-rule bg-well px-2.5 text-body text-smoke focus-within:border-smoke max-[820px]:ml-0 max-[820px]:w-full">
             Find
-            <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="sender, subject, address" className="min-w-0 flex-1 bg-transparent font-mono text-bone caret-amber outline-none placeholder:font-sans placeholder:text-ash" />
+            <input ref={findRef} aria-label="Find mail" value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="sender, subject, address" className="min-w-0 flex-1 bg-transparent font-mono text-bone caret-amber outline-none placeholder:font-sans placeholder:text-ash" />
           </label>
         </div>
         {mb && (

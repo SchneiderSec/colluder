@@ -455,3 +455,14 @@ test("clone: the next free tag, and the answer pointed at the new probe", async 
   const x = retarget({ mode: "preset", delayMs: 0, schemes: { http: true, https: true }, kind: "xxe", params: { host: "av-h.example", file: "/etc/hostname" } }, "av-h.example", "av-2-h.example");
   assert.equal(x.params!.host, "av-2-h.example");
 });
+
+test("hops: what the client changed between redirects (method, credentials, custom headers)", async () => {
+  const { hopDiff, hopWords } = await import("../src/lib/headers.ts");
+  const a = "POST /x?hop=1 HTTP/1.1\r\nHost: a\r\nAuthorization: Bearer t\r\nCookie: s=1\r\nX-Api-Key: k\r\nAccept: */*\r\nContent-Length: 3\r\n\r\nabc";
+  const b = "GET /x?hop=2 HTTP/1.1\r\nHost: a\r\nCookie: s=1\r\nAccept: */*\r\nReferer: http://a/x?hop=1\r\n\r\n";
+  const d = hopDiff(a, b);
+  assert.deepEqual(d, { method: ["POST", "GET"], kept: ["Cookie"], dropped: ["Authorization", "X-Api-Key"], added: ["Referer"] });
+  assert.equal(hopWords(d), "method POST → GET · kept Cookie · dropped Authorization, X-Api-Key · added Referer");
+  assert.equal(hopWords(hopDiff(b, b)), "kept Cookie, Referer");
+  assert.equal(hopWords(hopDiff("GET / HTTP/1.1\r\nHost: a\r\nAccept: */*\r\n\r\n", "GET /2 HTTP/1.1\r\nHost: b\r\nAccept: */*\r\n\r\n")), "same method and headers");
+});

@@ -1,8 +1,8 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Archive, ArrowDownToLine, Bell, BellOff, Check, ChevronDown, ChevronRight, PanelLeftClose, Rows3, Rows4, Search, Trash2, X } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { CardOnCrew, FACETS, FacetChips, HitMatch, clearFacets, useHitSearch, NameEditor, ProbeActions, ProbeMarks, facetMatch, isSilent, retireMany, marksLabel, setFolded, setFoldMode, startRename, toggleFacet, useFacets, useFoldMode, useProbeSnap } from "./ProbeTabs";
-import { useApp, select, unreadFor, setDiscord, lateHit, deleteProbe, setPlanting, save, type AppState } from "@/store";
+import { CardOnCrew, FACETS, openFromList, FacetChips, HitMatch, clearFacets, useHitSearch, NameEditor, ProbeActions, ProbeMarks, facetMatch, isSilent, retireMany, marksLabel, setFolded, setFoldMode, startRename, toggleFacet, useFacets, useFoldMode, useProbeSnap } from "./ProbeTabs";
+import { useApp, unreadFor, setDiscord, lateHit, deleteProbe, setPlanting, save, type AppState } from "@/store";
 import { probeState, quietLine } from "@/lib/probeState";
 import { Button } from "@/components/ui/button";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -105,7 +105,7 @@ function Row({ s, p, k, stop, dense }: { s: AppState; p: Probe | (Counts & Parti
   return (
     <ProbeActions s={s} k={k}>
       {renaming ? <div data-key={k} className={cls}>{body}</div> : (
-        <button ref={ref} type="button" role="option" aria-selected={sel} aria-label={label} data-key={k} onClick={() => select(k)} onDoubleClick={(e) => { e.preventDefault(); startRename(k); }} tabIndex={sel || stop ? 0 : -1} className={cls}>{body}</button>
+        <button ref={ref} type="button" role="option" aria-selected={sel} aria-label={label} data-key={k} onClick={(e) => openFromList(k, e)} onDoubleClick={(e) => { e.preventDefault(); startRename(k); }} tabIndex={sel || stop ? 0 : -1} className={cls}>{body}</button>
       )}
     </ProbeActions>
   );
@@ -162,7 +162,7 @@ function Brief({ s, p }: { s: AppState; p: Probe }) {
           <NameEditor k={p.tag} />
         </div>
       ) : (
-        <button ref={ref} type="button" role="option" aria-selected={sel} aria-label={label} data-key={p.tag} onClick={() => select(p.tag)} onDoubleClick={(e) => { e.preventDefault(); startRename(p.tag); }} tabIndex={sel ? 0 : -1} className={cls}>
+        <button ref={ref} type="button" role="option" aria-selected={sel} aria-label={label} data-key={p.tag} onClick={(e) => openFromList(p.tag, e)} onDoubleClick={(e) => { e.preventDefault(); startRename(p.tag); }} tabIndex={sel ? 0 : -1} className={cls}>
           <CardOnCrew s={s} k={p.tag} side="right" hint="Double-click the row to rename · right-click for more">
             <CrewMark size={18} {...look} state={retired || st === "unplanted" ? "doze" : "wink"} className={cn(retired && "opacity-70")} />
           </CardOnCrew>

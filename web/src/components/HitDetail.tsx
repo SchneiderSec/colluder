@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowDown, ChevronRight, Copy, Download, FileText, Search, Terminal, X } from "lucide-react";
-import { useApp, loadDetail, lookupAsn, save, chatterOf, setMine, selectHit, select, keyOf } from "@/store";
+import { useApp, getState, loadDetail, lookupAsn, save, chatterOf, setMine, selectHit, select, keyOf } from "@/store";
 import { dnsSteps } from "@/lib/dns";
 import { stageOf, xxeArrived, xxeValue } from "@/lib/stage";
 import { decodeLabels } from "@/lib/exfil";
 import { showControls } from "@/lib/query";
 import { variantOf, SECTION_LABEL } from "@/lib/kit";
 import { toCurl } from "@/lib/curl";
-import type { Enrich, InteractionDetail } from "@/lib/types";
-import { uaShort } from "@/lib/headers";
+import type { Enrich, Interaction, InteractionDetail } from "@/lib/types";
+import { hopDiff, hopWords, uaShort } from "@/lib/headers";
+import { typingOrModal } from "@/lib/shortcuts";
 import { byteCount, isoMs, lineCount, stamp } from "@/lib/format";
 import { answeredBy, decode, evidence } from "@/lib/raw";
 import { DnsLine, DnsNameMarked, ExactLine, HttpParsed, MailLine, parseHttp, type Parsed } from "./HttpView";
@@ -146,6 +147,23 @@ function Decoded({ title, how, text, name, wrap }: { title: string; how: string;
   );
 }
 
+// Redirect hops: what changed since the request before this one from the same client (same source and
+// User-Agent, within 10 s). Its detail loads once, for the comparison.
+function HopCompare({ d, prev }: { d: InteractionDetail; prev: Interaction }) {
+  const pd = useApp((x) => x.details.get(prev.id));
+  const [err, setErr] = useState(false);
+  useEffect(() => { if (!pd) loadDetail(prev.id).catch(() => setErr(true)); }, [prev.id, pd]);
+  const ms = isoMs(d.timestamp) - isoMs(prev.timestamp);
+  return (
+    <p className="flex flex-none flex-wrap items-baseline gap-x-2 text-body text-smoke">
+      <span className="text-label font-[550] tracking-[.03em] text-ash" title="Compared with the request before this one from the same source and User-Agent: header names only; each hit has the values">vs #{prev.id}</span>
+      {pd ? <span className="text-bone">{hopWords(hopDiff(pd.rawRequest, d.rawRequest))}</span> : <span className="text-ash">{err ? "couldn't load it" : "comparing…"}</span>}
+      <button type="button" onClick={() => { if (keyOf(prev) !== getState().sel) select(keyOf(prev)); selectHit(prev.id); }} className="cursor-pointer text-ash underline decoration-rule underline-offset-2 hover:text-bone">open #{prev.id}</button>
+      <span className="text-ash">{ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`} earlier</span>
+    </p>
+  );
+}
+
 export function HitDetail({ id }: { id: number }) {
   const s = useApp((x) => x);
   const [decoded, setDecoded] = useState(false);
@@ -173,11 +191,24 @@ export function HitDetail({ id }: { id: number }) {
     return () => removeEventListener("keydown", onKey);
   }, []);
 
+  // e copies the open hit as evidence, c as curl (a web hit); set below once the detail has loaded
+  const keys = useRef<{ evidence?: () => void; curl?: () => void }>({});
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (typingOrModal(e)) return;
+      const run = e.key === "e" ? keys.current.evidence : e.key === "c" ? keys.current.curl : undefined;
+      if (run) { e.preventDefault(); run(); }
+    };
+    addEventListener("keydown", onKey);
+    return () => removeEventListener("keydown", onKey);
+  }, []);
+
   // Strip Bay: the detail sits on the bay, as two strips: what happened (header, lead, fields, notes),
   // then the bytes (view controls, request and response, custody)
   const box = "@container/detail relative flex min-h-0 flex-col gap-2 overflow-auto border-t border-rule bg-bay p-2 max-[820px]:p-1.5";
   const strip = "flex flex-none flex-col gap-2.5 rounded-md border border-rule bg-soot py-3 pr-4 pl-5 max-[820px]:px-3";
   const d = s.details.get(id);
+  if (!d) keys.current = {}; // still loading: e and c wait for this hit, never copy the last one
   if (!d) return <article className={box}><p className={cn(strip, "text-ash")}>{err ? `Could not load #${id}: ${err}` : `Loading #${id}…`}</p></article>;
 
   const e: Partial<Enrich> = s.enrich.get(d.remoteAddress) ?? d.enrich ?? {};
@@ -214,6 +245,13 @@ export function HitDetail({ id }: { id: number }) {
   // other web hits from this address within 10 s, in time order: one firing, step by step
   const near = web && !fromBox ? s.list.filter((i) => i.id !== d.id && (i.protocol === "http" || i.protocol === "https") && i.remoteAddress === d.remoteAddress
     && Math.abs(isoMs(i.timestamp) - isoMs(d.timestamp)) <= 10_000).sort((x, y) => isoMs(x.timestamp) - isoMs(y.timestamp)) : [];
+  // the request before this one from the same client, for the hop comparison (this box's own curl -L
+  // tests included: checking what your client forwards is the point)
+  const uaOf = (sum: string) => sum.split(" · ").slice(1).join(" · ");
+  const prevHop = web ? s.list.filter((i) => i.id !== d.id && (i.protocol === "http" || i.protocol === "https") && i.remoteAddress === d.remoteAddress && uaOf(i.summary) === uaOf(d.summary)
+    && isoMs(i.timestamp) <= isoMs(d.timestamp) && isoMs(d.timestamp) - isoMs(i.timestamp) <= 10_000 && (isoMs(i.timestamp) < isoMs(d.timestamp) || i.id < d.id))
+    .sort((x, y) => isoMs(y.timestamp) - isoMs(x.timestamp) || y.id - x.id)[0] : undefined;
+  keys.current = { evidence: () => copy(evidence(d, e, probe, s.status?.payload?.domain), "evidence block"), curl: curl ? () => copy(curl, "curl command") : undefined };
   const webSub = (t: string, pp: Parsed | null, who: string) => (parsed ? (pp ? `parsed · ${byteCount(t)} bytes` : `couldn't parse as HTTP · exact lines · ${size(t)}`) : `${who} · ${size(t)}`);
 
   return (
@@ -287,6 +325,7 @@ export function HitDetail({ id }: { id: number }) {
           {near.length > 4 && <span className="text-ash">+{near.length - 4} more</span>}
         </p>
       )}
+      {prevHop && <HopCompare key={prevHop.id} d={d} prev={prevHop} />}
       {chatter && (
         <p className="flex-none text-body text-smoke">
           <b className="font-semibold text-bone">Likely resolver chatter.</b> A lookup of the bare payload id within 10 s of a hit on <span className="font-mono text-bone">{chatter}</span>: a resolver walking the name label by label (QNAME minimisation), or a client resolving the HTTPS host. Kept, but not counted as new.

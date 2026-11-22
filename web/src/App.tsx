@@ -12,6 +12,7 @@ import { PayloadKit } from "@/components/PayloadKit";
 import { Mailbox } from "@/components/Mailbox";
 import { MarkSvg, setFavicon } from "@/components/Mark";
 import { Toaster } from "@/components/bits";
+import { ShortcutSheet } from "@/components/Shortcuts";
 import { nightNow, useDisplay } from "@/lib/display";
 import { cn } from "@/lib/utils";
 
@@ -119,6 +120,7 @@ export default function App() {
         <StatusBar />
       </div>
       <Toaster />
+      <ShortcutSheet view={route.view} />
       <div ref={favSrc} hidden aria-hidden="true"><MarkSvg size={64} badge={!!unread} /></div>
     </TooltipProvider>
   );
