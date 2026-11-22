@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowDown, ChevronRight, Copy, FileText, Search, Terminal, X } from "lucide-react";
+import { ArrowDown, ChevronRight, Copy, Download, FileText, Search, Terminal, X } from "lucide-react";
 import { useApp, loadDetail, lookupAsn, save, chatterOf, setMine, selectHit, select, keyOf } from "@/store";
 import { dnsSteps } from "@/lib/dns";
-import { stageOf } from "@/lib/stage";
+import { stageOf, xxeArrived, xxeValue } from "@/lib/stage";
 import { decodeLabels } from "@/lib/exfil";
+import { showControls } from "@/lib/query";
 import { variantOf, SECTION_LABEL } from "@/lib/kit";
 import { toCurl } from "@/lib/curl";
 import type { Enrich, InteractionDetail } from "@/lib/types";
@@ -116,6 +117,35 @@ function What({ d }: { d: InteractionDetail }) {
 
 const segCls = "h-6 rounded-none px-2.5 text-label text-smoke data-[state=on]:bg-soot-2 data-[state=on]:font-semibold data-[state=on]:text-bone";
 
+// Decoded data (an XXE file read, DNS label exfil) in full: real newlines, other control characters
+// marked in Ash, inert text only. Copy and the download give the decoded text (labelled so); the exact
+// request stays in the Request pane and its copies.
+function Decoded({ title, how, text, name, wrap }: { title: string; how: string; text: string; name: string; wrap: boolean }) {
+  const download = () => {
+    const url = URL.createObjectURL(new Blob([text], { type: "text/plain;charset=utf-8" }));
+    const a = Object.assign(document.createElement("a"), { href: url, download: name });
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+  // \r\n reads as a line end; a lone \r, NUL and the rest are shown as markers
+  const parts = showControls(text.replace(/\r\n/g, "\n"));
+  return (
+    <section aria-label={title} className="flex max-h-[320px] min-h-0 flex-none flex-col rounded-[3px] border border-rule bg-well">
+      <div className="flex h-8 flex-none items-center gap-2 border-b border-rule-2 pr-1 pl-3">
+        <b className="text-body font-[650] text-bone">{title}</b>
+        <span className="min-w-0 truncate text-label text-ash">{how} · {byteCount(text).toLocaleString("en-US")} bytes · {lineCount(text.replace(/\r?\n$/, ""))} lines</span>
+        <span className="ml-auto flex flex-none items-center">
+          <Button variant="ghost" size="sm" onClick={() => copy(text, "decoded data")}><Copy />Copy decoded</Button>
+          <Button variant="ghost" size="sm" onClick={download}><Download />.txt</Button>
+        </span>
+      </div>
+      <pre className={cn("m-0 min-h-0 overflow-auto px-3 py-2 font-mono text-body leading-[1.125rem] text-bone", wrap ? "break-all whitespace-pre-wrap" : "whitespace-pre")}>
+        {parts.map(([k, t], n) => (k === "ctl" ? (t === "\\n" ? "\n" : t === "\\t" ? "\t" : <span key={n} className="text-ash">{t}</span>) : t))}
+      </pre>
+    </section>
+  );
+}
+
 export function HitDetail({ id }: { id: number }) {
   const s = useApp((x) => x);
   const [decoded, setDecoded] = useState(false);
@@ -161,7 +191,10 @@ export function HitDetail({ id }: { id: number }) {
   const mine = (s.status?.mineIps ?? []).includes(d.remoteAddress);
   const kit = variantOf(d);
   const a = d.answer;
-  const stage = a ? stageOf({ summary: d.summary, fullId: d.fullId, rawRequest: d.rawRequest, hop: a.hop, decoy: a.decoy, answerCode: a.code, answerTo: a.to, hopCode: a.status, answerPart: a.part, answerMode: a.mode, malformed: a.malformed }) : null;
+  // decoded data shown in full below: the file an XXE DTD read, and DNS labels that decode as text
+  const xv = d.protocol === "http" || d.protocol === "https" ? xxeValue(d) : null;
+  const labelData = d.extraLabels?.length ? decodeLabels(d.extraLabels) : [];
+  const stage = a && xv ? `${a.malformed ? "malformed request · " : ""}${xxeArrived(xv)}` : a ? stageOf({ summary: d.summary, fullId: d.fullId, rawRequest: d.rawRequest, hop: a.hop, decoy: a.decoy, answerCode: a.code, answerTo: a.to, hopCode: a.status, answerPart: a.part, answerMode: a.mode, malformed: a.malformed }) : null;
   const tlsOnly = a?.mode === "tls" ? a.tls : null;
   const curl = web && d.rawRequest ? toCurl(d.rawRequest, d.protocol === "https" ? "https" : "http", { id: d.id, normalised: !d.answer, truncated: d.answer?.droppedBytes ?? 0, binary: !!d.binary }) : null;
   // who wrote the bytes: the edge records them off the socket; interactsh re-serialises them
@@ -290,11 +323,15 @@ export function HitDetail({ id }: { id: number }) {
       {!step && !!d.extraLabels?.length && !(kit && d.extraLabels.length === 1) && (
         <p className="flex-none text-body text-smoke">
           Extra labels before the tag: <span className="font-mono text-bone">{d.extraLabels.join(".")}</span>
-          {decodeLabels(d.extraLabels).map(({ label, decoded }) => (
-            <span key={label}> · <span className="font-mono">{label}</span> decodes as {decoded.kind} to <span className="font-mono text-bone">{decoded.text.replace(/[\r\n\t]/g, (c) => (c === "\n" ? "\\n" : c === "\t" ? "\\t" : "\\r"))}</span></span>
-          ))}
+          {labelData.length > 0 && <span className="text-ash"> · {labelData.length === 1 ? "decoded below" : `${labelData.length} decoded below`}</span>}
         </p>
       )}
+      {xv && xv.text && !xv.binary && (
+        <Decoded title="File read through XXE" how={xv.base64 ? "base64-decoded from ?d=" : "as sent in ?d="} text={xv.text} name={`${d.tag ?? "hit"}-${d.id}-file.txt`} wrap={wrap} />
+      )}
+      {!step && labelData.map(({ label, decoded }) => (
+        <Decoded key={label} title="Decoded DNS data" how={`${decoded.kind} decoded from ${label.includes(".") ? `${label.split(".").length} labels` : "one label"}`} text={decoded.text} name={`${d.tag ?? "hit"}-${d.id}-dns.txt`} wrap={wrap} />
+      ))}
 
       </div>
       {/* no min-h-0: the strip never shrinks below its panes (it used to, and the panes spilled out of

@@ -190,9 +190,17 @@ test("store: a probe's hits page by id, search escapes LIKE wildcards, filter by
   assert.equal(s.hits("pg", { q: "a%" }).length, 0);
   assert.equal(s.hits("pg", { q: "n4.pg" }).length, 1, "searches the DNS name");
   assert.equal(s.hits(null).length, 0);
+  // every probe at once: needs a search, escapes the same way, filters by type, skips cleared hits
+  assert.deepEqual(s.hitsAll({ q: "" }), []);
+  assert.equal(s.hitsAll({ q: "a_100%" }).length, 1);
+  assert.equal(s.hitsAll({ q: "a%" }).length, 0);
+  assert.equal(s.hitsAll({ q: "192.0.2.1", types: ["dns"] }).length, 4);
+  assert.ok(s.hitsAll({ q: "192.0.2.1", limit: 2 }).every((r, i, a) => !i || a[i - 1].id > r.id), "newest first");
   const ex = [...s.exportRows("pg")];
   assert.equal(ex.length, 7);
   assert.ok(ex[0].rawRequest && ex[0].reqSha256);
+  s.clearProbe("pg", "2026-11-05T11:00:00Z");
+  assert.equal(s.hitsAll({ q: "192.0.2.1" }).length, 0, "cleared hits aren't found");
 });
 
 test("store: rule history reports the deepest hop and decoy hits per version", () => {

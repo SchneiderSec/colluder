@@ -5,7 +5,7 @@ import { useApp, getState, setRuleDraft } from "@/store";
 import { METADATA, hostOf, pathOf, redirectable, type MetaRow } from "@/lib/metadata";
 import { parseIPv4 } from "@/lib/kit";
 import { UNTAGGED } from "@/lib/types";
-import { SECTIONS, addressForms, bypasses, callbacks, encode, formUrl, payloadParts, tagged, type Enc, type Payload } from "@/lib/kit";
+import { ENCODINGS, SECTIONS, addressForms, bypasses, callbacks, encName, encode, formUrl, payloadParts, tagged, type Enc, type Payload } from "@/lib/kit";
 import { copy } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -20,6 +20,20 @@ const TARGETS: [string, string][] = [["169.254.169.254", "AWS, Azure, GCP, Oracl
 
 const fld = "flex h-[30px] min-w-0 items-center rounded-[3px] border border-rule bg-well px-2.5 font-mono text-body text-bone transition-colors focus-within:border-smoke";
 const seg = "h-[26px] rounded-none border-l border-rule px-[11px] text-body text-smoke first:border-l-0 data-[state=on]:bg-soot-2 data-[state=on]:font-semibold data-[state=on]:text-bone";
+
+// How copies are encoded, the same picker wherever payloads are copied. It isn't remembered: a reload is
+// "as is" again, so a double-encoded string never gets pasted by surprise.
+export function EncPicker({ value, onChange, small }: { value: Enc; onChange: (e: Enc) => void; small?: boolean }) {
+  return (
+    <ToggleGroup type="single" value={value} onValueChange={(v) => v && onChange(v as Enc)} aria-label="Copy encoding" className="w-fit overflow-hidden rounded-[3px] border border-rule">
+      {ENCODINGS.map(([v, l, what]) => (
+        <ToggleGroupItem key={v} value={v} title={what || "exactly as shown"}
+          className={small ? "h-[22px] rounded-none border-l border-rule px-2 text-label text-smoke first:border-l-0 data-[state=on]:bg-soot-2 data-[state=on]:font-semibold data-[state=on]:text-bone" : seg}>{l}</ToggleGroupItem>
+      ))}
+    </ToggleGroup>
+  );
+}
+export const copyAs = (text: string, enc: Enc, what: string) => copy(encode(text, enc), enc === "raw" ? what : `${what}, ${encName(enc)}`);
 
 // the payload exactly as copied: the shared host recedes, the tag is marked, and what tells payloads
 // apart (scheme, path, the variant code) stays bright
@@ -142,9 +156,7 @@ export function PayloadKit({ section }: { section: string | null }) {
         <code className="min-w-0 truncate font-mono text-body text-smoke"><Marked text={tagged(tag, host)} tag={tag} /></code>
         <span className="ml-auto flex items-center gap-2.5 text-body text-smoke">
           Copy
-          <ToggleGroup type="single" value={enc} onValueChange={(v) => v && setEnc(v as Enc)} aria-label="Encoding" className="overflow-hidden rounded-[3px] border border-rule">
-            {([["raw", "as is"], ["once", "URL-encoded"], ["twice", "encoded twice"]] as [Enc, string][]).map(([v, l]) => <ToggleGroupItem key={v} value={v} className={seg}>{l}</ToggleGroupItem>)}
-          </ToggleGroup>
+          <EncPicker value={enc} onChange={setEnc} />
         </span>
       </header>
 
