@@ -1,8 +1,8 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
-import { Archive, ArrowDownToLine, Bell, BellOff, Check, ChevronDown, ChevronRight, PanelLeftClose, Rows3, Rows4, Search, Trash2, X } from "lucide-react";
+import { Archive, ArrowDownToLine, Bell, BellOff, Check, CheckCheck, ChevronDown, ChevronRight, ListFilter, PanelLeftClose, Rows3, Rows4, Search, Trash2, X } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { CardOnCrew, FACETS, openFromList, FacetChips, HitMatch, clearFacets, useHitSearch, NameEditor, ProbeActions, ProbeMarks, facetMatch, isSilent, retireMany, marksLabel, setFolded, setFoldMode, startRename, toggleFacet, useFacets, useFoldMode, useProbeSnap } from "./ProbeTabs";
-import { useApp, unreadFor, setDiscord, lateHit, deleteProbe, setPlanting, save, type AppState } from "@/store";
+import { CardOnCrew, FACETS, openFromList, FacetChips, HitMatch, clearFacets, useHitSearch, NameEditor, ProbeActions, ProbeMarks, facetMatch, isSilent, retireMany, marksLabel, setFolded, setFoldMode, startRename, useFacets, useFoldMode, useProbeSnap } from "./ProbeTabs";
+import { useApp, unreadFor, setDiscord, lateHit, deleteProbe, setPlanting, save, markAllSeen, anyUnread, type AppState } from "@/store";
 import { probeState, quietLine } from "@/lib/probeState";
 import { Button } from "@/components/ui/button";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -185,6 +185,7 @@ export function ProbeList({ hidden }: { hidden?: boolean }) {
   const [delAll, setDelAll] = useState(false);
   useTick(30000);
   const fs = useFacets();
+  const [chipsOpen, setChipsOpen] = useState(false);
   const found = useHitSearch(q.trim());
   // a facet narrows like the text filter: retired probes that match show, Silent opens
   const needle = q.trim().toLowerCase();
@@ -255,11 +256,7 @@ export function ProbeList({ hidden }: { hidden?: boolean }) {
       <DropdownMenuContent align="end" className="min-w-[250px]">
         <DropdownMenuItem onSelect={() => { setDense(true); save("colluder.listDense", true); }}><Check className={dense ? "" : "invisible"} />One line per probe<span className="ml-auto text-label text-ash">compact</span></DropdownMenuItem>
         <DropdownMenuItem onSelect={() => { setDense(false); save("colluder.listDense", false); }}><Check className={dense ? "invisible" : ""} />Two lines per probe<span className="ml-auto text-label text-ash">target, kinds</span></DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <div className="px-2 pt-1 pb-0.5 text-label font-semibold text-smoke">Show only</div>
-        {FACETS.map(([f, label, what]) => (
-          <DropdownMenuItem key={f} title={what} onSelect={(e) => { e.preventDefault(); toggleFacet(f); }}><Check className={fs.includes(f) ? "" : "invisible"} />{label}</DropdownMenuItem>
-        ))}
+        {anyUnread(s) && <><DropdownMenuSeparator /><DropdownMenuItem onSelect={() => { markAllSeen(); toast("All hits marked as read."); }}><CheckCheck />Mark all read</DropdownMenuItem></>}
         {/* phones never fold: the list sits above the pane there */}
         <DropdownMenuSeparator className="max-[820px]:hidden" />
         <DropdownMenuItem className="max-[820px]:hidden" onSelect={() => setFoldMode(mode === "auto" ? "open" : "auto")}><Check className={mode === "auto" ? "" : "invisible"} />Tabs while reading a hit</DropdownMenuItem>
@@ -272,16 +269,21 @@ export function ProbeList({ hidden }: { hidden?: boolean }) {
     <section aria-label="Probes" hidden={hidden} className="flex min-h-0 flex-col gap-1.5 max-[820px]:max-h-[48vh]">
       <div className="mr-[14px] flex h-[53px] flex-none items-center gap-2 rounded-md border border-rule bg-soot pr-3 pl-4">
         <h2 className="text-title font-[650]" title="Latest activity first">Probes</h2><span className="text-body text-smoke">{live.length}</span>
-        <label className="ml-auto flex h-7 min-w-0 flex-1 basis-0 max-w-[170px] items-center gap-1.5 rounded-[3px] border border-rule bg-soot px-2 focus-within:border-smoke">
+        <label className="ml-auto flex h-7 min-w-0 flex-1 basis-0 max-w-[190px] items-center gap-1.5 rounded-[3px] border border-rule bg-soot px-2 focus-within:border-smoke">
           <Search className="size-3.5 flex-none text-ash" strokeWidth={1.5} aria-hidden="true" />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Filter probes" aria-label="Filter probes by tag, target or note"
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Filter" aria-label="Filter probes by tag, target or note"
             className="min-w-0 flex-1 bg-transparent text-body text-bone outline-none placeholder:text-ash" onKeyDown={(e) => e.key === "Escape" && setQ("")} />
           {q && <button type="button" aria-label="Clear filter" className="text-ash hover:text-bone" onClick={() => setQ("")}><X className="size-3.5" /></button>}
+          <button type="button" className={cn("-mr-1 flex size-5 flex-none items-center justify-center rounded-[3px] text-ash hover:text-bone", (chipsOpen || fs.length > 0) && "bg-soot-2 text-bone")} aria-label="Show only" aria-pressed={chipsOpen || fs.length > 0}
+            title={fs.length ? `Showing only: ${FACETS.filter(([f]) => fs.includes(f)).map(([, l]) => l).join(", ")}. Click to show all` : "Show only unread, web hits, Claude's or answering probes"}
+            onClick={() => { if (fs.length) { clearFacets(); setChipsOpen(false); } else setChipsOpen(!chipsOpen); }}><ListFilter className="size-3.5" /></button>
         </label>
-        <span className="flex flex-none items-center">{alerts}{view}</span>
-        <Button variant={s.planting ? "secondary" : "default"} size="sm" title="Plant a new probe (p)" aria-label="Plant" onClick={() => setPlanting(!s.planting)}><ArrowDownToLine /><span className="min-[821px]:max-[1180px]:hidden">Plant</span></Button>
+        <span className="flex flex-none items-center">
+          {alerts}{view}
+        </span>
+        <Button variant={s.planting ? "secondary" : "default"} size="sm" title="Plant a new probe (p)" aria-label="Plant" onClick={() => setPlanting(!s.planting)}><ArrowDownToLine /><span className="min-[821px]:max-[1400px]:hidden">Plant</span></Button>
       </div>
-      {fs.length > 0 && <FacetChips className="mr-[14px] flex-none px-1" />}
+      {(chipsOpen || fs.length > 0) && <FacetChips className="mr-[14px] flex-none px-1" />}
       <div ref={listRef} onKeyDown={onListKey} className="flex min-h-0 flex-1 flex-col overflow-auto">
         {narrowing && !active.length && !quiet.length && !retired.length && !found.length && (
           <p className="px-5 py-[18px] text-body text-smoke">No probe matches {needle ? `“${q.trim()}”${fs.length ? " with these filters" : ""}` : "these filters"}. <button type="button" className="underline decoration-ash underline-offset-2 hover:decoration-bone" onClick={() => { setQ(""); clearFacets(); }}>Clear the filter</button></p>

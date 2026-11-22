@@ -886,7 +886,7 @@ Investigated what leaving probes up costs. Load is not it: a probe is a row (the
 - **Decoded data is a well, not a sentence.** An XXE file read or DNS label exfil that decodes as text shows in full in a `--well` panel in the hit detail: a 32px title bar ("File read through XXE", how it was decoded, bytes and lines, Copy decoded, .txt), then the text with real line ends; other control characters show as Ash markers. The stage line says what arrived ("file data arrived: 412 bytes, 9 lines, base64-decoded"); table rows keep the short preview.
 - **vs #prev.** A web hit with an earlier request from the same source and User-Agent within 10 s gets a line under "Same source": method change, then header names kept, dropped and added (credentials first). Names only; values stay in each hit.
 - **Day dividers** (Soot 1 rows, Smoke label) split the hits table by day in the display zone when its hits span more than one day.
-- **The table/detail border drags.** A `role="separator"` between the hits table and the open hit: drag, arrows (Shift for bigger steps), Home/End; double-click returns to the Settings preset. Kept per browser; not on phones. Columns: `#` 132, Time 92, Type 100, Source 198 (an IPv4 address plus the "this box" chip), Request takes the rest.
+- **The table/detail border drags.** A `role="separator"` between the hits table and the open hit: drag, arrows (Shift for bigger steps), Home/End; double-click returns to the Settings preset. Kept per browser; not on phones. Columns (see the visual pass below for the current widths).
 - **Phones:** each hit row carries the request line or DNS name under the source, since the Request column is hidden; tapping a probe in the list scrolls to its pane.
 - **Facets** (Unread, Web hits, By Claude, Answering HTTP) are toggle chips: bordered, Soot 2 and Bone when on. They narrow the list and the switcher alike and open folded groups, like a search.
 - **Copy encodings** are one picker everywhere (as is, URL, URL ×2, JSON, XML), back to "as is" on reload.
@@ -899,3 +899,12 @@ Investigated what leaving probes up costs. Load is not it: a probe is a row (the
 - **Copies name their encoding.** Any copy made with an encoding other than "as is" says which in its toast ("HTTP, URL ×2"), in the Payload kit as everywhere else. Kit rows highlight on hover.
 - **The table/detail splitter shows a grip** at rest (a 36×3 Rule pill on the seam, Smoke on hover, Bone on focus).
 - **Mailbox:** a message is one scroll (header, code and link stay; the body fills the rest); an unread dot clears when that message is opened; labels use the hit detail's label grammar (label size, 550, Ash).
+
+## Visual pass, batch 2 (2026-11-22)
+
+- **Hits table columns:** `#` 116, Time 84 (104 on a 12-hour clock), Type 96, Source 148; Request takes the rest. Phones: 96 / 56 (72) / 76 / the rest, with 6px cell padding. A burst's ids share their prefix once (`#3387–88`, full range on hover).
+- **Time cells** show seconds in Ash after the minute (`16:57`:14); phones show the minute only. The exact stamp stays in the tooltip.
+- **The Request cell has two parts:** what arrived, then what the edge did right after it, in label size: the self-test chip, the short stage (`served x.dtd`, `hop 3 · → 302 169.254.169.254`), `+92 ms #3385`, the client. When room runs out the request truncates first (the details shrink at a fifth of its rate), so the outcome stays in view. The full stage sentence is in the tooltip.
+- **Routine DNS is quieter:** a lookup of just `<tag>-<id>` (no data labels) shows its resolver in Smoke. Labels beyond the tag keep full ink. A burst's resolvers are in the Source tooltip ("3 resolvers").
+- **Hit detail:** the Answered line says what the edge did (`→ <target> · followed 2 redirects`, `served x.dtd`) and, for a redirect, one visible Ash line: "A redirect sent isn't proof it was followed: a later hop is." "What the edge did" appears only when there's no response to describe. Mark as mine and Look up are ghost buttons at label size. Strips are `px-4 py-2.5`; Custody is the bytes strip's flush footer on the well.
+- **Probe list:** 360px wide (320 below 1400). A Show-only toggle sits inside the filter field; Mark all read is in the list's view menu and the All probes footer when anything is unread. The tab strip starts with a Dock button.

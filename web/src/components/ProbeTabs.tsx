@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { Archive, ArchiveRestore, Bell, CopyPlus, ChevronDown, ChevronRight, CircleStop, BellOff, CheckCheck, Eraser, ClipboardCopy, FileText, List, PanelLeftOpen, Pencil, Pin, PinOff, Plus, RotateCcw, Search, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { useApp, getState, select, unreadFor, searchAllHits, openHit, cloneProbe, lateHit, setPlanting, setDiscord, markSeen, fetchReport, clearProbe, restoreProbe, patchProbe, fetchRule, saveRule, type AppState } from "@/store";
+import { useApp, getState, select, unreadFor, searchAllHits, openHit, cloneProbe, lateHit, setPlanting, setDiscord, markSeen, markAllSeen, anyUnread, fetchReport, clearProbe, restoreProbe, patchProbe, fetchRule, saveRule, type AppState } from "@/store";
 import { PROTOS, UNTAGGED, type HttpRule, type Interaction, type Probe } from "@/lib/types";
 import { dayOrTime, isoMs, plural } from "@/lib/format";
 import { copy, toast } from "@/lib/toast";
@@ -718,6 +718,7 @@ function Switcher({ s, onPick }: { s: AppState; onPick: () => void }) {
       <div className="flex flex-none flex-wrap items-center gap-1 border-t border-rule p-1">
         <Button variant="ghost" size="sm" className="text-smoke" onClick={() => { onPick(); setFolded(false); }}><PanelLeftOpen />Dock the list<kbd className="ml-1 font-mono text-label text-ash">\</kbd></Button>
         <Button variant="ghost" size="sm" className="text-smoke" onClick={() => { onPick(); plantNew(); }}><Plus />Plant<kbd className="ml-1 font-mono text-label text-ash">p</kbd></Button>
+        {anyUnread(s) && <Button variant="ghost" size="sm" className="text-smoke" title="Every probe's new hits, retired ones included" onClick={() => { markAllSeen(); toast("All hits marked as read."); }}><CheckCheck />Mark all read</Button>}
         {!!snap.closed.length && <Button variant="ghost" size="sm" className="text-smoke" onClick={() => { onPick(); reopenTab(); }}><RotateCcw />Reopen<kbd className="ml-1 font-mono text-label text-ash">⇧T</kbd></Button>}
         {!needle && silentCount > 0 && <Button variant="ghost" size="sm" className="text-smoke" title="Armed, planted over a day ago, no hits yet. Undo in the message." onClick={() => retireMany(silentProbes(s).map((p) => p.tag), "silent probes")}><Archive />Retire {silentCount} silent</Button>}
         {d?.available && (
@@ -789,6 +790,7 @@ export function ProbeTabs() {
 
   return (
     <div className="flex h-9 flex-none items-end gap-1">
+      <Button variant="ghost" size="icon-sm" className="mb-1 flex-none text-smoke max-[820px]:hidden" aria-label="Dock the probe list" title={"Dock the probe list (\\)"} onClick={() => setFolded(false)}><PanelLeftOpen /></Button>
       <Popover open={switcher} onOpenChange={setSwitcher}>
         <PopoverTrigger asChild>
           <Button variant="ghost" size="sm" className="mb-1 flex-none gap-1.5 px-2 text-smoke"

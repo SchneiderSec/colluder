@@ -3,11 +3,11 @@ import { CircleStop, CopyPlus, Bell, BellOff, ChevronRight, Copy, Download, Elli
 import { useApp, getState, cloneProbe, keyOf, markSeen, selectHit, patchProbe, saveRule, fetchRule, fetchTrigger, fetchReport, chatterOf, setTab, unreadFor, loadOlder, searchHits, exportUrl, deleteProbe, clearProbe, restoreProbe, PROBE_TABS, type AppState, type ProbeTab } from "@/store";
 import { lastClearFor, probeState } from "@/lib/probeState";
 import { dnsSteps, mostSpecific } from "@/lib/dns";
-import { stageOf } from "@/lib/stage";
+import { stageOf, stageShort } from "@/lib/stage";
 import { uaShort } from "@/lib/headers";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { UNTAGGED, type Interaction, type Probe } from "@/lib/types";
-import { ago, dayKey, dayLabel, dayOrTime, exact, hm, isoMs, newestFirst, plural, settled, zoneName } from "@/lib/format";
+import { ago, dayKey, dayLabel, dayOrTime, exact, hmParts, idRange, isoMs, newestFirst, plural, settled, zoneName } from "@/lib/format";
 import { groupHits } from "@/lib/raw";
 import { copy, toast } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
@@ -319,6 +319,32 @@ function rowKeys(fn: () => void) {
   return (e: React.KeyboardEvent) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fn(); } };
 }
 
+// a table time: the minute in the row's ink, the seconds quieter (phones show the minute only)
+function TimeCell({ ts }: { ts: string }) {
+  const [hm_, ss, ampm] = hmParts(ts);
+  return <>{hm_}<span className="text-ash max-[820px]:hidden">{ss}</span>{ampm}</>;
+}
+
+// the Request cell in two parts: what arrived, then what the edge did with it right after. When the
+// cell runs out of room the request gives way first (the details shrink at a fifth of its rate), so a
+// long URL never pushes the outcome out of view.
+function Split({ left, right }: { left: React.ReactNode; right?: React.ReactNode }) {
+  return (
+    <span className="flex min-w-0 items-baseline gap-3">
+      <span className="min-w-[10ch] flex-[0_1_auto] truncate">{left}</span>
+      {right && <span className="flex min-w-0 flex-[0_0.2_auto] items-baseline gap-2 overflow-hidden text-label whitespace-nowrap">{right}</span>}
+    </span>
+  );
+}
+
+// a lookup of just <tag>-<id>: routine (a resolver, a client resolving the host). Labels beyond the tag
+// carry data, so those rows keep full ink.
+const plainDns = (i: Interaction) => {
+  if (i.protocol !== "dns" || !i.fullId.endsWith(i.uniqueId)) return false;
+  const labels = i.fullId.slice(0, -i.uniqueId.length).replace(/[.-]$/, "").split(".").filter(Boolean);
+  return labels.length <= 1 && (!labels[0] || labels[0].toLowerCase() === (i.tag ?? "").toLowerCase());
+};
+
 // the labels before the payload id, for naming a longer lookup compactly
 const labelsOf = (fullId: string) => fullId.split(".").slice(0, -3).join(".") || fullId;
 
@@ -332,21 +358,31 @@ function HitRow({ i, open, sel, arrived, child, chatter, inProbe, step, self, st
     <tr ref={ref} data-hit={i.id} tabIndex={sel || stop ? 0 : -1} aria-selected={sel} onClick={(e) => { e.stopPropagation(); onClick(); }} onKeyDown={rowKeys(onClick)}
       className={cn("group cursor-pointer", arrived && "[&>td]:animate-lit", child && "[&>td]:bg-child [&>td:first-child]:pl-11", (quiet || self) && !sel && "[&>td]:text-smoke [&_.text-bone]:text-smoke")}>
       <Td sel={sel} first><span className={cn("flex items-center gap-1.5 font-semibold", isNew ? "text-bone" : "text-smoke")}>{isNew ? <NewDot /> : <NilDot />}#{i.id}</span></Td>
-      <Td sel={sel} title={exact(i.timestamp)}>{hm(i.timestamp)}</Td>
+      <Td sel={sel} title={exact(i.timestamp)}><TimeCell ts={i.timestamp} /></Td>
       <Td sel={sel}><TypeChip proto={i.protocol}>{i.protocol === "dns" ? `DNS ${i.qType || "other"}` : undefined}</TypeChip></Td>
       <Td sel={sel} className="font-mono text-body">
-        <span className={cn(web && !self && !sel && "font-[550] text-bone")}>{i.remoteAddress}</span>
-        {self && <span className="ml-2 font-sans" title="A self-test (the OOB box, or a source you marked as yours), not the target"><Chip grey>{self === "mine" ? "yours" : "this box"}</Chip></span>}
+        <span className={cn(web && !self && !sel && "font-[550] text-bone", plainDns(i) && !sel && "text-smoke")} title={i.remoteAddress}>{i.remoteAddress}</span>
         {/* phones: the Request column is hidden, so what arrived rides under the source */}
-        <span className="hidden truncate text-label text-smoke max-[820px]:block">{i.protocol === "dns" ? i.fullId : reqOf(i.summary).replace(/ HTTP\/[\d.]+$/, "")}{stageOf(i) ? <span className="font-sans"> · {stageOf(i)}</span> : null}</span>
+        <span className="hidden truncate text-label text-smoke max-[820px]:block">{i.protocol === "dns" ? i.fullId : reqOf(i.summary).replace(/ HTTP\/[\d.]+$/, "")}{stageShort(i) ? <span className="font-sans"> · {stageShort(i)}</span> : null}</span>
       </Td>
-      <Td sel={sel} last>{web || i.protocol === "smtp" ? <>{web ? <RequestLine line={reqOf(i.summary)} /> : <span className="font-mono text-body">{reqOf(i.summary)}</span>}{stageOf(i) && <span className="ml-2 text-label whitespace-nowrap text-smoke" title="What Colluder's edge answered. A redirect sent is not proof it was followed; a later hop is.">· {stageOf(i)}</span>}{after && <span className="ml-2 text-label whitespace-nowrap text-smoke" title={`Same source as #${after.id}, ${after.ms} ms later: most likely the same firing`}>· {after.ms < 1000 ? `${after.ms} ms` : `${(after.ms / 1000).toFixed(1)} s`} after #{after.id}</span>}{uaOf(i.summary) && <span className="ml-2 text-label text-ash" title={uaOf(i.summary)}>· {uaShort(uaOf(i.summary))}</span>}</> : i.protocol === "dns" ? <><DnsName i={i} />{chatter && <span className="text-label text-ash" title="A lookup of the bare payload id near this probe's hits: a resolver walking the name, or a client resolving the HTTPS host. Kept, never counted as new."> · resolver chatter{inProbe ? "" : ` around ${chatter}`}</span>}{step && <span className="text-label text-ash" title={`The resolver asked for this on its way to ${step} (QNAME minimisation). Not exfil data.`}> · resolver step toward <span className="font-mono">{labelsOf(step)}</span></span>}</> : <span className="text-label text-smoke">{i.summary}</span>}</Td>
+      <Td sel={sel} last>
+        <Split
+          left={web ? <RequestLine line={reqOf(i.summary)} /> : i.protocol === "smtp" ? <span className="font-mono text-body">{reqOf(i.summary)}</span> : i.protocol === "dns" ? <DnsName i={i} /> : <span className="text-label text-smoke">{i.summary}</span>}
+          right={<>
+            {self && <span className="flex-none font-sans" title="A self-test (the OOB box, or a source you marked as yours), not the target"><Chip grey>{self === "mine" ? "yours" : "this box"}</Chip></span>}
+            {(web || i.protocol === "smtp") && stageShort(i) && <span className="min-w-0 truncate text-smoke" title={`What Colluder's edge did: ${stageOf(i)}. A redirect sent is not proof it was followed; a later hop is.`}>{stageShort(i)}</span>}
+            {web && after && <span className="flex-none text-ash" title={`Same source as #${after.id}, ${after.ms} ms later: most likely the same firing`}>{after.ms < 1000 ? `+${after.ms} ms` : `+${(after.ms / 1000).toFixed(1)} s`} #{after.id}</span>}
+            {web && uaOf(i.summary) && <span className="min-w-0 truncate text-ash @max-[760px]/probe:hidden" title={uaOf(i.summary)}>{uaShort(uaOf(i.summary))}</span>}
+            {chatter && <span className="flex-none text-ash" title="A lookup of the bare payload id near this probe's hits: a resolver walking the name, or a client resolving the HTTPS host. Kept, never counted as new.">resolver chatter{inProbe ? "" : ` around ${chatter}`}</span>}
+            {step && <span className="min-w-0 truncate text-ash" title={`The resolver asked for this on its way to ${step} (QNAME minimisation). Not exfil data.`}>resolver step toward <span className="font-mono">{labelsOf(step)}</span></span>}
+          </>} />
+      </Td>
     </tr>
   );
 }
 function Td({ children, sel, first, last, className, title }: { children: React.ReactNode; sel: boolean; first?: boolean; last?: boolean; className?: string; title?: string }) {
   return (
-    <td className={cn("overflow-hidden border-b border-rule-2 px-2.5 py-1.5 text-body text-ellipsis whitespace-nowrap group-hover:bg-hover",
+    <td className={cn("overflow-hidden border-b border-rule-2 px-2.5 py-1.5 text-body text-ellipsis whitespace-nowrap group-hover:bg-hover max-[820px]:px-1.5",
       first && "pl-6 max-[820px]:pl-3.5", last ? "max-[820px]:hidden" : "border-r border-r-rule-2", sel && "border-b-rule bg-soot-2 text-bone group-hover:bg-soot-2", className)} title={title}>{children}</td>
   );
 }
@@ -405,7 +441,9 @@ export function ProbePane() {
   const s = useApp((x) => x);
   const tabsView = useTabsView();
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
-  const hitsHeight = useDisplay().hits;
+  const display = useDisplay();
+  const hitsHeight = display.hits;
+  const twelveHour = display.clock === "12";
   // the table's height while a hit is open: dragged (kept per browser), else the Settings preset
   const tableBox = useRef<HTMLDivElement>(null);
   const [hitsPx, setHitsPxState] = useState<number | null>(() => { try { const v = Number(localStorage.getItem("colluder.hitsPx")); return v > 0 ? v : null; } catch { return null; } });
@@ -624,19 +662,23 @@ export function ProbePane() {
             <span aria-hidden="true" className="-mr-0.5 -ml-1 text-smoke">
               <ChevronRight className={cn("size-3 transition-transform duration-200", exp && "rotate-90")} />
             </span>
-            #{first.id}–{last.id}
+            <span title={`#${first.id} to #${last.id}`}>#{idRange(first.id, last.id)}</span>
           </span>
         </Td>
-        <Td sel={sel} title={exact(first.timestamp)}>{hm(first.timestamp)}</Td>
-        <Td sel={sel}><TypeChip proto="dns">DNS ×{own.length || items.length}</TypeChip>{own.length > 0 && own.length < items.length && <span className="ml-1.5 text-label text-ash" title="Lookups of the bare payload id near this probe's hits: resolver chatter, kept but not counted">+{items.length - own.length} chatter</span>}</Td>
-        <Td sel={sel}>{srcs.size === 1 ? <span className="font-mono text-body">{first.remoteAddress}</span> : `${srcs.size} resolvers`}
+        <Td sel={sel} title={exact(first.timestamp)}><TimeCell ts={first.timestamp} /></Td>
+        <Td sel={sel}><TypeChip proto="dns">DNS ×{own.length || items.length}</TypeChip></Td>
+        <Td sel={sel} className={cn(items.every(plainDns) && !sel && "text-smoke")}>{srcs.size === 1 ? <span className="font-mono text-body" title={first.remoteAddress}>{first.remoteAddress}</span>
+          : <span className="cursor-help underline decoration-rule decoration-dotted underline-offset-2" title={[...srcs].sort((a, b) => b[1] - a[1]).map(([ip, n]) => `${ip} ×${n}`).join("\n")}>{srcs.size} resolvers</span>}
           <span className="hidden truncate font-mono text-label text-smoke max-[820px]:block">{top.fullId}{names > 1 ? ` +${names - 1}` : ""}</span>
         </Td>
         <Td sel={sel} last>
-          <DnsName i={top} />{names > 1 && <span className="text-label text-ash"> +{names - 1} {names === 2 ? "name" : "names"}</span>}<span className="text-label text-smoke"> · </span>
-          <span className="text-label text-smoke">{qtypes} · {Math.max(...items.map((i) => isoMs(i.timestamp))) - Math.min(...items.map((i) => isoMs(i.timestamp)))} ms · </span>
-          {allChatter && <span className="text-label text-ash">resolver chatter around {chatterTags.join(", ")} · </span>}
-          <span className="font-mono text-label text-smoke">{[...srcs].sort((a, b) => b[1] - a[1]).map(([ip, n]) => `${ip} ×${n}`).join(" · ")}</span>
+          <Split
+            left={<><DnsName i={top} />{names > 1 && <span className="text-label text-ash"> +{names - 1} {names === 2 ? "name" : "names"}</span>}</>}
+            right={<>
+              {own.length > 0 && own.length < items.length && <span className="flex-none text-ash" title="Lookups of the bare payload id near this probe's hits: resolver chatter, kept but not counted">+{items.length - own.length} chatter</span>}
+              {allChatter && <span className="flex-none text-ash">resolver chatter around {chatterTags.join(", ")}</span>}
+              <span className="flex-none text-smoke">{qtypes} · {Math.max(...items.map((i) => isoMs(i.timestamp))) - Math.min(...items.map((i) => isoMs(i.timestamp)))} ms</span>
+            </>} />
         </Td>
       </tr>,
     );
@@ -676,10 +718,10 @@ export function ProbePane() {
       <div ref={tableBox} style={hitId != null && hitsPx != null ? { maxHeight: hitsPx } : undefined}
         className={cn("min-h-0 overflow-auto max-[820px]:max-h-none", hitId != null && hitsPx == null && HITS_HEIGHT[hitsHeight])}>
         <table className="w-full table-fixed border-collapse">
-          <colgroup><col className="w-[132px] max-[820px]:w-[80px]" /><col className="w-[92px] max-[820px]:w-[56px]" /><col className="w-[100px] max-[820px]:w-[84px]" /><col className="w-[198px] max-[820px]:w-auto" /><col className="max-[820px]:w-0" /></colgroup>
+          <colgroup><col className="w-[116px] max-[820px]:w-[96px]" /><col className={twelveHour ? "w-[104px] max-[820px]:w-[72px]" : "w-[84px] max-[820px]:w-[56px]"} /><col className="w-[96px] max-[820px]:w-[76px]" /><col className="w-[148px] max-[820px]:w-auto" /><col className="max-[820px]:w-0" /></colgroup>
           <thead>
             <tr>{["#", `Time (${zoneName()})`, "Type", "Source", "Request"].map((t, i) => (
-              <th key={t} scope="col" className={cn("sticky top-0 z-[1] border-b border-rule bg-band px-2.5 py-[5px] text-left text-label font-semibold tracking-[.03em] text-smoke [&:not(:last-child)]:border-r [&:not(:last-child)]:border-r-rule-2", i === 0 && "pl-6 max-[820px]:pl-3.5", i === 4 && "max-[820px]:hidden")}>{t}</th>
+              <th key={t} scope="col" className={cn("sticky top-0 z-[1] border-b border-rule bg-band px-2.5 py-[5px] text-left max-[820px]:px-1.5 text-label font-semibold tracking-[.03em] text-smoke [&:not(:last-child)]:border-r [&:not(:last-child)]:border-r-rule-2", i === 0 && "pl-6 max-[820px]:pl-3.5", i === 4 && "max-[820px]:hidden")}>{t}</th>
             ))}</tr>
           </thead>
           <tbody onKeyDown={(e) => {

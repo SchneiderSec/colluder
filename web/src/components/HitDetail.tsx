@@ -206,7 +206,7 @@ export function HitDetail({ id }: { id: number }) {
   // Strip Bay: the detail sits on the bay, as two strips: what happened (header, lead, fields, notes),
   // then the bytes (view controls, request and response, custody)
   const box = "@container/detail relative flex min-h-0 flex-col gap-2 overflow-auto border-t border-rule bg-bay p-2 max-[820px]:p-1.5";
-  const strip = "flex flex-none flex-col gap-2.5 rounded-md border border-rule bg-soot py-3 pr-4 pl-5 max-[820px]:px-3";
+  const strip = "flex flex-none flex-col gap-2 rounded-md border border-rule bg-soot px-4 py-2.5 max-[820px]:px-3";
   const d = s.details.get(id);
   if (!d) keys.current = {}; // still loading: e and c wait for this hit, never copy the last one
   if (!d) return <article className={box}><p className={cn(strip, "text-ash")}>{err ? `Could not load #${id}: ${err}` : `Loading #${id}…`}</p></article>;
@@ -237,6 +237,10 @@ export function HitDetail({ id }: { id: number }) {
   const size = (t: string) => `${lineCount(t)} lines · ${byteCount(t)} bytes`;
   // what went back, in one line: the status, the type and size, and who sent it
   const resHead = web && !tlsOnly ? (resP ?? parseHttp(cut(d.rawResponse))) : null;
+  // what the edge did, said once on the Answered line: where a redirect pointed and how many it took to
+  // get here, or the stage in words (served x.dtd, decoy, file data arrived)
+  const edge = !a || !stage ? null : a.to ? `→ ${a.to}${(a.hop ?? 0) > 1 ? ` · followed ${a.hop! - 1} ${a.hop === 2 ? "redirect" : "redirects"}` : ""}` : stage;
+  const caveat = a?.to ? `A redirect sent isn't proof it was followed: a later hop is.${(a.hop ?? 0) > 1 ? " Arriving at this hop proves it follows redirects." : ""}` : null;
   const answered = resHead?.status ? {
     code: resHead.status, reason: resHead.reason ?? "", bytes: byteCount(resHead.body),
     type: (resHead.headers.find(([k]) => k.toLowerCase() === "content-type")?.[1] ?? "").split(";")[0].trim(),
@@ -280,7 +284,7 @@ export function HitDetail({ id }: { id: number }) {
           ? <span className="cursor-help text-label font-[550] tracking-[.03em] text-ash underline decoration-rule decoration-dotted underline-offset-2" title="DNS hits come from the resolver that asked on the target's behalf. It is often a public or ISP resolver, not the target itself.">Resolver</span>
           : <span className="text-label font-[550] tracking-[.03em] text-ash">Source</span>}<span className={cn("font-mono text-body", !fromBox && !mine && "font-[550] text-bone")}>{d.remoteAddress}</span>{fromBox && <span title="This is the OOB box itself: a self-test, not a target."><Chip grey>this box</Chip></span>}
           {d.protocol !== "dns" && !fromBox && (
-            <Button variant="quiet" size="sm" title={mine ? "Hits from this address count as targets again" : "Your browser or proxy: its hits become self-tests (left out of reach and the report's first request)"}
+            <Button variant="ghost" size="sm" className="h-5 px-1.5 text-label text-smoke hover:text-bone" title={mine ? "Hits from this address count as targets again" : "Your browser or proxy: its hits become self-tests (left out of reach and the report's first request)"}
               onClick={() => setMine(d.remoteAddress, !mine).then(() => toast(mine ? `${d.remoteAddress} is no longer marked as yours.` : `${d.remoteAddress} is marked as yours: its hits are self-tests now.`), (x) => toast((x as Error).message, true))}>
               {mine ? "Yours · unmark" : "Mark as mine"}
             </Button>
@@ -295,7 +299,7 @@ export function HitDetail({ id }: { id: number }) {
           <span className="text-label font-[550] tracking-[.03em] text-ash">ASN / owner</span>
           {e.asn ? <span className="font-mono text-body">{[e.asn, e.asnName, e.asnCc, e.asnPrefix].filter(Boolean).join(" · ")}</span> : (
             <>
-              <Button variant="quiet" size="sm" disabled={asnBusy} title="Sends this IP to a third-party service (Team Cymru)" onClick={() => { setAsnBusy(true); lookupAsn(d.remoteAddress).catch((x) => toast((x as Error).message, true)).finally(() => setAsnBusy(false)); }}>
+              <Button variant="ghost" size="sm" className="h-5 px-1.5 text-label text-smoke hover:text-bone" disabled={asnBusy} title="Sends this IP to a third-party service (Team Cymru)" onClick={() => { setAsnBusy(true); lookupAsn(d.remoteAddress).catch((x) => toast((x as Error).message, true)).finally(() => setAsnBusy(false)); }}>
                 <Search />{asnBusy ? "Looking up…" : "Look up"}
               </Button>
             </>
@@ -306,7 +310,9 @@ export function HitDetail({ id }: { id: number }) {
         <p className="flex flex-none flex-wrap items-baseline gap-x-2 text-body text-smoke">
           <span className="text-label font-[550] tracking-[.03em] text-ash">Answered</span>
           <span><b className="font-mono font-[650] text-bone">{answered.code}</b> {answered.reason && <span className="text-bone">{answered.reason}</span>}{answered.type && <> · <span className="font-mono text-bone">{answered.type}</span></>} · {answered.bytes.toLocaleString("en-US")} {answered.bytes === 1 ? "byte" : "bytes"}</span>
+          {edge && <span className="text-bone">{edge}</span>}
           <span className="text-ash">{answered.by}</span>
+          {caveat && <span className="basis-full text-label text-ash">{caveat}</span>}
         </p>
       )}
       {near.length > 0 && (
@@ -336,7 +342,7 @@ export function HitDetail({ id }: { id: number }) {
           <b className="font-semibold text-bone">Resolver step, not data.</b> The same resolver asked for <span className="font-mono text-bone">{step}</span> within seconds. Resolvers that minimise queries ask for the name one label at a time, so the labels here are part of that longer name.
         </p>
       )}
-      {stage && (
+      {stage && !answered && (
         <p className="flex-none text-body text-smoke">What the edge did: <span className="text-bone">{stage[0].toUpperCase() + stage.slice(1)}.</span>
           {d.answer?.to && <span className="text-ash"> Whether the target followed that last redirect shows in its own response.{(d.answer.hop ?? 0) > 1 ? " Arriving at this hop proves it follows redirects." : ""}</span>}
         </p>
@@ -417,7 +423,7 @@ export function HitDetail({ id }: { id: number }) {
           text={!web && decoded ? decode(d.rawResponse, d.protocol) : d.rawResponse} exact={d.rawResponse} />
       </div>
 
-      <div aria-label="Custody record" className="flex flex-none flex-wrap items-center gap-x-4 gap-y-1 rounded-[3px] border border-rule bg-well px-3 py-1.5 text-label whitespace-nowrap max-[820px]:flex-col max-[820px]:items-start">
+      <div aria-label="Custody record" className="-mx-4 -mb-2.5 mt-0.5 flex flex-none flex-wrap items-center gap-x-4 gap-y-1 rounded-b-md border-t border-rule-2 bg-well px-4 py-1.5 text-label whitespace-nowrap max-[820px]:-mx-3 max-[820px]:flex-col max-[820px]:items-start max-[820px]:px-3">
         <b className="font-[650]">Custody</b>
         <span title={`Captured by ${d.answer ? "Colluder's edge" : "the engine"} ${d.timestamp}`}><span className="text-smoke">{d.answer ? "Edge " : "Engine "}</span><span className="font-mono">{d.timestamp}</span></span>
         <span title={`Received by dashboard ${d.receivedAt}`}>

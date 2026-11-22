@@ -466,3 +466,31 @@ test("hops: what the client changed between redirects (method, credentials, cust
   assert.equal(hopWords(hopDiff(b, b)), "kept Cookie, Referer");
   assert.equal(hopWords(hopDiff("GET / HTTP/1.1\r\nHost: a\r\nAccept: */*\r\n\r\n", "GET /2 HTTP/1.1\r\nHost: b\r\nAccept: */*\r\n\r\n")), "same method and headers");
 });
+
+test("hmParts: the minute, then the seconds apart, then AM/PM", async () => {
+  const f = await import("../src/lib/format.ts");
+  assert.deepEqual(f.hmParts("2026-11-20T16:57:14.878Z"), ["16:57", ":14", ""]);
+  f.setTwelveHour(true);
+  try {
+    assert.deepEqual(f.hmParts("2026-11-20T16:57:14.878Z"), ["4:57", ":14", " PM"]);
+    assert.deepEqual(f.hmParts("2026-11-20T00:05:09.000Z"), ["12:05", ":09", " AM"]);
+  } finally { f.setTwelveHour(false); }
+});
+
+test("idRange: a burst's ids share their prefix once", async () => {
+  const { idRange } = await import("../src/lib/format.ts");
+  assert.equal(idRange(3387, 3388), "3387–88");
+  assert.equal(idRange(3399, 3402), "3399–402");
+  assert.equal(idRange(98, 1003), "98–1003");
+  assert.equal(idRange(7, 9), "7–9");
+});
+
+test("stageShort: a redirect as hop, code and host; long stages cut for the table", async () => {
+  const { stageShort, stageOf } = await import("../src/lib/stage.ts");
+  const h = { summary: "GET /me.png?hop=3 HTTP/1.1", fullId: "", rawRequest: "", hop: 3, answerCode: 302, answerTo: "http://169.254.169.254/latest/meta-data/" };
+  assert.equal(stageShort(h as never), "hop 3 · → 302 169.254.169.254");
+  assert.equal(stageShort({ ...h, hop: 1 } as never), "→ 302 169.254.169.254");
+  assert.equal(stageShort({ ...h, answerTo: undefined, hopCode: 307, hop: 2 } as never), "hop 2 · 307");
+  assert.equal(stageShort({ ...h, answerTo: undefined, hop: undefined, answerPart: "x.dtd" } as never), "served x.dtd");
+  assert.match(stageOf(h as never)!, /^followed 2 redirects · answered 302 → http:\/\/169\.254/);
+});
