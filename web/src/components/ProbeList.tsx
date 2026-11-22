@@ -50,9 +50,9 @@ function Row({ s, p, k, stop, dense }: { s: AppState; p: Probe | (Counts & Parti
   const look = isU || st === "unplanted" ? STRAY_LOOK : lookOf(crewOf(s.probes), p.tag!);
   const one = sel || dense; // one line: the open probe (the pane says the rest), or the compact list
   const name = isU ? "No tag" : p.tag!;
-  const { names, editing } = useProbeSnap();
+  const { names, editing, editingAt } = useProbeSnap();
   const alias = names[k] || null;
-  const renaming = editing === k;
+  const renaming = editing === k && editingAt !== "head";
   const when = p.lastHitAt ? dayOrTime(p.lastHitAt) : "";
   const label = [alias ? `${alias} (${name})` : name, unread ? `${unread} new` : "", talking ? plural(p.hits, "hit") : "no hits", when && `last ${when}`, st === "unplanted" && "not planted", st === "late" && "retired, late hit", marksLabel(s, k)].filter(Boolean).join(", ");
   const second = isU ? <span className="truncate text-smoke">Hits that carry no tag</span>
@@ -149,9 +149,9 @@ function Brief({ s, p }: { s: AppState; p: Probe }) {
   const retired = !!p.retiredAt;
   const when = retired ? (p.hits ? `${plural(p.hits, "hit")} · retired ${dayOrTime(p.retiredAt)}` : `retired ${dayOrTime(p.retiredAt)}`) : `silent ${dur(Date.now() - isoMs(p.plantedAt))}`;
   const look = st === "unplanted" ? STRAY_LOOK : lookOf(crewOf(s.probes), p.tag);
-  const { names, editing } = useProbeSnap();
+  const { names, editing, editingAt } = useProbeSnap();
   const alias = names[p.tag] || null;
-  const renaming = editing === p.tag;
+  const renaming = editing === p.tag && editingAt !== "head";
   const label = [alias ? `${alias} (${p.tag})` : p.tag, when, marksLabel(s, p.tag), p.muted && "Discord alerts muted"].filter(Boolean).join(", ");
   const cls = cn("mb-1 flex w-[calc(100%-14px)] min-w-0 cursor-pointer items-center gap-2.5 rounded border border-rule bg-soot py-[6px] pr-4 pl-3 text-left hover:bg-hover max-[820px]:min-h-11", sel && "border-ash bg-soot-2 hover:bg-soot-2", s.lit === p.tag && "animate-lit");
   return (
@@ -238,7 +238,7 @@ export function ProbeList({ hidden }: { hidden?: boolean }) {
     el?.focus(); el?.click();
   };
   const alerts = !d ? null : !d.available
-    ? <Button variant="ghost" size="icon-sm" asChild className="text-ash" title="Discord alerts aren't set up: Settings"><a href="#settings" aria-label="Set up Discord alerts in Settings"><BellOff /></a></Button>
+    ? <Button variant="ghost" size="icon-sm" asChild className="text-ash" title="Discord alerts aren't set up: Settings"><a href="#settings/alerts" aria-label="Set up Discord alerts in Settings"><BellOff /></a></Button>
     : <Button variant="ghost" size="icon-sm" aria-pressed={d.enabled} aria-label="Discord alerts" className={d.enabled ? "text-bone" : "text-ash"}
         title={d.enabled ? "Discord alerts on: the first hit per probe. Click to turn off." : "Discord alerts off. Click to turn on."}
         onClick={() => setDiscord(!d.enabled).catch((e) => toast((e as Error).message, true))}>{d.enabled ? <Bell /> : <BellOff />}</Button>;

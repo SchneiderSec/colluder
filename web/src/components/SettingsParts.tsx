@@ -232,8 +232,9 @@ export function AlertsSection({ st }: { st: Status | null }) {
                   return (
                     <li key={k} className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-3 py-2 first:pt-1 last:pb-0.5">
                       <Switch checked={on} disabled={!dc.enabled} aria-labelledby={`kind-${k}`} aria-describedby={`kind-${k}-d`} onCheckedChange={(v) => saveSettings({ discordKinds: { [k]: v } }).catch(fail)} className="mt-0.5" />
-                      <div className={dc.enabled ? "" : "opacity-60"}>
-                        <div id={`kind-${k}`} className="font-semibold text-bone">{name}</div>
+                      {/* off: the title recedes to smoke, the text stays ash (both keep 4.5:1; no opacity) */}
+                      <div>
+                        <div id={`kind-${k}`} className={cn("font-semibold", dc.enabled ? "text-bone" : "text-smoke")}>{name}</div>
                         <div id={`kind-${k}-d`} className="text-ash">{what}</div>
                       </div>
                     </li>

@@ -41,7 +41,7 @@ export default function App() {
   const favSrc = useRef<HTMLDivElement>(null);
   const planting = useApp((s) => s.planting);
   // reading a hit trades the side list for probe tabs on top of the pane, so the pane gets the width
-  const folded = useListFolded();
+  const folded = useListFolded(route.view === "probes");
   const sel = useApp((x) => x.sel);
 
   useEffect(() => { loadState(); connect(); }, []);
@@ -110,11 +110,11 @@ export default function App() {
                 {/* one place in the tree for the pane, so folding never resets its filters or open hit */}
                 <div className="flex min-h-0 min-w-0 flex-col">
                   {folded && <ProbeTabs />}
-                  <div id="probe-panel" role={folded ? "tabpanel" : undefined} aria-labelledby={folded && sel ? tabId(sel) : undefined} className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)]"><ProbePane /></div>
+                  <div id="probe-view" role={folded ? "tabpanel" : undefined} aria-labelledby={folded && sel ? tabId(sel) : undefined} className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)]"><ProbePane /></div>
                 </div>
               </div>
             </>
-          ) : route.view === "settings" ? <Settings /> : route.view === "mailbox" ? <Mailbox arg={route.arg} /> : <PayloadKit section={route.arg} />}
+          ) : route.view === "settings" ? <Settings section={route.arg} /> : route.view === "mailbox" ? <Mailbox arg={route.arg} /> : <PayloadKit section={route.arg} />}
         </main>
         <StatusBar />
       </div>

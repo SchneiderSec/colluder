@@ -48,7 +48,7 @@ export function Rail({ view }: { view: string }) {
       {TOOLS.map((t, i) => (
         <Fragment key={t.view}>
           {i === 1 && <hr className="my-2 w-9 border-0 border-t border-rule max-[820px]:mx-1 max-[820px]:my-0 max-[820px]:h-5 max-[820px]:w-0 max-[820px]:border-t-0 max-[820px]:border-l" />}
-          <Item v={t.view} label={t.label} Icon={t.icon} badge={t.view === "probes" ? unread : undefined} />
+          <Item v={t.view} label={t.label} Icon={t.icon} badge={t.view === "probes" ? unread : t.view === "mailbox" && view !== "mailbox" ? s.mailNew.length : undefined} />
         </Fragment>
       ))}
       <span className="flex-1 max-[820px]:hidden" />
@@ -106,7 +106,7 @@ export function StatusBar() {
           title={[edgeSt.state === "running" ? `Colluder's edge answers your probes on ${[edgeSt.listen?.http, edgeSt.listen?.https, edgeSt.listen?.dns].filter(Boolean).join(", ")}` : "The edge isn't answering: HTTP rules are not being served", checkTip].filter(Boolean).join("\n\n")} />
       )}
       {ck?.active && cl?.state === "failing" && (
-        <a href="#settings" className="flex items-center rounded-[3px] no-underline hover:text-bone">
+        <a href="#settings/check" className="flex items-center rounded-[3px] no-underline hover:text-bone">
           <Item kind="down" signal="listen" label="Outside check" short="Check" shortWide word="failing" bad title={checkTip} />
         </a>
       )}

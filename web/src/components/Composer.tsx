@@ -61,7 +61,7 @@ export function PayloadCopy({ tag, brief }: { tag: string; brief?: boolean }) {
   return (
     // one "Copy" names the group, so each button is just its payload's name (narrower, and it reads)
     <div className="flex flex-wrap items-center gap-0.5 max-[820px]:mr-auto" data-payloads>
-      <span className="mr-0.5 flex items-center gap-1 text-label text-ash"><Copy className="size-3.5" strokeWidth={1.5} />Copy</span>
+      <span className="mr-0.5 text-label text-ash">Copy</span>
       {presetRows ? presetRows.slice(0, 3).map((p) => (
         <Button key={p.code} data-copy variant="ghost" size="sm" title={`${p.note ?? ""}\n${p.text}`} aria-label={`Copy ${p.name} payload`} onClick={() => copy(p.text, `${p.name} payload`)}>
           {p.name}

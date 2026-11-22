@@ -4,10 +4,11 @@
 // No alerts, no probe, kept a few days. Everything in a message was written by its sender: it is shown
 // as text only, links are never live.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, ChevronRight, Copy, Download, Trash2, X } from "lucide-react";
-import { api, deleteMail, fetchMail, onMail, save, useApp } from "@/store";
+import { ChevronDown, ChevronRight, Copy, Dices, Download, Trash2, X } from "lucide-react";
+import { api, deleteMail, fetchMail, markMailSeen, MAIL_PAGE, onMail, readMailSeen, save, useApp } from "@/store";
+import { quickTag } from "@/lib/quicktag";
 import type { MailDetail, MailRow } from "@/lib/types";
-import { ago, dayKey, dayOrTime, hm, isLocalZone, isoMs, plural, setupCmd, stamp, zoneName } from "@/lib/format";
+import { ago, dayLabel, dayOrTime, exact, hm, isoMs, plural, setupCmd, stamp, zoneName } from "@/lib/format";
 import { copy, toast } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -37,7 +38,12 @@ function MailText({ text, allHead }: { text: string; allHead: boolean }) {
 }
 type View = "message" | "html" | "headers" | "raw";
 
-function readSeen() { try { return Number(localStorage.getItem("colluder.mailSeen") || 0) || 0; } catch { return 0; } }
+// The address to sign up with: its local part names the account (docs/GUIDE.md's example is
+// orca-attacker). The last one used stays; the dice make a fresh one for a new account.
+const LOCAL_KEY = "colluder.mailLocal";
+const DEFAULT_LOCAL = "orca-attacker";
+const cleanLocal = (v: string) => v.toLowerCase().replace(/[^a-z0-9._+-]/g, "").slice(0, 64);
+function readLocal() { try { return cleanLocal(localStorage.getItem(LOCAL_KEY) ?? "") || DEFAULT_LOCAL; } catch { return DEFAULT_LOCAL; } }
 function readFlag(k: string) { try { return localStorage.getItem(k) === "true"; } catch { return false; } }
 
 // "Acme Inc <notifications@acme.example>" -> name and address; a bare address is both
@@ -74,12 +80,6 @@ function OrgMark({ org, size = 28 }: { org: string; size?: number }) {
 }
 
 // the day a message arrived, as the archive groups it (in the zone the page shows, like every time on it)
-function dayLabel(ts: string) {
-  const d = dayKey(ts), now = dayKey(new Date().toISOString()), y = dayKey(new Date(Date.now() - 864e5).toISOString());
-  return d === now ? "Today" : d === y ? "Yesterday"
-    : new Intl.DateTimeFormat("en-US", { timeZone: isLocalZone() ? undefined : "UTC", weekday: "short", month: "short", day: "numeric" }).format(new Date(isoMs(ts)));
-}
-
 export function Mailbox({ arg }: { arg: string | null }) {
   const st = useApp((s) => s.status);
   const mb = st?.mailbox;
@@ -89,11 +89,26 @@ export function Mailbox({ arg }: { arg: string | null }) {
   const [addr, setAddr] = useState(ALL);
   const [org, setOrg] = useState(ALL);
   const [archiveOpen, setArchiveOpen] = useState(() => readFlag("colluder.mailArchiveOpen"));
-  const [seenAtOpen] = useState(readSeen);
+  const [seenAtOpen] = useState(readMailSeen);
+  const [local, setLocalState] = useState(readLocal);
+  const setLocal = (v: string) => { const c = cleanLocal(v); setLocalState(c); if (c) save(LOCAL_KEY, c); };
+  const address = mb ? `${local || DEFAULT_LOCAL}@${mb.host}` : "";
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [olderDone, setOlderDone] = useState(false);
   // what the delete dialog is about to remove, and how it says so
   const [doomed, setDoomed] = useState<{ what: { ids: number[] } | { upTo: number }; n: number; title: string; body: string } | null>(null);
 
-  useEffect(() => { fetchMail().then((r) => setRows(r.messages)).catch((e) => { toast(`Couldn't load the mailbox: ${e.message}`, true); setRows([]); }); }, []);
+  useEffect(() => { fetchMail().then((r) => { setRows(r.messages); setOlderDone(r.messages.length < MAIL_PAGE); }).catch((e) => { toast(`Couldn't load the mailbox: ${e.message}`, true); setRows([]); }); }, []);
+  // past the first page: the page before the oldest message loaded
+  const loadOlder = async () => {
+    if (!rows?.length) return;
+    setLoadingOlder(true);
+    try {
+      const r = await fetchMail(Math.min(...rows.map((x) => x.id)));
+      setRows((list) => { const have = new Set((list ?? []).map((x) => x.id)); return [...(list ?? []), ...r.messages.filter((x) => !have.has(x.id))]; });
+      setOlderDone(r.messages.length < MAIL_PAGE);
+    } catch (e) { toast(`Couldn't load older mail: ${(e as Error).message}`, true); } finally { setLoadingOlder(false); }
+  };
   useEffect(() => onMail((e) => setRows((r) => {
     const list = r ?? [];
     if (e.type === "mail") return [e.row, ...list.filter((x) => x.id !== e.row.id)];
@@ -102,7 +117,8 @@ export function Mailbox({ arg }: { arg: string | null }) {
     return list.filter((x) => !ids.has(x.id) && !(e.upTo !== undefined && x.id <= e.upTo));
   })), []);
   // opening the page reads what's here; rows newer than the last visit keep their dot until you leave
-  useEffect(() => { if (rows?.length) save("colluder.mailSeen", Math.max(readSeen(), ...rows.map((r) => r.id))); }, [rows]);
+  // (and the rail's badge clears)
+  useEffect(() => { if (rows?.length) markMailSeen(Math.max(...rows.map((r) => r.id))); }, [rows]);
 
   // each address is a member of the crew: its coat comes from its local part (first one here picks first)
   const coats = useMemo(() => {
@@ -170,8 +186,14 @@ export function Mailbox({ arg }: { arg: string | null }) {
           <h1 className="text-headline font-bold">Mailbox</h1>
           {mb && (
             <span className="flex min-w-0 items-center gap-1.5">
-              <code className="min-w-0 truncate font-mono text-title text-bone"><span className="text-ash">anyone</span>@{mb.host}</code>
-              <Button variant="ghost" size="icon-sm" aria-label="Copy the mailbox address" onClick={() => copy(`orca-attacker@${mb.host}`, "Address (orca-attacker@…)")}><Copy /></Button>
+              {/* any local part works: type the account's, or roll a fresh one; Copy gives exactly what's shown */}
+              <label className="flex h-[30px] min-w-0 items-center rounded-[3px] border border-rule bg-well pr-2.5 pl-1.5 font-mono text-title text-bone focus-within:border-smoke" title="Any name before the @ reaches this mailbox: one per account you sign up">
+                <input aria-label="Local part (the account's name)" spellCheck={false} value={local} placeholder={DEFAULT_LOCAL} onChange={(e) => setLocal(e.target.value)}
+                  style={{ width: `calc(${Math.max((local || DEFAULT_LOCAL).length, 4)}ch + 6px)` }} className="flex-none bg-transparent pl-1.5 text-right outline-none placeholder:text-ash" />
+                <span className="min-w-0 truncate">@{mb.host}</span>
+              </label>
+              <Button variant="ghost" size="icon-sm" aria-label="A fresh name for a new account" title="A fresh name for a new account" onClick={() => setLocal(quickTag((t) => addresses.some(([a]) => a === t)))}><Dices /></Button>
+              <Button variant="ghost" size="icon-sm" aria-label="Copy the mailbox address" title={address} onClick={() => copy(address, address)}><Copy /></Button>
             </span>
           )}
           <label className="ml-auto flex h-[30px] w-[240px] items-center gap-2 rounded-[3px] border border-rule bg-well px-2.5 text-body text-smoke focus-within:border-smoke max-[820px]:ml-0 max-[820px]:w-full">
@@ -230,7 +252,7 @@ export function Mailbox({ arg }: { arg: string | null }) {
         )}
         <div ref={listRef} className="min-h-0 flex-1 overflow-auto">
           {rows === null ? <p className="px-5 py-4 text-body text-ash">Loading…</p>
-            : !shown.length ? <Empty filtered={narrowed && !!rows.length} host={mb?.host} />
+            : !shown.length ? <Empty filtered={narrowed && !!rows.length} address={address} />
             : (
               <>
                 {!narrowed && older.length > 0 && <div className={sectionLabel}>Recent <span className="font-medium text-ash">{recent.length}</span></div>}
@@ -248,6 +270,12 @@ export function Mailbox({ arg }: { arg: string | null }) {
                       </div>
                     ))}
                   </>
+                )}
+                {!olderDone && rows.length < total && (showArchive || narrowed || !older.length) && (
+                  <button type="button" disabled={loadingOlder} onClick={() => void loadOlder()}
+                    className="w-full cursor-pointer border-b border-rule-2 px-4 py-1.5 text-left text-body text-smoke hover:bg-hover hover:text-bone disabled:cursor-default max-[820px]:min-h-11">
+                    {loadingOlder ? "Loading…" : "Load older messages"} <span className="text-ash">({rows.length} of {total} loaded{narrowed ? "; the filter only sees what's loaded" : ""})</span>
+                  </button>
                 )}
               </>
             )}
@@ -293,7 +321,7 @@ function Row({ r, sel, unread, look, timeOnly }: { r: MailRow; sel: boolean; unr
           </span>
         </span>
         <span className="flex h-full flex-col items-end justify-between gap-1 text-label whitespace-nowrap text-smoke">
-          <time dateTime={r.receivedAt} title={r.receivedAt}>{timeOnly ? hm(r.receivedAt) : dayOrTime(r.receivedAt)}</time>
+          <time dateTime={r.receivedAt} title={exact(r.receivedAt)}>{timeOnly ? hm(r.receivedAt) : dayOrTime(r.receivedAt)}</time>
           {r.code && <code className="rounded-[3px] border border-rule px-1.5 font-mono text-body text-bone">{r.code}</code>}
         </span>
       </a>
@@ -301,12 +329,12 @@ function Row({ r, sel, unread, look, timeOnly }: { r: MailRow; sel: boolean; unr
   );
 }
 
-function Empty({ filtered, host }: { filtered: boolean; host?: string }) {
+function Empty({ filtered, address }: { filtered: boolean; address?: string }) {
   if (filtered) return <p className="px-5 py-4 text-body text-ash">Nothing matches.</p>;
   return (
     <div className="px-5 py-4 text-body leading-[1.1875rem] text-smoke">
       <p className="text-title font-[650] text-bone">No mail yet</p>
-      <p className="mt-1.5 max-w-[46ch]">Sign a test account up with an address here{host ? <> like <code className="font-mono text-bone">orca-attacker@{host}</code></> : ""}. Its mail lands in this list: no alert, no probe. Claude reads it with <code className="font-mono text-bone">wait_for_mail</code>.</p>
+      <p className="mt-1.5 max-w-[46ch]">Sign a test account up with an address here{address ? <> like <code className="font-mono text-bone">{address}</code></> : ""}. Its mail lands in this list: no alert, no probe. Claude reads it with <code className="font-mono text-bone">wait_for_mail</code>.</p>
     </div>
   );
 }

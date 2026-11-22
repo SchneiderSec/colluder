@@ -84,8 +84,8 @@ export interface HttpRule {
   kind?: "xxe"; // preset: answers by path
   params?: { host: string; file: string };
 }
-// who gets interactsh's harmless default reply instead of the rule (sources: a string while typed)
-export interface Decoy { first?: number; ua?: string; sources?: string[] | string }
+// who gets interactsh's harmless default reply instead of the rule (methods, sources: a string while typed)
+export interface Decoy { methods?: string[] | string; first?: number; ua?: string; sources?: string[] | string }
 export interface RuleVersion { version: number; createdAt: string; savedBy?: "you" | "claude"; rule: HttpRule; hits?: number; maxHop?: number | null; decoys?: number; clients?: { ip: string; ua: string; maxHop: number; minHop: number; hits: number }[] }
 export interface RuleState { active: RuleVersion | null; history: RuleVersion[]; defaultHits: number; interactshHits: number; edge: EdgeStatus }
 

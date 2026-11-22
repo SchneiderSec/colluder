@@ -7,7 +7,7 @@ import { stageOf } from "@/lib/stage";
 import { uaShort } from "@/lib/headers";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { UNTAGGED, type Interaction, type Probe } from "@/lib/types";
-import { ago, dayOrTime, hm, isoMs, newestFirst, plural, settled, stamp, zoneName } from "@/lib/format";
+import { ago, dayKey, dayLabel, dayOrTime, exact, hm, isoMs, newestFirst, plural, settled, zoneName } from "@/lib/format";
 import { groupHits } from "@/lib/raw";
 import { copy, toast } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
@@ -16,7 +16,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Chip, ClaudeMark, LineForm, NewDot, NilDot, TechniqueMark, TypeChip } from "./bits";
-import { CardOnCrew, startRename, stopAnswering, useProbeSnap, useTabsView } from "./ProbeTabs";
+import { CardOnCrew, NameEditor, startRename, stopAnswering, useProbeSnap, useTabsView } from "./ProbeTabs";
 import { HitDetail } from "./HitDetail";
 import { HttpRuleTab } from "./HttpRule";
 import { CrewMark } from "./Mark";
@@ -73,7 +73,7 @@ function Head({ s }: { s: AppState }) {
   const [clr, setClr] = useState(false);
   const [resetRule, setResetRule] = useState(true);
   const plantLine = usePlant(s.sel && s.sel !== UNTAGGED ? s.probes.get(s.sel) : undefined);
-  const { names } = useProbeSnap(); // your name for the probe, from its tab or list row
+  const { names, editing, editingAt } = useProbeSnap(); // your name for the probe, from its tab or list row
   // two fixed rows: who the probe is and its actions on the first (one line, the target truncates),
   // what to paste on the second, so the header is the same height from probe to probe
   const cls = "flex h-[52px] min-w-0 items-center gap-3.5 border-b border-rule pr-5 pl-6 max-[820px]:h-auto max-[820px]:flex-wrap max-[820px]:gap-2 max-[820px]:px-3.5 max-[820px]:py-2.5";
@@ -101,12 +101,13 @@ function Head({ s }: { s: AppState }) {
         <CardOnCrew s={s} k={p.tag} hint="Double-click the tag to rename">
           <CrewMark size={26} {...(st === "unplanted" ? STRAY_LOOK : lookOf(crewOf(s.probes), p.tag))} state={p.retiredAt || st === "unplanted" ? "doze" : "wink"} />
         </CardOnCrew>
-        {/* a double-click renames it where it's listed (its tab, or its list row) */}
-        {names[p.tag] ? (
-            <span className="flex min-w-0 items-baseline gap-2" onDoubleClick={() => startRename(p.tag)} title={`${p.tag}: double-click to rename`}>
+        {/* a double-click (or F2) renames it right here, where you asked */}
+        {editing === p.tag && editingAt === "head" ? <NameEditor k={p.tag} className="h-7 w-[220px] text-title" />
+          : names[p.tag] ? (
+            <span className="flex min-w-0 items-baseline gap-2" onDoubleClick={() => startRename(p.tag, "head")} title={`${p.tag}: double-click to rename`}>
               <span className="truncate font-sans font-semibold">{names[p.tag]}</span><span className="truncate text-title text-smoke"><Ultra text={p.tag} /></span>
             </span>
-          ) : <span className="truncate" title={`${p.tag}: double-click to give it your own name`} onDoubleClick={() => startRename(p.tag)}><Ultra text={p.tag} /></span>}
+          ) : <span className="truncate" title={`${p.tag}: double-click to give it your own name`} onDoubleClick={() => startRename(p.tag, "head")}><Ultra text={p.tag} /></span>}
         {p.plantedBy === "claude" && <ClaudeMark className="size-4" />}
       </span>
       {st === "unplanted" ? <Chip grey>not planted</Chip>
@@ -293,8 +294,6 @@ function HitRow({ i, open, sel, arrived, child, chatter, inProbe, step, self, st
     </tr>
   );
 }
-// a hit's exact time, for the time cell's tooltip: as shown, then as stored when the page shows another zone
-const exact = (ts: string) => { const s = stamp(ts, "ms"); return s.endsWith(" UTC") ? s : `${s}\n${ts}`; };
 function Td({ children, sel, first, last, className, title }: { children: React.ReactNode; sel: boolean; first?: boolean; last?: boolean; className?: string; title?: string }) {
   return (
     <td className={cn("overflow-hidden border-b border-rule-2 px-2.5 py-1.5 text-body text-ellipsis whitespace-nowrap group-hover:bg-hover",
@@ -506,7 +505,22 @@ export function ProbePane() {
     <HitRow key={i.id} stop={takeStop()} child={child} i={i} chatter={chatter.get(i.id)} inProbe={s.sel !== UNTAGGED} step={steps.get(i.id)} self={selfOf(i.remoteAddress)} after={after.get(i.id)} open={open} sel={i.id === hitId} arrived={i.id === s.arrived} onClick={() => selectHit(i.id === hitId ? null : i.id)} />
   );
   const rows: React.ReactNode[] = [];
-  for (const g of groupHits(hits)) {
+  const groups = groupHits(hits);
+  // a day divider wherever the day changes, when the hits shown span more than one day: the time
+  // cells keep HH:MM, and a probe that heard something days apart still reads by day
+  const shownAt = (g: (typeof groups)[number]) => g.items[g.items.length - 1].timestamp;
+  const days = new Set(groups.map((g) => dayKey(shownAt(g))));
+  let lastDay = "";
+  for (const g of groups) {
+    const day = dayKey(shownAt(g));
+    if (days.size > 1 && day !== lastDay) {
+      lastDay = day;
+      rows.push(
+        <tr key={`d${day}`}>
+          <th colSpan={5} scope="rowgroup" className="border-b border-rule-2 bg-soot-1 py-1 pr-2.5 pl-6 text-left text-label font-semibold tracking-[.03em] text-smoke max-[820px]:pl-3.5">{dayLabel(shownAt(g), true)}</th>
+        </tr>,
+      );
+    }
     if (g.kind === "one") { rows.push(row(g.items[0])); continue; }
     const items = g.items, first = items[items.length - 1], last = items[0];
     const exp = expanded.has(first.id);
@@ -547,14 +561,14 @@ export function ProbePane() {
     );
     if (exp) for (const i of items) rows.push(row(i, true));
   }
-  const filterBar = (where: "tabs" | "bar") => (
+  const filterBar = (
     <>
       <ToggleGroup type="multiple" value={kinds} onValueChange={setKinds} aria-label="Show only" className="flex-none overflow-hidden rounded-[3px] border border-rule">
         {[["dns", "DNS"], ["web", "HTTP(S)"], ["smtp", "SMTP"]].map(([v, l], n) => (
           <ToggleGroupItem key={v} value={v} className={cn("h-6 rounded-none px-2.5 text-label text-smoke data-[state=on]:bg-soot-2 data-[state=on]:font-semibold data-[state=on]:text-bone", n > 0 && "border-l border-rule")}>{l}</ToggleGroupItem>
         ))}
       </ToggleGroup>
-      <label className={cn("flex h-6 min-w-[140px] flex-1 items-center gap-1.5 rounded-[3px] border border-rule bg-soot px-2 focus-within:border-smoke", where === "bar" && "max-[820px]:basis-full", "max-w-[420px]")}>
+      <label className="flex h-6 max-w-[420px] min-w-[140px] flex-1 items-center gap-1.5 rounded-[3px] border border-rule bg-soot px-2 focus-within:border-smoke max-[820px]:basis-full">
         <Search className="size-3.5 flex-none text-ash" strokeWidth={1.5} />
         <input aria-label={`Search ${p ? p.tag : "untagged"} hits`} value={q} onChange={(e) => setQ(e.target.value)} spellCheck={false}
           placeholder="Search names, paths, bodies, IPs" className="h-full w-full min-w-0 bg-transparent font-mono text-body text-bone outline-none placeholder:font-sans placeholder:text-ash" />
@@ -572,7 +586,7 @@ export function ProbePane() {
       <div id={p ? "probe-panel" : undefined} role={p ? "tabpanel" : undefined} aria-labelledby={p ? "probe-tab-hits" : undefined} className="flex min-h-0 flex-col">
       {/* the filters belong to the hits: their own row inside the Hits panel, never in the tab strip, where
           they read as more tabs */}
-      <div className="flex flex-none flex-wrap items-center gap-x-2.5 gap-y-1.5 border-b border-rule py-2 pr-5 pl-6 max-[820px]:px-3.5">{filterBar("bar")}</div>
+      <div className="flex flex-none flex-wrap items-center gap-x-2.5 gap-y-1.5 border-b border-rule py-2 pr-5 pl-6 max-[820px]:px-3.5">{filterBar}</div>
       <div className={cn("min-h-0 overflow-auto max-[820px]:max-h-none", hitId != null && HITS_HEIGHT[hitsHeight])}>
         <table className="w-full table-fixed border-collapse">
           <colgroup><col className="w-[132px] max-[820px]:w-[84px]" /><col className="w-[116px] max-[820px]:w-[96px]" /><col className="w-[106px] max-[820px]:w-[96px]" /><col className="w-[198px] max-[820px]:w-auto" /><col className="max-[820px]:w-0" /></colgroup>
@@ -602,7 +616,7 @@ export function ProbePane() {
         )}
         <div className="flex items-center gap-2.5 px-6 py-1.5 text-label text-ash">
           <hr className="flex-1 border-0 border-t border-rule-2" />
-          {p ? `Planted ${dayOrTime(p.plantedAt)} ${zoneName()} · first hit ${hm(firstHit.timestamp)}` : `First hit ${dayOrTime(firstHit.timestamp)} ${zoneName()} · ${plural(hits.length, "hit")}`}
+          {p ? `Planted ${dayOrTime(p.plantedAt)} ${zoneName()} · first hit ${dayOrTime(firstHit.timestamp)}` : `First hit ${dayOrTime(firstHit.timestamp)} ${zoneName()} · ${plural(hits.length, "hit")}`}
           {hitId == null && <span className="text-smoke">· pick a hit to read it</span>}
           {(() => { const o = p ?? s.untagged; return o?.clearedCount ? <RestoreLink tag={p?.tag ?? null} count={o.clearedCount} at={o.clearedAt!} /> : null; })()}
           <hr className="flex-1 border-0 border-t border-rule-2" />

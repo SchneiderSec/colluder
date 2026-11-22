@@ -106,9 +106,10 @@ function entries(st: Status | null, theme: string): Entry[] {
   ];
 }
 
-export function Settings() {
+export function Settings({ section }: { section?: string | null }) {
   const st = useApp((x) => x.status);
-  const count = useApp((x) => x.list.length);
+  // every stored hit the clear would hide, not the live list's (capped) length
+  const count = useApp((x) => [...x.probes.values()].reduce((n, p) => n + p.hits, 0) + (x.untagged?.hits ?? 0));
   const d = useDisplay();
   const scroller = useRef<HTMLDivElement>(null);
   const [active, setActive] = useState("payloads");
@@ -136,11 +137,24 @@ export function Settings() {
     return () => { el.removeEventListener("scroll", onScroll); cancelAnimationFrame(raf); };
   }, []);
 
-  const go = (id: string) => {
-    document.getElementById(`set-${id}`)?.scrollIntoView({ block: "start", behavior: d.motion === "full" && !matchMedia("(prefers-reduced-motion: reduce)").matches ? "smooth" : "auto" });
+  const go = (id: string, smooth = true) => {
+    const el = document.getElementById(`set-${id}`);
+    if (!el) return;
+    el.scrollIntoView({ block: "start", behavior: smooth && d.motion === "full" && !matchMedia("(prefers-reduced-motion: reduce)").matches ? "smooth" : "auto" });
     chosen.current = { id, until: Date.now() + 1200 };
     setActive(id);
+    // the section is in the URL, so a reload or a shared link lands on it (silent: no route change)
+    if (location.hash !== `#settings/${id}`) history.replaceState(null, "", `#settings/${id}`);
   };
+  // #settings/<section> (the status bar's failing check, the list's alerts bell, a shared link)
+  // On mount from the prop; after that from each hashchange (the index writes the hash silently, so a
+  // link to the section the route last named still scrolls)
+  useEffect(() => {
+    if (section) requestAnimationFrame(() => go(section, false));
+    const onHash = () => { const m = /^#settings\/([a-z]+)/.exec(location.hash); if (m) go(m[1], false); };
+    addEventListener("hashchange", onHash);
+    return () => removeEventListener("hashchange", onHash);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const list = entries(st, THEME_NAMES[d.theme]);
 
   // one strip like the Payload kit: a header band, the section index as its own column, the sections scrolling
