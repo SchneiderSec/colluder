@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowDown, ChevronRight, Copy, FileText, Search, Terminal, X } from "lucide-react";
-import { useApp, loadDetail, lookupAsn, save, chatterOf, setMine, selectHit } from "@/store";
+import { useApp, loadDetail, lookupAsn, save, chatterOf, setMine, selectHit, select, keyOf } from "@/store";
 import { dnsSteps } from "@/lib/dns";
 import { stageOf } from "@/lib/stage";
 import { decodeLabels } from "@/lib/exfil";
@@ -244,9 +244,9 @@ export function HitDetail({ id }: { id: number }) {
           {near.slice(0, 4).map((n) => {
             const ms = isoMs(n.timestamp) - isoMs(d.timestamp);
             return (
-              <button key={n.id} type="button" onClick={() => selectHit(n.id)} title={n.summary}
+              <button key={n.id} type="button" onClick={() => { if (keyOf(n) !== s.sel) select(keyOf(n)); selectHit(n.id); }} title={n.summary}
                 className="cursor-pointer text-left underline decoration-rule underline-offset-2 hover:text-bone hover:decoration-bone">
-                <span className="font-semibold text-bone">#{n.id}</span> <span className="font-mono">{n.summary.split(" · ")[0].replace(/ HTTP\/[\d.]+$/, "")}</span>{n.tag !== d.tag && n.tag ? <span className="text-ash"> on {n.tag}</span> : null}
+                <span className="font-semibold text-bone">#{n.id}</span> <span className="font-mono">{n.summary.split(" · ")[0].replace(/ HTTP\/[\d.]+$/, "")}</span>{keyOf(n) !== keyOf(d) ? <span className="text-ash"> {n.tag ? `on ${n.tag}` : "with no tag"}</span> : null}
                 <span className="text-ash"> {Math.abs(ms) < 1000 ? `${Math.abs(ms)} ms` : `${(Math.abs(ms) / 1000).toFixed(1)} s`} {ms < 0 ? "before" : "after"}</span>
               </button>
             );

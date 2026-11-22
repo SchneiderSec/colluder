@@ -44,6 +44,19 @@ export const dayKey = (ts: string) => wall(ts).slice(0, 10);
 // a full date and time with its zone: "2026-11-20 06:05 UTC" (to the minute), or to the second or millisecond
 export const stamp = (ts: string, to: "min" | "s" | "ms" = "min") => `${dayKey(ts)} ${clock(wall(ts).slice(11, upTo(to)))} ${zoneName(isoMs(ts))}`;
 
+// a hit's or a message's exact time, for a tooltip: as shown, then as stored when the page shows another zone
+export const exact = (ts: string) => { const s = stamp(ts, "ms"); return s.endsWith(" UTC") ? s : `${s}\n${ts}`; };
+
+// a day in the shown zone, for dividers: "Today", "Yesterday", "Thu, Nov 19" ("Nov 19, 2025" in another
+// year); withDate adds the date to Today and Yesterday ("Yesterday · Sat, Nov 21")
+export function dayLabel(ts: string, withDate = false, now = Date.now()) {
+  const d = dayKey(ts), today = dayKey(new Date(now).toISOString()), y = dayKey(new Date(now - 864e5).toISOString());
+  const zone = local ? undefined : "UTC";
+  const date = new Intl.DateTimeFormat("en-US", { timeZone: zone, weekday: "short", month: "short", day: "numeric", ...(d.slice(0, 4) !== today.slice(0, 4) ? { year: "numeric" } : {}) }).format(new Date(isoMs(ts)));
+  const near = d === today ? "Today" : d === y ? "Yesterday" : null;
+  return near ? (withDate ? `${near} · ${date}` : near) : date;
+}
+
 export function dayOrTime(ts?: string | null) {
   const t = isoMs(ts);
   if (!t || !ts) return "";

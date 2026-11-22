@@ -1,13 +1,14 @@
 // The Payload kit: payloads for one probe, ready to copy. Generation only.
 import { useMemo, useState } from "react";
 import { Copy, CornerDownRight } from "lucide-react";
-import { useApp, setRuleDraft } from "@/store";
+import { useApp, getState, setRuleDraft } from "@/store";
 import { METADATA, hostOf, pathOf, redirectable, type MetaRow } from "@/lib/metadata";
 import { parseIPv4 } from "@/lib/kit";
 import { UNTAGGED } from "@/lib/types";
 import { SECTIONS, addressForms, bypasses, callbacks, encode, formUrl, payloadParts, tagged, type Enc, type Payload } from "@/lib/kit";
 import { copy } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib/utils";
@@ -51,10 +52,13 @@ function Row({ name, code, text, note, tag }: { name: string; code?: string; tex
 // a catalog row: the URL, what it needs, and the two ways to use it from here
 function MetaItem({ r, tag, enc, onForms }: { r: MetaRow; tag: string; enc: Enc; onForms?: () => void }) {
   const text = encode(r.url, enc);
+  const [replacing, setReplacing] = useState(false);
   const redirect = () => {
     setRuleDraft(tag, { mode: "redirect", delayMs: 0, schemes: { http: true, https: true }, status: 302, location: r.url, loop: 0 });
     location.hash = `probes/${tag}/http`;
   };
+  // an unsaved answer on the probe is someone's work: ask before this one replaces it
+  const ask = () => (getState().ruleDrafts[tag] ? setReplacing(true) : redirect());
   return (
     <li className="grid grid-cols-[176px_minmax(0,1fr)_auto] items-start gap-x-4 border-b border-rule-2 py-2.5 max-[820px]:grid-cols-[minmax(0,1fr)_auto]">
       <span className="pt-px text-body max-[820px]:col-span-full"><span className="font-[550] text-bone">{r.provider}</span><span className="block text-smoke">{r.name}</span></span>
@@ -66,12 +70,24 @@ function MetaItem({ r, tag, enc, onForms }: { r: MetaRow; tag: string; enc: Enc;
         <p className="mt-0.5 max-w-[78ch] text-label leading-4 text-ash">{r.note}</p>
         {(onForms || redirectable(r)) && (
           <div className="mt-1.5 -ml-2.5 flex flex-wrap gap-1">
-            {redirectable(r) && <Button variant="ghost" size="sm" title={`Opens ${tag}'s Answer tab with a redirect here, unsaved`} onClick={redirect}><CornerDownRight />Redirect {tag} here</Button>}
+            {redirectable(r) && <Button variant="ghost" size="sm" title={`Opens ${tag}'s Answer tab with a redirect here, unsaved`} onClick={ask}><CornerDownRight />Redirect {tag} here</Button>}
             {onForms && <Button variant="ghost" size="sm" onClick={onForms}>Address forms</Button>}
           </div>
         )}
       </div>
       <Button variant="ghost" size="icon-sm" aria-label={`Copy ${r.provider} ${r.name}`} onClick={() => copy(text, `${r.provider} ${r.name}`)}><Copy /></Button>
+      <AlertDialog open={replacing} onOpenChange={setReplacing}>
+        <AlertDialogContent className="max-w-[460px] border-rule bg-soot-1">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Replace the unsaved answer on {tag}?</AlertDialogTitle>
+            <AlertDialogDescription>{tag}'s Answer tab has changes you haven't saved. This puts a redirect to {r.provider} {r.name} in their place, unsaved.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel asChild><Button variant="quiet">Keep my changes</Button></AlertDialogCancel>
+            <AlertDialogAction asChild><Button onClick={redirect}>Replace them</Button></AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </li>
   );
 }

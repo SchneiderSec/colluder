@@ -396,3 +396,25 @@ test("time zone: the browser's zone shifts the digits, the day and the label; UT
   assert.equal(hms("2026-11-20T06:05:09Z"), "06:05:09");
 });
 
+
+test("answer draft: a save keeps what the form can't show (decoy methods, a hosted file's headers)", async () => {
+  const { effective, decoyOf, norm } = await import("../src/lib/ruleDraft.ts");
+  const { ssrfRule } = await import("../src/lib/presets.ts");
+  // the SSRF preset's HEAD decoy survives the editor, and the server stores the same thing
+  const planted = validateHttpRule(ssrfRule("http://169.254.169.254/latest/meta-data/", true)).rule;
+  assert.deepEqual(planted.decoy, { methods: ["HEAD"] });
+  const edited = effective({ ...norm(planted), delayMs: 500 });
+  assert.deepEqual(edited.decoy, { methods: ["HEAD"] });
+  assert.deepEqual(validateHttpRule(edited).rule.decoy, { methods: ["HEAD"] });
+  // typed methods: split, upper-cased, each once; all empty is no decoy
+  assert.deepEqual(decoyOf({ methods: "head, options head", first: 0, ua: " ", sources: "" }), { methods: ["HEAD", "OPTIONS"] });
+  assert.equal(decoyOf({ methods: " ", first: 0, ua: "", sources: "" }), null);
+  // a hosted file's extra headers (set through the MCP) survive an edit of its body
+  const file = validateHttpRule({ mode: "file", contentType: "application/javascript", body: "x", headers: [["Access-Control-Allow-Origin", "*"]] }).rule;
+  const fileEdited = effective({ ...norm(file), body: "y" });
+  assert.deepEqual(fileEdited.headers, [["Access-Control-Allow-Origin", "*"]]);
+  assert.deepEqual(validateHttpRule(fileEdited).rule.headers, [["Access-Control-Allow-Origin", "*"]]);
+  // empty header rows are no headers, and a draft that only added an empty row isn't a change
+  assert.equal(effective({ ...norm(file), headers: [["", ""]] }).headers, undefined);
+  assert.equal(JSON.stringify(effective(norm(file))), JSON.stringify(effective({ ...norm(file), headers: [...file.headers, ["", " "]] })));
+});

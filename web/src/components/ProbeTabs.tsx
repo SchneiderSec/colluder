@@ -29,7 +29,7 @@ const read = <T,>(k: string, d: T): T => { try { const v = localStorage.getItem(
 const write = (k: string, v: unknown) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* private mode */ } };
 
 type FoldMode = "auto" | "open";
-type Snap = { tabs: string[]; pins: string[]; names: Record<string, string>; closed: { k: string; at: number; pinned: boolean }[]; editing: string | null };
+type Snap = { tabs: string[]; pins: string[]; names: Record<string, string>; closed: { k: string; at: number; pinned: boolean }[]; editing: string | null; editingAt: "head" | null };
 let foldMode: FoldMode = read<string>("colluder.listFold", "auto") === "open" ? "open" : "auto";
 // which view you were in (tabs or the list) survives a reload
 let foldedNow = read<boolean>("colluder.listFolded", false) === true;
@@ -41,6 +41,7 @@ let snap: Snap = {
   names: read<Record<string, string>>("colluder.tabNames", {}),
   closed: [],
   editing: null,
+  editingAt: null, // "head": renaming in the probe pane's header, where it was asked for
 };
 const viewed = new Map<string, number>();
 let cardFor: string | null = null; // which colluder's card is open (one per page)
@@ -141,12 +142,12 @@ export const tabId = (k: string) => `ptab-${encodeURIComponent(k)}`;
 export const isSilent = (p: Probe, s: AppState) => !p.retiredAt && !!p.registered && p.hits === 0 && !unreadFor(s, p.tag) && Date.now() - (isoMs(p.plantedAt) || 0) > 24 * 3600_000;
 
 const togglePin = (k: string) => update({ pins: snap.pins.includes(k) ? snap.pins.filter((t) => t !== k) : [...snap.pins, k] });
-const setEditing = (k: string | null) => update({ editing: k });
+const setEditing = (k: string | null, at: "head" | null = null) => update({ editing: k, editingAt: k ? at : null });
 function rename(k: string, name: string) {
   const v = name.trim().slice(0, 40);
   const names = { ...snap.names };
   if (!v || v === k) delete names[k]; else names[k] = v;
-  update({ names, editing: null });
+  update({ names, editing: null, editingAt: null });
 }
 // drop `k` before or after `at`; the pinned group stays first
 function moveTab(k: string, at: string, after: boolean) {
@@ -192,7 +193,7 @@ function answerOf(p: Probe | undefined, s: AppState): { Icon: LucideIcon; label:
 
 // App calls this once: it opens a tab for whatever gets selected, folds the list when a hit opens
 // (if the automatic fold is on), and owns the keys. Returns whether the list is folded.
-export function useListFolded() {
+export function useListFolded(active = true) {
   const folded = useSyncExternalStore(subscribe, () => foldedNow);
   const phone = usePhone(); // every hook runs on every render: never behind && or ?
   const sel = useApp((x) => x.sel);
@@ -205,7 +206,10 @@ export function useListFolded() {
   // (open), wrapping round; 1–8 pick a tab and 9 the last; n jumps to the next probe with news; / or
   // o finds a probe (the switcher, or the list's filter); F2 renames the open probe; Shift+T reopens
   // the last closed tab; \ switches between tabs and the list. p (plant) is App's.
+  // only on the Probes view: elsewhere (Mailbox, Settings, the kit) these keys would switch probes out
+  // of sight and pull the page back to #probes
   useEffect(() => {
+    if (!active) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey || /^(INPUT|TEXTAREA|SELECT)$/.test((document.activeElement as HTMLElement)?.tagName)) return;
       if (document.querySelector("[role=dialog],[role=alertdialog],[role=menu]")) return;
@@ -214,7 +218,7 @@ export function useListFolded() {
       if (e.key === "\\") { e.preventDefault(); setFolded(!foldedNow); return; }
       if (e.key === "/" || e.key === "o") { e.preventDefault(); findProbe(); return; }
       if (e.key === "T" && e.shiftKey) { e.preventDefault(); reopenTab(); return; }
-      if (e.key === "F2" && st.sel && exists(st, st.sel)) { e.preventDefault(); setEditing(st.sel); return; }
+      if (e.key === "F2" && st.sel && exists(st, st.sel)) { e.preventDefault(); setEditing(st.sel, "head"); return; }
       if (foldedNow && /^[1-9]$/.test(e.key)) {
         const k = e.key === "9" ? open.at(-1) : open[Number(e.key) - 1];
         if (k) { e.preventDefault(); select(k); }
@@ -243,7 +247,7 @@ export function useListFolded() {
     };
     addEventListener("keydown", onKey);
     return () => removeEventListener("keydown", onKey);
-  }, []);
+  }, [active]);
   return folded && !phone;
 }
 // whether the tabs view is showing (no side effects: for components other than App)
@@ -293,7 +297,9 @@ export function NameEditor({ k, className }: { k: string; className?: string }) 
       className={cn("h-6 w-[160px] min-w-0 rounded-[3px] border border-smoke bg-soot-2 px-1.5 font-sans text-body font-normal text-bone outline-none", className)} />
   );
 }
-export const startRename = (k: string) => setEditing(k);
+// where it was asked for: the tab or list row (a double-click there, the menu), or the probe pane's
+// header (its double-click and F2), which is always in view
+export const startRename = (k: string, at: "head" | null = null) => setEditing(k, at);
 
 // The card, on hover: what you'd otherwise open the probe to learn
 function ProbeCard({ s, k, hint }: { s: AppState; k: string; hint: string }) {
@@ -459,7 +465,8 @@ export function ProbeActions({ s, k, extra, children }: { s: AppState; k: string
 }
 
 function Tab({ s, k, i, focus, last }: { s: AppState; k: string; i: number; focus: boolean; last: boolean }) {
-  const { pins, names, editing, tabs } = useSnap();
+  const { pins, names, editing, editingAt, tabs } = useSnap();
+  const renaming = editing === k && editingAt !== "head";
   const p = s.probes.get(k);
   const sel = s.sel === k;
   const unread = unreadFor(s, k);
@@ -498,7 +505,7 @@ function Tab({ s, k, i, focus, last }: { s: AppState; k: string; i: number; focu
 
   return (
     <ProbeActions s={s} k={k} extra={extra}>
-      <div ref={box} draggable={editing !== k}
+      <div ref={box} draggable={!renaming}
         onDragStart={(e) => { showCard(null); e.dataTransfer.setData("text/x-colluder-tab", k); e.dataTransfer.effectAllowed = "move"; }}
         onDragOver={(e) => { if (!e.dataTransfer.types.includes("text/x-colluder-tab")) return; e.preventDefault(); const r = e.currentTarget.getBoundingClientRect(); setDrop(e.clientX > r.left + r.width / 2 ? "after" : "before"); }}
         onDragLeave={() => setDrop(null)}
@@ -509,12 +516,12 @@ function Tab({ s, k, i, focus, last }: { s: AppState; k: string; i: number; focu
           sel ? "z-10 -mb-px h-[calc(2.25rem+1px)] border-rule bg-soot" : "border-rule hover:bg-hover", s.lit === k && !sel && "animate-lit")}>
         {/* where a dragged tab will land */}
         {drop && <span aria-hidden="true" className={cn("absolute top-1 bottom-1 w-0.5 rounded-full bg-bone", drop === "before" ? "-left-[2px]" : "-right-[2px]")} />}
-        {editing === k ? (
+        {renaming ? (
           <div className="flex h-full min-w-0 items-center gap-2 pr-2 pl-2.5">
             <CrewMark size={18} {...look} state={quiet || stray ? "doze" : "wink"} unread={!!unread} /><NameEditor k={k} className="w-[150px]" />
           </div>
         ) : (
-          <button ref={ref} type="button" role="tab" id={tabId(k)} aria-controls="probe-panel" aria-selected={sel} tabIndex={focus ? 0 : -1} data-tab={k} aria-label={label}
+          <button ref={ref} type="button" role="tab" id={tabId(k)} aria-controls="probe-view" aria-selected={sel} tabIndex={focus ? 0 : -1} data-tab={k} aria-label={label}
             aria-keyshortcuts={i < 8 ? String(i + 1) : last ? "9" : undefined}
             onClick={() => select(k)} onDoubleClick={(e) => { e.preventDefault(); setEditing(k); }}
             onAuxClick={(e) => { if (e.button === 1) { e.preventDefault(); if (!pinned) closeTab(k); } }}
@@ -529,7 +536,7 @@ function Tab({ s, k, i, focus, last }: { s: AppState; k: string; i: number; focu
             {!!unread && <span className="flex-none"><Chip>{unread}{!narrow && " new"}</Chip></span>}
           </button>
         )}
-        {!pinned && editing !== k && (
+        {!pinned && !renaming && (
           <button type="button" aria-label={`Close ${alias ?? tag}`} title="Close tab" onClick={() => closeTab(k)} tabIndex={-1}
             className={cn("absolute right-1.5 grid size-5 place-items-center rounded-[3px] text-ash hover:bg-hover hover:text-bone", !sel && "opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100")}>
             <X className="size-3" strokeWidth={1.75} />

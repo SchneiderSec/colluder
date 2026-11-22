@@ -35,6 +35,7 @@ export interface AppState {
   lit: string | null; // probe that just got a hit (list flash)
   pulse: number; // increments on every new hit (mark animation)
   planting: boolean; // the plant form is open (it folds away once a probe is planted)
+  mailNew: number[]; // mail that arrived since the Mailbox was last open (the rail's badge)
 }
 
 function load<T>(k: string, d: T): T {
@@ -47,7 +48,7 @@ export function save(k: string, v: unknown) {
 let state: AppState = {
   loaded: false, loadError: null, status: null, probes: new Map(), untagged: null, list: [], details: new Map(), enrich: new Map(),
   seen: load<Record<string, number> | null>("colluder.seen", null) ?? {}, openSeen: {}, sel: null, hit: null, hitPicked: false, older: {}, olderDone: {}, tab: "hits", ruleDrafts: {}, ruleSeed: null,
-  stream: { state: "connecting", since: Date.now(), lastEventAt: 0 }, arrived: null, lit: null, pulse: 0, planting: false,
+  stream: { state: "connecting", since: Date.now(), lastEventAt: 0 }, arrived: null, lit: null, pulse: 0, planting: false, mailNew: [],
 };
 const firstVisit = load("colluder.seen", null) == null;
 const subs = new Set<() => void>();
@@ -84,6 +85,7 @@ export async function loadState() {
       save("colluder.seen", seen);
     }
     set({ loaded: true, loadError: null, status: st.status, probes, untagged: st.untagged, list: st.interactions, seen });
+    if (st.status.mailbox) void seedMail();
   } catch (e) {
     set({ loadError: (e as Error).message });
     setTimeout(loadState, 5000);
@@ -313,7 +315,33 @@ export const restoreProbe = (tag: string | null) => api<{ restored: number }>(`$
 export type MailEvent = { type: "mail"; row: MailRow } | { type: "deleted"; id: number } | { type: "deleted"; ids?: number[]; upTo?: number };
 const mailSubs = new Set<(e: MailEvent) => void>();
 export function onMail(fn: (e: MailEvent) => void) { mailSubs.add(fn); return () => { mailSubs.delete(fn); }; }
-export const fetchMail = () => api<{ messages: MailRow[]; mailbox: Mailbox }>("/api/mail?limit=200");
+export const MAIL_PAGE = 200;
+// the newest page, or the page before a message id (older mail, loaded on demand)
+export const fetchMail = (before?: number) => api<{ messages: MailRow[]; mailbox: Mailbox }>(`/api/mail?limit=${MAIL_PAGE}${before ? `&before=${before}` : ""}`);
+// Mail read in the Mailbox: the highest id seen, per browser. The rail's badge counts mail above it.
+const MAIL_SEEN = "colluder.mailSeen";
+export const readMailSeen = () => { try { return Number(localStorage.getItem(MAIL_SEEN) || 0) || 0; } catch { return 0; } };
+export function markMailSeen(id: number) {
+  if (id > readMailSeen()) save(MAIL_SEEN, id);
+  const mailNew = state.mailNew.filter((x) => x > id);
+  if (mailNew.length !== state.mailNew.length) set({ mailNew });
+}
+// once per page load: what arrived while the page was closed. A first visit counts everything as read,
+// as hits do.
+let mailSeeded = false;
+async function seedMail() {
+  if (mailSeeded) return;
+  mailSeeded = true;
+  try {
+    const r = await fetchMail();
+    const ids = r.messages.map((m) => m.id);
+    const firstMail = (() => { try { return localStorage.getItem(MAIL_SEEN) == null; } catch { return false; } })();
+    if (firstMail) { if (ids.length) save(MAIL_SEEN, Math.max(...ids)); return; }
+    const seen = readMailSeen();
+    const fresh = ids.filter((x) => x > seen && !state.mailNew.includes(x));
+    if (fresh.length) set({ mailNew: [...state.mailNew, ...fresh] });
+  } catch { mailSeeded = false; /* the mailbox may be off; try again on the next load */ }
+}
 // gone for good: the messages given, or everything up to the newest one (mail arriving meanwhile stays)
 export const deleteMail = (what: { ids: number[] } | { upTo: number }) =>
   api<{ deleted: number }>("/api/mail/delete", { method: "POST", body: "ids" in what ? { ids: what.ids } : { all: true, upTo: what.upTo } });
@@ -343,8 +371,16 @@ export function connect() {
   on<Counts>("untagged", (u) => set({ untagged: u }));
   on<{ tag: string }>("probe-deleted", (d) => dropProbe(d.tag));
   on<Enrich>("enrich", (e) => set({ enrich: new Map(state.enrich).set(e.ip, e) }));
-  on<MailRow>("mail", (row) => mailSubs.forEach((f) => f({ type: "mail", row })));
-  on<{ id?: number; ids?: number[]; upTo?: number }>("mail-deleted", (d) => mailSubs.forEach((f) => f(d.id !== undefined ? { type: "deleted", id: d.id } : { type: "deleted", ids: d.ids, upTo: d.upTo })));
+  on<MailRow>("mail", (row) => {
+    // counted first; an open Mailbox shows the row and marks it read right after
+    if (row.id > readMailSeen() && !state.mailNew.includes(row.id)) set({ mailNew: [...state.mailNew, row.id] });
+    mailSubs.forEach((f) => f({ type: "mail", row }));
+  });
+  on<{ id?: number; ids?: number[]; upTo?: number }>("mail-deleted", (d) => {
+    const gone = (x: number) => x === d.id || !!d.ids?.includes(x) || (d.upTo !== undefined && x <= d.upTo);
+    if (state.mailNew.some(gone)) set({ mailNew: state.mailNew.filter((x) => !gone(x)) });
+    mailSubs.forEach((f) => f(d.id !== undefined ? { type: "deleted", id: d.id } : { type: "deleted", ids: d.ids, upTo: d.upTo }));
+  });
   on<Mailbox>("mailbox", (m) => { if (state.status) set({ status: { ...state.status, mailbox: m } }); });
   on<{ reason: string; count: number; tag?: string | null }>("reload", (d) => {
     const whose = d.tag === undefined ? "" : d.tag ? ` from ${d.tag}` : " with no tag";

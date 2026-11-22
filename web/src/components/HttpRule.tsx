@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ChevronLeft, ChevronRight, Copy, Plus, X } from "lucide-react";
 import { useApp, getState, fetchRule, previewRule, saveRule, setRuleDraft, takeRuleSeed } from "@/store";
-import type { Decoy, HttpRule, Probe, RuleMode, RuleState, RuleVersion } from "@/lib/types";
+import type { HttpRule, Probe, RuleMode, RuleState, RuleVersion } from "@/lib/types";
+import { DEFAULT, MODE_DEFAULTS, decoyOf, effective, methodsOf, norm, sameRule } from "@/lib/ruleDraft";
 import { reachOf } from "@/lib/reach";
 import { METADATA, redirectable } from "@/lib/metadata";
 import { dayOrTime, lineCount, plural, setupCmd } from "@/lib/format";
@@ -17,14 +18,6 @@ import { Chip } from "./bits";
 import { tagged } from "@/lib/kit";
 import { hostedFile } from "@/lib/plant";
 
-const DEFAULT: HttpRule = { mode: "default", delayMs: 0, schemes: { http: true, https: true } };
-const MODE_DEFAULTS: Record<RuleMode, Partial<HttpRule>> = {
-  default: {},
-  redirect: { status: 302, location: "", loop: 0 },
-  custom: { status: 200, headers: [], body: "", bodyEncoding: "text" },
-  file: { contentType: "text/plain; charset=utf-8", body: "", bodyEncoding: "text", template: "" },
-  preset: {},
-};
 const MODES: [RuleMode, string][] = [["default", "Default reply"], ["redirect", "Redirect"], ["custom", "Custom response"], ["file", "Hosted file"]];
 
 // Redirect targets that work without extra request headers (a redirect can't add them): the
@@ -59,42 +52,11 @@ function templates(tag: string, host: string): Record<string, { label: string; c
   };
 }
 
-const norm = (r: HttpRule): HttpRule => (r.mode === "default" ? DEFAULT : { ...DEFAULT, ...MODE_DEFAULTS[r.mode], ...r });
-// The draft keeps every mode's fields (switching mode loses nothing); this is the part that counts.
-const KEYS: Record<RuleMode, (keyof HttpRule)[]> = {
-  default: [],
-  redirect: ["status", "location", "loop", "hopStatuses"],
-  custom: ["status", "headers", "body", "bodyEncoding"],
-  file: ["contentType", "body", "bodyEncoding", "template"],
-  preset: ["kind", "params"],
-};
-function effective(r: HttpRule): HttpRule {
-  if (r.mode === "default") return DEFAULT;
-  const n = norm(r);
-  const out: Record<string, unknown> = { mode: n.mode, delayMs: n.delayMs, schemes: { http: n.schemes.http, https: n.schemes.https } };
-  for (const k of KEYS[n.mode]) out[k] = n[k];
-  if (n.mode === "redirect") {
-    const hs = typeof n.hopStatuses === "string" ? n.hopStatuses.split(/[\s,]+/).filter(Boolean).map((x) => (/^\d+$/.test(x) ? Number(x) : x)) : n.hopStatuses ?? [];
-    if (n.loop && hs.length) out.hopStatuses = hs; else delete out.hopStatuses;
-  }
-  const d = decoyOf(n.decoy);
-  if (d) out.decoy = d;
-  return out as unknown as HttpRule;
-}
-// the decoy as the server stores it: empty parts dropped, all empty is none
-function decoyOf(d?: Decoy | null): Decoy | null {
-  if (!d) return null;
-  const sources = (Array.isArray(d.sources) ? d.sources : String(d.sources ?? "").split(/[\s,]+/)).map((x) => x.trim().toLowerCase()).filter(Boolean);
-  const ua = (d.ua ?? "").trim();
-  const out: Decoy = { ...(d.first ? { first: d.first } : {}), ...(ua ? { ua } : {}), ...(sources.length ? { sources } : {}) };
-  return Object.keys(out).length ? out : null;
-}
 const ODD: [string, string][] = [["300", "300 Multiple Choices"], ["305", "305 Use Proxy"], ["306", "306 (unused)"], ["309", "309 (non-standard)"], ["310", "310 (non-standard)"]];
-const same = (a: HttpRule, b: HttpRule) => JSON.stringify(effective(a)) === JSON.stringify(effective(b));
 // which field a validation message is about, so the field itself can say so
 function errorField(msg?: string) {
   if (!msg) return null;
-  for (const [re, f] of [[/^Location/, "location"], [/^(Redirect status|Status)/, "status"], [/^Loop/, "loop"], [/^(Hop codes|Up to 10 hop)/, "hopStatuses"], [/^(Decoy|Up to 20 decoy)/, "decoy"], [/[Hh]eader/, "headers"],
+  for (const [re, f] of [[/^Location/, "location"], [/^(Redirect status|Status)/, "status"], [/^Loop/, "loop"], [/^(Hop codes|Up to 10 hop)/, "hopStatuses"], [/^Decoy methods/, "decoyMethods"], [/^(Decoy|Up to 20 decoy)/, "decoy"], [/[Hh]eader/, "headers"],
     [/^Body/, "body"], [/^(File must|Preset)/, "preset"], [/^Delay/, "delay"], [/^Content type/, "contentType"], [/HTTP, HTTPS or both/, "schemes"]] as [RegExp, string][]) if (re.test(msg)) return f;
   return null;
 }
@@ -192,7 +154,7 @@ export function HttpRuleTab({ p }: { p: Probe }) {
   }, [webHits]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const base = useMemo(() => norm(rs?.active?.rule ?? DEFAULT), [rs]);
-  const dirty = rs != null && !same(draft, base);
+  const dirty = rs != null && !sameRule(draft, base);
   // the draft is kept in the store, so the tab label says "edited" and nothing is lost on a switch
   useEffect(() => { if (rs) setRuleDraft(p.tag, dirty ? draft : null); }, [rs, dirty, draft, p.tag]);
 
@@ -246,6 +208,28 @@ export function HttpRuleTab({ p }: { p: Probe }) {
       </div>
     </Row>
   );
+
+  // the header list: Custom response's headers, and a hosted file's extra ones
+  const headers = draft.headers ?? [];
+  const headerRows = (
+    <>
+      {headers.map(([n, v], i) => (
+        <div key={i} className="flex gap-2">
+          <label className={cn(fld, "w-[180px]", bad("headers"))}><input aria-label={`Header ${i + 1} name`} spellCheck={false} value={n} placeholder="Name" className={inputCls} onChange={(e) => set({ headers: headers.map((h, j) => (j === i ? [e.target.value, h[1]] : h)) })} /></label>
+          <label className={cn(fld, "flex-1")}><input aria-label={`Header ${i + 1} value`} spellCheck={false} value={v} placeholder="Value" className={inputCls} onChange={(e) => set({ headers: headers.map((h, j) => (j === i ? [h[0], e.target.value] : h)) })} /></label>
+          <Button variant="ghost" size="icon-sm" aria-label={`Remove header ${n || i + 1}`} onClick={() => set({ headers: headers.filter((_, j) => j !== i) })}><X /></Button>
+        </div>
+      ))}
+      <Button variant="ghost" size="sm" className="w-fit" disabled={headers.length >= 30} onClick={() => set({ headers: [...headers, ["", ""]] })}><Plus />Add header</Button>
+    </>
+  );
+  // the decoy's methods: HEAD and OPTIONS as toggles, anything else typed (what lib/rules.mjs accepts)
+  const decoyMethods = methodsOf(draft.decoy?.methods);
+  const setMethods = (m: string[] | string) => set({ decoy: { ...draft.decoy, methods: m } });
+  const toggleMethod = (m: string) => setMethods(decoyMethods.includes(m) ? decoyMethods.filter((x) => x !== m) : [...decoyMethods, m]);
+  const otherMethods = typeof draft.decoy?.methods === "string"
+    ? draft.decoy.methods.split(/[\s,]+/).filter((x) => x && !/^(head|options)$/i.test(x)).join(" ") + (/\s$/.test(draft.decoy.methods) ? " " : "")
+    : decoyMethods.filter((x) => x !== "HEAD" && x !== "OPTIONS").join(" ");
 
   return (
     // the panel is the container: the two columns collapse on its own width, not the window's
@@ -329,14 +313,7 @@ export function HttpRuleTab({ p }: { p: Probe }) {
             <Group title="The response" />
             <Row label="Status" error={errFor("status")}><Num label="Status" invalid={errF === "status"} value={draft.status ?? 200} max={599} onChange={(n) => set({ status: n })} /></Row>
             <Row label="Headers" error={errFor("headers")} help="Content-Length is computed and Connection is always close. Server stays your payload domain unless you set one.">
-              {(draft.headers ?? []).map(([n, v], i) => (
-                <div key={i} className="flex gap-2">
-                  <label className={cn(fld, "w-[180px]", bad("headers"))}><input aria-label={`Header ${i + 1} name`} spellCheck={false} value={n} placeholder="Name" className={inputCls} onChange={(e) => set({ headers: (draft.headers ?? []).map((h, j) => (j === i ? [e.target.value, h[1]] : h)) })} /></label>
-                  <label className={cn(fld, "flex-1")}><input aria-label={`Header ${i + 1} value`} spellCheck={false} value={v} placeholder="Value" className={inputCls} onChange={(e) => set({ headers: (draft.headers ?? []).map((h, j) => (j === i ? [h[0], e.target.value] : h)) })} /></label>
-                  <Button variant="ghost" size="icon-sm" aria-label={`Remove header ${n || i + 1}`} onClick={() => set({ headers: (draft.headers ?? []).filter((_, j) => j !== i) })}><X /></Button>
-                </div>
-              ))}
-              <Button variant="ghost" size="sm" className="w-fit" disabled={(draft.headers ?? []).length >= 30} onClick={() => set({ headers: [...(draft.headers ?? []), ["", ""]] })}><Plus />Add header</Button>
+              {headerRows}
             </Row>
             {bodyRow}
           </>
@@ -362,6 +339,9 @@ export function HttpRuleTab({ p }: { p: Probe }) {
             </Row>
             <Row label="Content type" error={errFor("contentType")}><label className={cn(fld, bad("contentType"))}><input aria-label="Content type" spellCheck={false} value={draft.contentType ?? ""} className={inputCls} onChange={(e) => set({ contentType: e.target.value })} /></label></Row>
             {bodyRow}
+            <Row label="Headers" error={errFor("headers")} help="Sent with the file, e.g. Access-Control-Allow-Origin: * for a script, JSON or font fetched cross-origin. Content-Type is the field above.">
+              {headerRows}
+            </Row>
 
           </>
         )}
@@ -389,6 +369,17 @@ export function HttpRuleTab({ p }: { p: Probe }) {
               </div>
               {draft.decoy && (
                 <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2.5 gap-y-1.5 text-body text-smoke">
+                  <span>Methods</span>
+                  <span className="flex flex-wrap items-center gap-2">
+                    {["HEAD", "OPTIONS"].map((m) => (
+                      <label key={m} className="flex cursor-pointer items-center gap-[7px] font-mono">
+                        <input type="checkbox" className="size-3.5 accent-bone" checked={decoyMethods.includes(m)} onChange={() => toggleMethod(m)} />{m}
+                      </label>
+                    ))}
+                    <label className={cn(fld, "w-[150px]", bad("decoyMethods"))}><input aria-label="Other decoy methods" spellCheck={false} value={otherMethods} placeholder="others, e.g. PROPFIND" className={cn(inputCls, "placeholder:font-sans")}
+                      onChange={(e) => setMethods(`${decoyMethods.filter((x) => x === "HEAD" || x === "OPTIONS").join(" ")} ${e.target.value.toUpperCase()}`.trimStart())} /></label>
+                  </span>
+                  {errFor("decoyMethods") && <><span /><p role="alert" className="text-label leading-4 text-bad">{errFor("decoyMethods")}</p></>}
                   <span>First</span>
                   <span className="flex items-center gap-2"><Num label="Decoy first requests" value={draft.decoy.first ?? 0} max={20} w="w-[52px]" onChange={(n) => set({ decoy: { ...draft.decoy, first: n } })} />requests</span>
                   <span>User-Agent has</span>
