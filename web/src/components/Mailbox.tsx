@@ -91,6 +91,7 @@ export function Mailbox({ arg }: { arg: string | null }) {
   const [org, setOrg] = useState(ALL);
   const [archiveOpen, setArchiveOpen] = useState(() => readFlag("colluder.mailArchiveOpen"));
   const [seenAtOpen] = useState(readMailSeen);
+  const [readHere, setReadHere] = useState<ReadonlySet<number>>(() => new Set());
   const [local, setLocalState] = useState(readLocal);
   const setLocal = (v: string) => { const c = cleanLocal(v); setLocalState(c); if (c) save(LOCAL_KEY, c); };
   const address = mb ? `${local || DEFAULT_LOCAL}@${mb.host}` : "";
@@ -144,6 +145,8 @@ export function Mailbox({ arg }: { arg: string | null }) {
   const shown = useMemo(() => (rows ?? []).filter((r) => (addr === ALL || r.localPart === addr) && (org === ALL || orgOf(r) === org) && (!needle || r.localPart.includes(needle)
     || (r.subject ?? "").toLowerCase().includes(needle) || (r.from ?? "").toLowerCase().includes(needle) || (r.mailFrom ?? "").toLowerCase().includes(needle))), [rows, addr, org, needle]);
   const sel = arg && /^\d+$/.test(arg) ? Number(arg) : shown[0]?.id ?? null;
+  const opened = arg && /^\d+$/.test(arg) ? Number(arg) : null;
+  useEffect(() => { if (opened !== null) setReadHere((prev) => (prev.has(opened) ? prev : new Set(prev).add(opened))); }, [opened]);
   const listRef = useRef<HTMLDivElement>(null);
   const findRef = useRef<HTMLInputElement>(null);
   // what's shown, in words, for the dialog: "to acme-victim, from acme.example, matching “x”"
@@ -196,7 +199,7 @@ export function Mailbox({ arg }: { arg: string | null }) {
     for (const r of older) { const d = dayLabel(r.receivedAt); if (out.at(-1)?.[0] === d) out.at(-1)![1].push(r); else out.push([d, [r]]); }
     return out;
   }, [older]);
-  const row = (r: MailRow, timeOnly = false) => <Row key={r.id} r={r} sel={r.id === sel} unread={r.id > seenAtOpen} look={coats.get(r.localPart) ?? STRAY_LOOK} timeOnly={timeOnly} />;
+  const row = (r: MailRow, timeOnly = false) => <Row key={r.id} r={r} sel={r.id === sel} unread={r.id > seenAtOpen && !readHere.has(r.id)} look={coats.get(r.localPart) ?? STRAY_LOOK} timeOnly={timeOnly} />;
 
   return (
     <div className="grid min-h-0 flex-1 grid-cols-[400px_minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)] m-2 overflow-hidden rounded-md border border-rule bg-soot max-[820px]:m-1.5 max-[1180px]:grid-cols-[320px_minmax(0,1fr)] max-[820px]:block">
@@ -208,11 +211,11 @@ export function Mailbox({ arg }: { arg: string | null }) {
               {/* any local part works: type the account's, or roll a fresh one; Copy gives exactly what's shown */}
               <label className="flex h-[30px] min-w-0 items-center rounded-[3px] border border-rule bg-well pr-2.5 pl-1.5 font-mono text-title text-bone focus-within:border-smoke" title="Any name before the @ reaches this mailbox: one per account you sign up">
                 <input aria-label="Local part (the account's name)" spellCheck={false} value={local} placeholder={DEFAULT_LOCAL} onChange={(e) => setLocal(e.target.value)}
-                  style={{ width: `calc(${Math.max((local || DEFAULT_LOCAL).length, 4)}ch + 6px)` }} className="flex-none bg-transparent pl-1.5 text-right outline-none placeholder:text-ash" />
+                  style={{ width: `calc(${Math.min(Math.max((local || DEFAULT_LOCAL).length, 1), 26)}ch + 6px)` }} className="flex-none bg-transparent pl-1.5 outline-none placeholder:text-ash" />
                 <span className="min-w-0 truncate">@{mb.host}</span>
               </label>
               <Button variant="ghost" size="icon-sm" aria-label="A fresh name for a new account" title="A fresh name for a new account" onClick={() => setLocal(quickTag((t) => addresses.some(([a]) => a === t)))}><Dices /></Button>
-              <Button variant="ghost" size="icon-sm" aria-label="Copy the mailbox address" title={address} onClick={() => copy(address, address)}><Copy /></Button>
+              <Button variant="quiet" size="sm" title={`Copy ${address}`} onClick={() => copy(address, address)}><Copy />Copy</Button>
             </span>
           )}
           <label className="ml-auto flex h-[30px] w-[240px] items-center gap-2 rounded-[3px] border border-rule bg-well px-2.5 text-body text-smoke focus-within:border-smoke max-[820px]:ml-0 max-[820px]:w-full">
@@ -301,7 +304,7 @@ export function Mailbox({ arg }: { arg: string | null }) {
         </div>
       </section>
 
-      <section aria-label="Message" className="min-h-0 overflow-auto">
+      <section aria-label="Message" className="flex min-h-0 flex-col overflow-auto max-[820px]:block">
         {sel !== null ? <Message key={sel} id={sel} look={(lp) => coats.get(lp) ?? STRAY_LOOK} count={(lp) => addresses.find(([a]) => a === lp)?.[1] ?? 0} onAddress={(lp) => { setAddr(lp); setOrg(ALL); setFilter(""); }} onOrg={(o) => { setOrg(o); setAddr(ALL); setFilter(""); }} orgCount={(o) => orgs.find(([x]) => x === o)?.[1] ?? 0} onDelete={askOne} /> : null}
       </section>
       <AlertDialog open={!!doomed} onOpenChange={(o) => { if (!o) setDoomed(null); }}>
@@ -454,20 +457,20 @@ function Message({ id, look, count, onAddress, onOrg, orgCount, onDelete }: { id
   const o = orgOf(m), on = orgCount(o);
 
   return (
-    <article className="px-6 py-5 max-[820px]:px-4">
-      <header className="grid grid-cols-[36px_minmax(0,1fr)] gap-x-3.5 max-[820px]:grid-cols-1">
+    <article className="flex min-h-0 flex-1 flex-col px-6 py-5 max-[820px]:block max-[820px]:px-4">
+      <header className="grid flex-none grid-cols-[36px_minmax(0,1fr)] gap-x-3.5 max-[820px]:grid-cols-1">
         <span className="pt-0.5 max-[820px]:hidden" title={o}><OrgMark org={o} size={36} /></span>
         <div className="min-w-0">
         <h2 className="text-title font-[650] break-words text-bone">{m.subject || <span className="text-ash">(no subject)</span>}</h2>
         <dl className="mt-2.5 grid grid-cols-[72px_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-body max-[820px]:grid-cols-[60px_minmax(0,1fr)] max-[820px]:gap-x-3">
-          <dt className="text-smoke">From</dt>
+          <dt className="pt-px text-label font-[550] tracking-[.03em] text-ash">From</dt>
           <dd className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
             <span className="min-w-0 break-words text-bone" title={m.mailFrom !== null ? `Envelope sender (MAIL FROM): ${m.mailFrom || "<>"}` : undefined}>
               {who.name ? <>{who.name}{who.addr !== who.name && <span className="font-mono text-smoke"> {who.addr}</span>}</> : <span className="text-ash">none</span>}
             </span>
             {on > 1 && <button type="button" onClick={() => onOrg(o)} className="text-label text-smoke underline decoration-rule underline-offset-2 hover:text-bone">All {on} from {o}</button>}
           </dd>
-          <dt className="pt-0.5 text-smoke">To</dt>
+          <dt className="pt-1 text-label font-[550] tracking-[.03em] text-ash">To</dt>
           <dd className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
             <span className="flex min-w-0 items-center gap-1.5" title={`${m.localPart}: ${aKind(look(m.localPart).species)}`}>
               <CrewMark size={18} {...look(m.localPart)} /><code className="min-w-0 font-mono break-all text-bone">{m.rcpt}</code>
@@ -483,17 +486,17 @@ function Message({ id, look, count, onAddress, onOrg, orgCount, onDelete }: { id
               )}
             </span>
           </dd>
-          <dt className="text-smoke">Received</dt><dd className="text-bone"><time dateTime={m.receivedAt}>{stamp(m.receivedAt, "s")}</time>
+          <dt className="pt-px text-label font-[550] tracking-[.03em] text-ash">Received</dt><dd className="text-bone"><time dateTime={m.receivedAt}>{stamp(m.receivedAt, "s")}</time>
             <span className="text-ash"> · from <span className="font-mono">{m.remoteAddress}</span>{m.helo ? <> (<span className="font-mono">{m.helo}</span>)</> : null} · {m.tls ? m.tls : "no TLS"} · {plural(m.size, "byte")}</span></dd>
-          {m.attachments.length > 0 && <><dt className="text-smoke">Attached</dt><dd className="text-bone">{m.attachments.map((a) => `${a.filename ?? "unnamed"} (${a.contentType}, ${plural(a.size, "byte")})`).join(" · ")}</dd></>}
+          {m.attachments.length > 0 && <><dt className="pt-px text-label font-[550] tracking-[.03em] text-ash">Attached</dt><dd className="text-bone">{m.attachments.map((a) => `${a.filename ?? "unnamed"} (${a.contentType}, ${plural(a.size, "byte")})`).join(" · ")}</dd></>}
         </dl>
         </div>
       </header>
 
       {(m.code || numbers.length > 0 || m.link || otherLinks.length > 0) && (
-        <div className="mt-4 grid grid-cols-[72px_minmax(0,1fr)] items-start gap-x-4 gap-y-3 border-y border-rule py-3.5 text-body">
+        <div className="mt-4 grid flex-none grid-cols-[72px_minmax(0,1fr)] items-start gap-x-4 gap-y-3 border-y border-rule py-3.5 text-body">
           {(m.code || numbers.length > 0) && <>
-            <span className="pt-1 text-smoke">Code</span>
+            <span className="pt-1.5 text-label font-[550] tracking-[.03em] text-ash">Code</span>
             <div className="min-w-0">
               {m.code ? (
                 <div className="flex flex-wrap items-center gap-3">
@@ -512,7 +515,7 @@ function Message({ id, look, count, onAddress, onOrg, orgCount, onDelete }: { id
             </div>
           </>}
           {(m.link || otherLinks.length > 0) && <>
-            <span className="pt-0.5 text-smoke">Link</span>
+            <span className="pt-1 text-label font-[550] tracking-[.03em] text-ash">Link</span>
             <div className="min-w-0">
               {m.link ? <LinkLine url={m.link} label={m.links.find((l) => l.url === m.link)?.label} />
                 : <p className="pt-0.5 text-ash">None that looks like a sign-in or confirmation link.</p>}
@@ -527,7 +530,7 @@ function Message({ id, look, count, onAddress, onOrg, orgCount, onDelete }: { id
         </div>
       )}
 
-      <div className="mt-4 flex flex-wrap items-center gap-3">
+      <div className="mt-4 flex flex-none flex-wrap items-center gap-3">
         <ToggleGroup type="single" value={view} onValueChange={(v) => v && setView(v as View)} aria-label="Show" title="Shown as text; links aren't live" className="overflow-hidden rounded-[3px] border border-rule">
           {([["message", "Message"], ["html", "HTML source"], ["headers", "Headers"], ["raw", "Exact bytes"]] as [View, string][]).map(([v, l]) => <ToggleGroupItem key={v} value={v} className={seg}>{l}</ToggleGroupItem>)}
         </ToggleGroup>
@@ -545,7 +548,7 @@ function Message({ id, look, count, onAddress, onOrg, orgCount, onDelete }: { id
           <Button variant="ghost" size="icon-sm" aria-label="Delete this message" title="Delete this message…" onClick={() => onDelete(m)}><Trash2 /></Button>
         </span>
       </div>
-      <pre className={cn("mt-2 max-h-[60vh] overflow-auto rounded-[3px] border border-rule bg-well p-3 text-body break-words whitespace-pre-wrap text-bone", view === "message" ? "font-sans leading-[1.5]" : "font-mono leading-[18px]")}>
+      <pre className={cn("mt-2 min-h-[200px] flex-1 overflow-auto rounded-[3px] max-[820px]:max-h-[60vh] max-[820px]:min-h-0 border border-rule bg-well p-3 text-body break-words whitespace-pre-wrap text-bone", view === "message" ? "font-sans leading-[1.5]" : "font-mono leading-[18px]")}>
         {absent ? <span className="font-sans text-ash">{view === "message" ? "No text in it." : "No HTML part."}</span>
           : view === "headers" || view === "raw" ? <MailText text={body.length > MAX_SHOWN ? body.slice(0, MAX_SHOWN) : body} allHead={view === "headers"} />
           : <span className={cn(view === "message" && "block max-w-[78ch]")}>{body.length > MAX_SHOWN ? body.slice(0, MAX_SHOWN) : body}</span>}

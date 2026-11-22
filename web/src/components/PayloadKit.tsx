@@ -33,7 +33,9 @@ export function EncPicker({ value, onChange, small }: { value: Enc; onChange: (e
     </ToggleGroup>
   );
 }
-export const copyAs = (text: string, enc: Enc, what: string) => copy(encode(text, enc), enc === "raw" ? what : `${what}, ${encName(enc)}`);
+// what a copy toast calls it: the encoding is named unless it's "as is", so URL ×2 never passes as plain
+const withEnc = (what: string, enc: Enc) => (enc === "raw" ? what : `${what}, ${encName(enc)}`);
+export const copyAs = (text: string, enc: Enc, what: string) => copy(encode(text, enc), withEnc(what, enc));
 
 // the payload exactly as copied: the shared host recedes, the tag is marked, and what tells payloads
 // apart (scheme, path, the variant code) stays bright
@@ -50,15 +52,17 @@ export function Marked({ text, tag, code }: { text: string; tag: string; code?: 
   );
 }
 
-function Row({ name, code, text, note, tag }: { name: string; code?: string; text: string; note?: string; tag: string }) {
+const ROW = "-mx-2 grid grid-cols-[176px_minmax(0,1fr)_auto] items-start gap-x-4 rounded-[3px] border-b border-rule-2 px-2 py-2.5 hover:bg-hover max-[820px]:grid-cols-[minmax(0,1fr)_auto]";
+
+function Row({ name, code, text, note, tag, enc }: { name: string; code?: string; text: string; note?: string; tag: string; enc: Enc }) {
   return (
-    <li className="grid grid-cols-[176px_minmax(0,1fr)_auto] items-start gap-x-4 border-b border-rule-2 py-2.5 max-[820px]:grid-cols-[minmax(0,1fr)_auto]">
+    <li className={ROW}>
       <span className="pt-px text-body font-[550] text-smoke max-[820px]:col-span-full">{name}</span>
       <div className="min-w-0">
         <code className="block font-mono text-body leading-[1.125rem] break-all text-bone"><Marked text={text} tag={tag} code={code} /></code>
         {note && <p className="mt-1 max-w-[70ch] text-label leading-4 text-ash">{note}</p>}
       </div>
-      <Button variant="ghost" size="icon-sm" aria-label={`Copy ${name}`} onClick={() => copy(text, name)}><Copy /></Button>
+      <Button variant="ghost" size="icon-sm" aria-label={`Copy ${name}`} onClick={() => copy(text, withEnc(name, enc))}><Copy /></Button>
     </li>
   );
 }
@@ -74,7 +78,7 @@ function MetaItem({ r, tag, enc, onForms }: { r: MetaRow; tag: string; enc: Enc;
   // an unsaved answer on the probe is someone's work: ask before this one replaces it
   const ask = () => (getState().ruleDrafts[tag] ? setReplacing(true) : redirect());
   return (
-    <li className="grid grid-cols-[176px_minmax(0,1fr)_auto] items-start gap-x-4 border-b border-rule-2 py-2.5 max-[820px]:grid-cols-[minmax(0,1fr)_auto]">
+    <li className={ROW}>
       <span className="pt-px text-body max-[820px]:col-span-full"><span className="font-[550] text-bone">{r.provider}</span><span className="block text-smoke">{r.name}</span></span>
       <div className="min-w-0">
         <code className="block font-mono text-body leading-[1.125rem] break-all text-bone">{text}</code>
@@ -89,7 +93,7 @@ function MetaItem({ r, tag, enc, onForms }: { r: MetaRow; tag: string; enc: Enc;
           </div>
         )}
       </div>
-      <Button variant="ghost" size="icon-sm" aria-label={`Copy ${r.provider} ${r.name}`} onClick={() => copy(text, `${r.provider} ${r.name}`)}><Copy /></Button>
+      <Button variant="ghost" size="icon-sm" aria-label={`Copy ${r.provider} ${r.name}`} onClick={() => copy(text, withEnc(`${r.provider} ${r.name}`, enc))}><Copy /></Button>
       <AlertDialog open={replacing} onOpenChange={setReplacing}>
         <AlertDialogContent className="max-w-[460px] border-rule bg-soot-1">
           <AlertDialogHeader>
@@ -200,8 +204,8 @@ export function PayloadKit({ section }: { section: string | null }) {
               <MetaItem key={r.id} r={r} tag={tag} enc={enc}
                 onForms={parseIPv4(hostOf(r.url)) ? () => { setIp(hostOf(r.url)); setPath(pathOf(r.url)); location.hash = "kit/address"; } : undefined} />
             ))}
-            {rows.map((p) => <Row key={p.code} name={p.name} code={p.code} text={encode(p.text, enc)} note={p.note} tag={tag} />)}
-            {forms?.map((f) => <Row key={f.name} name={f.name} text={encode(formUrl(f, path), enc)} note={f.note} tag={tag} />)}
+            {rows.map((p) => <Row key={p.code} name={p.name} code={p.code} text={encode(p.text, enc)} note={p.note} tag={tag} enc={enc} />)}
+            {forms?.map((f) => <Row key={f.name} name={f.name} text={encode(formUrl(f, path), enc)} note={f.note} tag={tag} enc={enc} />)}
           </ul>
           {sec === "address" && !forms && <p role="alert" className="mt-3 text-body text-bad">Type an IPv4 address, like 169.254.169.254.</p>}
         </div>

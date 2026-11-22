@@ -377,7 +377,7 @@ function PaneTabs({ s, p }: { s: AppState; p: Probe }) {
   return (
     <div className="flex h-10 min-w-0 items-stretch border-b border-rule pr-5 max-[820px]:h-11 max-[820px]:pr-3.5">
     <div ref={ref} role="tablist" aria-label={`Probe ${p.tag}`} onKeyDown={onKeyDown}
-      className="flex flex-none items-stretch gap-7 overflow-x-auto pl-6 max-[820px]:gap-5 max-[820px]:pl-3.5">
+      className="flex h-10 flex-none items-stretch gap-7 overflow-x-auto pl-6 max-[820px]:h-11 max-[820px]:gap-5 max-[820px]:pl-3.5">
       {PROBE_TABS.map((t) => {
         const on = s.tab === t;
         const draft = t === "http" ? (s.ruleDrafts[p.tag] as { mode?: string; status?: number } | undefined) : undefined;
@@ -511,10 +511,10 @@ export function ProbePane() {
   const p = s.probes.get(s.sel);
   // a tagged probe gets the tab strip; Unregistered only has hits
   const tabs = p ? <PaneTabs s={s} p={p} /> : null;
-  const tabbed = p ? "grid-rows-[auto_40px_minmax(0,auto)_minmax(0,1fr)]" : "";
+  const tabbed = p ? "grid-rows-[auto_auto_minmax(0,auto)_minmax(0,1fr)]" : "";
   if (p && s.tab !== "hits") {
     return (
-      <section className={cn(wrap, "grid-rows-[auto_40px_minmax(0,1fr)]")} aria-label={`Probe ${s.sel}`}>
+      <section className={cn(wrap, "grid-rows-[auto_auto_minmax(0,1fr)]")} aria-label={`Probe ${s.sel}`}>
         <Head s={s} />{tabs}<HttpRuleTab p={p} />
       </section>
     );
@@ -667,7 +667,7 @@ export function ProbePane() {
   const firstHit = all[all.length - 1];
   const ownCount = all.filter((i) => keyOf(i) === s.sel).length;
   return (
-    <section className={cn(wrap, tabbed, hitId == null && (p ? "grid-rows-[auto_40px_minmax(0,1fr)]" : "grid-rows-[auto_minmax(0,1fr)]"))} aria-label={`Probe ${s.sel === UNTAGGED ? "No tag" : s.sel}`}>
+    <section className={cn(wrap, tabbed, hitId == null && (p ? "grid-rows-[auto_auto_minmax(0,1fr)]" : "grid-rows-[auto_minmax(0,1fr)]"))} aria-label={`Probe ${s.sel === UNTAGGED ? "No tag" : s.sel}`}>
       <Head s={s} />{p && <PaneTabs s={s} p={p} />}
       <div id={p ? "probe-panel" : undefined} role={p ? "tabpanel" : undefined} aria-labelledby={p ? "probe-tab-hits" : undefined} className="flex min-h-0 flex-col">
       {/* the filters belong to the hits: their own row inside the Hits panel, never in the tab strip, where
@@ -754,7 +754,10 @@ function Splitter({ box, px, onChange }: { box: React.RefObject<HTMLDivElement |
     <div role="separator" aria-orientation="horizontal" aria-label="Resize the hits list" aria-valuemin={MIN_TABLE} aria-valuenow={Math.round(px ?? now())} tabIndex={0}
       title="Drag to resize; double-click for the Settings height" onPointerDown={onPointerDown} onKeyDown={onKeyDown} onDoubleClick={() => onChange(null)}
       className="group relative h-0 flex-none cursor-row-resize touch-none outline-none max-[820px]:hidden">
-      <span className="absolute inset-x-0 -top-1.5 z-10 h-3 group-hover:bg-rule-2/60 group-focus-visible:bg-smoke/40" />
+      {/* a 12px grab zone over the seam, and a grip in the middle so it reads as draggable at rest */}
+      <span className="absolute inset-x-0 -top-1.5 z-10 flex h-3 items-center justify-center group-hover:bg-rule-2/40 group-focus-visible:bg-smoke/20">
+        <span className="h-[3px] w-9 rounded-full bg-rule group-hover:bg-smoke group-focus-visible:bg-bone" />
+      </span>
     </div>
   );
 }
