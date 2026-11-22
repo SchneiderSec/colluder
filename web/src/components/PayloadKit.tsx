@@ -19,7 +19,8 @@ type SectionId = (typeof READY)[number]["id"];
 const TARGETS: [string, string][] = [["169.254.169.254", "AWS, Azure, GCP, Oracle, DigitalOcean"], ["127.0.0.1", "the target itself"], ["100.100.100.200", "Alibaba"], ["169.254.170.2", "AWS ECS"]];
 
 const fld = "flex h-[30px] min-w-0 items-center rounded-[3px] border border-rule bg-well px-2.5 font-mono text-body text-bone transition-colors focus-within:border-smoke";
-const seg = "h-[26px] rounded-none border-l border-rule px-[11px] text-body text-smoke first:border-l-0 data-[state=on]:bg-soot-2 data-[state=on]:font-semibold data-[state=on]:text-bone";
+// the header's encoding picker: 30px outside, the height of the probe select beside it
+const seg = "h-[28px] rounded-none border-l border-rule px-[11px] text-body text-smoke first:border-l-0 data-[state=on]:bg-soot-2 data-[state=on]:font-semibold data-[state=on]:text-bone";
 
 // How copies are encoded, the same picker wherever payloads are copied. It isn't remembered: a reload is
 // "as is" again, so a double-encoded string never gets pasted by surprise.

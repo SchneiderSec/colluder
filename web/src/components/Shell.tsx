@@ -6,7 +6,7 @@ import { UNTAGGED } from "@/lib/types";
 import { ago, dur, hms, isoMs, newestFirst, stamp, zoneName } from "@/lib/format";
 import { copy, toast } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
-import { LineForm, useTick, type Signal } from "./bits";
+import { LineForm, inkClass, useTick, type Signal } from "./bits";
 import { Mark } from "./Mark";
 import { cn } from "@/lib/utils";
 import { shownId } from "@/lib/kit";
@@ -57,6 +57,9 @@ export function Rail({ view }: { view: string }) {
   );
 }
 
+// a status item that opens Settings: the hover says it's a link
+const LINK = "-mx-1.5 flex h-6 flex-none items-center rounded-[3px] px-1.5 text-bone no-underline transition-colors hover:bg-soot";
+
 export function StatusBar() {
   const s = useApp((x) => x);
   useTick(1000);
@@ -94,19 +97,21 @@ export function StatusBar() {
   return (
     <footer role="status" aria-live="off" className="col-start-2 flex h-7 items-center gap-[22px] max-[820px]:gap-3.5 overflow-hidden bg-bay pr-4 pl-3 text-body whitespace-nowrap max-[820px]:sticky max-[820px]:bottom-0 max-[820px]:col-start-1 max-[820px]:pl-3.5">
       <span className="font-brand text-title leading-none font-bold tracking-[-.01em] max-[820px]:hidden">colluder</span>
-      <Item kind={engine[0]} signal="beat" label="Engine" short="Eng" word={engine[1]} bad={engine[2]}
-        sub={`${e?.version ?? ""}${e?.state === "capturing" && e.since ? ` · up ${dur(Date.now() - Date.parse(e.since))}` : ""}`}
-        title={`${e?.detail ?? ""}\nA moving line: live (the engine beats, the stream carries packets, the edge echoes). Dashed: starting or reconnecting. Struck: down. Still and dim: off.`} />
+      <a href="#settings/system" className={LINK}>
+        <Item kind={engine[0]} signal="beat" label="Engine" short="Eng" word={engine[1]} bad={engine[2]} subHide="max-[1480px]:hidden"
+          sub={`${e?.version ?? ""}${e?.state === "capturing" && e.since ? ` · up ${dur(Date.now() - Date.parse(e.since))}` : ""}`}
+          title={`${e?.detail ?? ""}\nA moving line: live (the engine beats, the stream carries packets, the edge echoes). Dashed: starting or reconnecting. Struck: down. Still and dim: off.\n\nClick for Settings → System.`} />
+      </a>
       <Item kind={ss === "connected" ? "live" : off ? "down" : "dash"} signal="packets" label="Stream" short="Str" word={ss === "connected" ? "connected" : off ? "offline, retrying" : ss} bad={off} />
       {edgeSt && edgeSt.state !== "absent" && (
-        <Item kind={edgeSt.state === "running" ? "live" : "down"} signal="echo" label="Edge" short="Edge" bad={edgeSt.state !== "running"}
+        <a href="#settings/system" className={LINK}><Item kind={edgeSt.state === "running" ? "live" : "down"} signal="echo" label="Edge" short="Edge" bad={edgeSt.state !== "running"}
           word={edgeSt.state === "running" ? "answering" : edgeSt.state === "stale" ? "silent" : "down"}
           // a passing outside check rides on the edge's item; only a failing one takes room of its own
           sub={edgeSt.state === "running" && cl && cl.state !== "failing" ? `checked ${ago(Date.now() - isoMs(cl.finishedAt))}` : ""} subHide="max-[1680px]:hidden"
-          title={[edgeSt.state === "running" ? `Colluder's edge answers your probes on ${[edgeSt.listen?.http, edgeSt.listen?.https, edgeSt.listen?.dns].filter(Boolean).join(", ")}` : "The edge isn't answering: HTTP rules are not being served", checkTip].filter(Boolean).join("\n\n")} />
+          title={[edgeSt.state === "running" ? `Colluder's edge answers your probes on ${[edgeSt.listen?.http, edgeSt.listen?.https, edgeSt.listen?.dns].filter(Boolean).join(", ")}` : "The edge isn't answering: HTTP rules are not being served", checkTip, "Click for Settings → System."].filter(Boolean).join("\n\n")} /></a>
       )}
       {ck?.active && cl?.state === "failing" && (
-        <a href="#settings/check" className="flex items-center rounded-[3px] no-underline hover:text-bone">
+        <a href="#settings/check" className={LINK}>
           <Item kind="down" signal="listen" label="Outside check" short="Check" shortWide word="failing" bad title={checkTip} />
         </a>
       )}
@@ -116,10 +121,10 @@ export function StatusBar() {
           location.hash = "#probes/" + (k === UNTAGGED ? "unregistered" : k);
           select(k, false);
           selectHit(lastHit.id);
-        }} className="flex min-w-0 cursor-pointer items-center gap-[7px] overflow-hidden rounded-[3px] hover:text-bone">
+        }} className="-mx-1.5 flex h-6 min-w-0 cursor-pointer items-center gap-[7px] overflow-hidden rounded-[3px] px-1.5 transition-colors hover:bg-soot hover:text-bone">
           <span className="text-smoke max-[820px]:hidden">Last hit</span>
           <b className={cn("min-w-[5ch] truncate font-[650]", lastHit.tag && "font-mono")}>{lastHit.tag ? <Ultra text={lastHit.tag} /> : "No tag"}</b>
-          <span className="text-smoke max-[820px]:hidden">{lastHit.protocol.toUpperCase()}</span>
+          <span className="flex items-center gap-1.5 text-smoke max-[820px]:hidden"><i className={cn("size-2 flex-none rounded-[2px] bg-current", inkClass(lastHit.protocol))} />{lastHit.protocol.toUpperCase()}</span>
           <b className="font-[650] whitespace-nowrap">{ago(Date.now() - isoMs(lastHit.timestamp))}</b>
           <span className="text-ash max-[1280px]:hidden in-[.type-comfortable]:max-[1520px]:hidden">{hms(lastHit.timestamp)}</span>
         </button>
@@ -128,7 +133,8 @@ export function StatusBar() {
           title={last && clearAt && isoMs(clearAt) >= isoMs(last) ? "Hits were cleared after this one arrived, so no probe shows it. Settings → Restore last clear brings them back." : undefined} />}
       <div className="ml-auto flex flex-none items-center gap-[18px] max-[820px]:hidden">
         {night && <span className="text-label text-ash">Night shift</span>}
-        {host && <span className="font-mono text-label text-smoke max-[1560px]:hidden in-[.type-comfortable]:max-[1800px]:hidden">{shownId(host.split(".")[0])}.{s.status!.payload!.domain}</span>}
+        {host && <button type="button" title={`${host}\nClick to copy the base payload host`} onClick={() => copy(host, "base payload host")}
+          className="-mx-1.5 h-6 cursor-pointer rounded-[3px] px-1.5 font-mono text-label text-smoke transition-colors hover:bg-soot hover:text-bone max-[1360px]:hidden in-[.type-comfortable]:max-[1600px]:hidden">{shownId(host.split(".")[0])}.{s.status!.payload!.domain}</button>}
         <span className="font-semibold tracking-[.02em]">{hms(now.toISOString())}<span className="ml-[3px] text-label font-medium text-smoke">{zoneName(now.getTime())}</span></span>
       </div>
     </footer>

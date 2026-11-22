@@ -269,7 +269,7 @@ export function ProbeList({ hidden }: { hidden?: boolean }) {
     <section aria-label="Probes" hidden={hidden} className="flex min-h-0 flex-col gap-1.5 max-[820px]:max-h-[48vh]">
       <div className="mr-[14px] flex h-[53px] flex-none items-center gap-2 rounded-md border border-rule bg-soot pr-3 pl-4">
         <h2 className="text-title font-[650]" title="Latest activity first">Probes</h2><span className="text-body text-smoke">{live.length}</span>
-        <label className="ml-auto flex h-7 min-w-0 flex-1 basis-0 max-w-[190px] items-center gap-1.5 rounded-[3px] border border-rule bg-soot px-2 focus-within:border-smoke">
+        <label className="ml-auto flex h-7 min-w-0 flex-1 basis-0 max-w-[190px] items-center gap-1.5 rounded-[3px] border border-rule bg-well px-2 focus-within:border-smoke">
           <Search className="size-3.5 flex-none text-ash" strokeWidth={1.5} aria-hidden="true" />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Filter" aria-label="Filter probes by tag, target or note"
             className="min-w-0 flex-1 bg-transparent text-body text-bone outline-none placeholder:text-ash" onKeyDown={(e) => e.key === "Escape" && setQ("")} />
@@ -281,7 +281,7 @@ export function ProbeList({ hidden }: { hidden?: boolean }) {
         <span className="flex flex-none items-center">
           {alerts}{view}
         </span>
-        <Button variant={s.planting ? "secondary" : "default"} size="sm" title="Plant a new probe (p)" aria-label="Plant" onClick={() => setPlanting(!s.planting)}><ArrowDownToLine /><span className="min-[821px]:max-[1400px]:hidden">Plant</span></Button>
+        <Button variant={s.planting ? "secondary" : "default"} title="Plant a new probe (p)" aria-label="Plant" onClick={() => setPlanting(!s.planting)}><ArrowDownToLine /><span className="min-[821px]:max-[1400px]:hidden">Plant</span></Button>
       </div>
       {(chipsOpen || fs.length > 0) && <FacetChips className="mr-[14px] flex-none px-1" />}
       <div ref={listRef} onKeyDown={onListKey} className="flex min-h-0 flex-1 flex-col overflow-auto">

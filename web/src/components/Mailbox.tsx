@@ -215,7 +215,7 @@ export function Mailbox({ arg }: { arg: string | null }) {
                 <span className="min-w-0 truncate">@{mb.host}</span>
               </label>
               <Button variant="ghost" size="icon-sm" aria-label="A fresh name for a new account" title="A fresh name for a new account" onClick={() => setLocal(quickTag((t) => addresses.some(([a]) => a === t)))}><Dices /></Button>
-              <Button variant="quiet" size="sm" title={`Copy ${address}`} onClick={() => copy(address, address)}><Copy />Copy</Button>
+              <Button variant="quiet" className="h-[30px]" title={`Copy ${address}`} onClick={() => copy(address, address)}><Copy />Copy</Button>
             </span>
           )}
           <label className="ml-auto flex h-[30px] w-[240px] items-center gap-2 rounded-[3px] border border-rule bg-well px-2.5 text-body text-smoke focus-within:border-smoke max-[820px]:ml-0 max-[820px]:w-full">
@@ -543,9 +543,9 @@ function Message({ id, look, count, onAddress, onOrg, orgCount, onDelete }: { id
           </span>
         )}
         <span className="ml-auto flex items-center gap-1">
-          <Button variant="ghost" size="sm" onClick={() => copy(body, view === "raw" ? "Message" : "Text")}><Copy />Copy</Button>
-          <Button variant="quiet" size="sm" asChild><a href={`/api/mail/${id}/raw`} download><Download />.eml</a></Button>
-          <Button variant="ghost" size="icon-sm" aria-label="Delete this message" title="Delete this message…" onClick={() => onDelete(m)}><Trash2 /></Button>
+          <Button variant="ghost" onClick={() => copy(body, view === "raw" ? "Message" : "Text")}><Copy />Copy</Button>
+          <Button variant="quiet" asChild><a href={`/api/mail/${id}/raw`} download><Download />.eml</a></Button>
+          <Button variant="ghost" size="icon" aria-label="Delete this message" title="Delete this message…" onClick={() => onDelete(m)}><Trash2 /></Button>
         </span>
       </div>
       <pre className={cn("mt-2 min-h-[200px] flex-1 overflow-auto rounded-[3px] max-[820px]:max-h-[60vh] max-[820px]:min-h-0 border border-rule bg-well p-3 text-body break-words whitespace-pre-wrap text-bone", view === "message" ? "font-sans leading-[1.5]" : "font-mono leading-[18px]")}>

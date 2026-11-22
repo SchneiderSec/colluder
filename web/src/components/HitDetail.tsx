@@ -116,7 +116,8 @@ function What({ d }: { d: InteractionDetail }) {
   );
 }
 
-const segCls = "h-6 rounded-none px-2.5 text-label text-smoke data-[state=on]:bg-soot-2 data-[state=on]:font-semibold data-[state=on]:text-bone";
+// inside a bordered group: 28px outside, the height of the buttons beside it
+const segCls = "h-[26px] rounded-none px-2.5 text-label text-smoke data-[state=on]:bg-soot-2 data-[state=on]:font-semibold data-[state=on]:text-bone";
 
 // Decoded data (an XXE file read, DNS label exfil) in full: real newlines, other control characters
 // marked in Ash, inert text only. Copy and the download give the decoded text (labelled so); the exact

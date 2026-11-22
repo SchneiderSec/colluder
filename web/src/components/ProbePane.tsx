@@ -688,10 +688,10 @@ export function ProbePane() {
     <>
       <ToggleGroup type="multiple" value={kinds} onValueChange={setKinds} aria-label="Show only" className="flex-none overflow-hidden rounded-[3px] border border-rule">
         {[["dns", "DNS"], ["web", "HTTP(S)"], ["smtp", "SMTP"]].map(([v, l], n) => (
-          <ToggleGroupItem key={v} value={v} className={cn("h-6 rounded-none px-2.5 text-label text-smoke data-[state=on]:bg-soot-2 data-[state=on]:font-semibold data-[state=on]:text-bone", n > 0 && "border-l border-rule")}>{l}</ToggleGroupItem>
+          <ToggleGroupItem key={v} value={v} className={cn("h-[22px] rounded-none px-2.5 text-label text-smoke data-[state=on]:bg-soot-2 data-[state=on]:font-semibold data-[state=on]:text-bone", n > 0 && "border-l border-rule")}>{l}</ToggleGroupItem>
         ))}
       </ToggleGroup>
-      <label className="flex h-6 max-w-[420px] min-w-[140px] flex-1 items-center gap-1.5 rounded-[3px] border border-rule bg-soot px-2 focus-within:border-smoke max-[820px]:basis-full">
+      <label className="flex h-6 max-w-[420px] min-w-[140px] flex-1 items-center gap-1.5 rounded-[3px] border border-rule bg-well px-2 focus-within:border-smoke max-[820px]:basis-full">
         <Search className="size-3.5 flex-none text-ash" strokeWidth={1.5} />
         <input aria-label={`Search ${p ? p.tag : "untagged"} hits`} value={q} onChange={(e) => setQ(e.target.value)} spellCheck={false}
           placeholder="Search names, paths, bodies, IPs" className="h-full w-full min-w-0 bg-transparent font-mono text-body text-bone outline-none placeholder:font-sans placeholder:text-ash" />

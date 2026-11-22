@@ -7,7 +7,7 @@ import type { HttpRule, Probe, RuleMode, RuleState, RuleVersion } from "@/lib/ty
 import { DEFAULT, MODE_DEFAULTS, decoyOf, effective, methodsOf, norm, ruleChanges, sameRule } from "@/lib/ruleDraft";
 import { reachOf } from "@/lib/reach";
 import { METADATA, redirectable } from "@/lib/metadata";
-import { dayOrTime, lineCount, plural, setupCmd } from "@/lib/format";
+import { dayOrTime, exact, lineCount, plural, setupCmd } from "@/lib/format";
 import { copy, toast } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -15,6 +15,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { Chip } from "./bits";
+import { ExactLine } from "./HttpView";
 import { tagged } from "@/lib/kit";
 import { hostedFile } from "@/lib/plant";
 
@@ -211,6 +212,20 @@ export function HttpRuleTab({ p }: { p: Probe }) {
     return () => removeEventListener("keydown", onKey);
   }, []);
 
+  // the sticky aside fits between the panel's top and the save bar: their heights as CSS variables
+  const panel = useRef<HTMLDivElement>(null), foot = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = panel.current, f = foot.current;
+    if (!el || !f) return;
+    const ro = new ResizeObserver(() => {
+      el.style.setProperty("--pane-h", `${el.clientHeight}px`);
+      el.style.setProperty("--foot-h", `${f.offsetHeight}px`);
+    });
+    ro.observe(el);
+    ro.observe(f);
+    return () => ro.disconnect();
+  }, [loadErr]);
+
   if (loadErr) return <div id="probe-panel" role="tabpanel" aria-labelledby="probe-tab-http" className="px-6 py-[18px] text-body text-bad">Couldn't load this probe's rule: {loadErr}</div>;
   const tpl = templates(p.tag, host);
   const loop = draft.mode === "redirect" ? draft.loop ?? 0 : 0;
@@ -266,7 +281,7 @@ export function HttpRuleTab({ p }: { p: Probe }) {
 
   return (
     // the panel is the container: the two columns collapse on its own width, not the window's
-    <div id="probe-panel" role="tabpanel" aria-labelledby="probe-tab-http" className="@container min-h-0 overflow-auto max-[820px]:overflow-visible">
+    <div ref={panel} id="probe-panel" role="tabpanel" aria-labelledby="probe-tab-http" className="@container min-h-0 overflow-auto max-[820px]:overflow-visible">
     <div className="relative grid grid-cols-[minmax(0,1fr)_400px] content-start gap-x-7 px-6 pt-[18px] @max-[940px]:grid-cols-1 max-[820px]:px-3.5">
       {(!edge || edge.state === "absent") && (
         <div className="col-span-full mb-4 flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-[3px] border border-caution-border bg-caution-ground px-3 py-2 text-body leading-[1.125rem] text-caution-ink">
@@ -426,12 +441,15 @@ export function HttpRuleTab({ p }: { p: Probe }) {
         )}
       </div>
 
-      <aside className="flex min-w-0 flex-col gap-3.5 pb-4" aria-label="Preview and history">
+      <aside className="flex min-w-0 flex-col gap-3.5 pb-4 @min-[940px]:sticky @min-[940px]:top-[18px] @min-[940px]:max-h-[calc(var(--pane-h,100vh)-18px-var(--foot-h,64px))] @min-[940px]:self-start @min-[940px]:overflow-y-auto" aria-label="Preview and history">
         <div className="flex flex-col rounded-[3px] border border-rule bg-well">
           <div className="flex h-8 items-center gap-2 border-b border-rule-2 pr-1.5 pl-3 text-body font-[650]">
             <span className="whitespace-nowrap">{live ? "Next answer" : "Answer after cutover"}</span>
+            {dirty
+              ? <span className="flex-none rounded-[9px] border border-caution-border bg-caution-ground px-1.5 text-label leading-[1.0625rem] font-[650] text-caution-ink" title="Includes your unsaved changes">unsaved</span>
+              : live && activeV && !p.retiredAt && <span className="flex-none" title={`Saved v${activeV.version} is what the edge answers now`}><Chip grey>live v{activeV.version}</Chip></span>}
             {(() => {
-              const meta = `${scheme.toUpperCase()}${loop ? ` · hop ${hop}/${hops}` : ""}${draft.mode !== "default" && decoyOf(draft.decoy) ? " · past the decoy" : ""}${dirty ? " · unsaved" : ""}${preview.delayMs ? ` · after ${preview.delayMs} ms` : ""}`;
+              const meta = `${scheme.toUpperCase()}${loop ? ` · hop ${hop}/${hops}` : ""}${draft.mode !== "default" && decoyOf(draft.decoy) ? " · past the decoy" : ""}${preview.delayMs ? ` · after ${preview.delayMs} ms` : ""}`;
               const why = [draft.mode !== "default" && decoyOf(draft.decoy) && "what a request past the decoy gets", dirty && "includes your unsaved changes"].filter(Boolean).join("; ");
               return <span className="truncate text-label font-normal text-ash" title={why ? `${meta}: ${why}` : meta}>{meta}</span>;
             })()}
@@ -449,30 +467,30 @@ export function HttpRuleTab({ p }: { p: Probe }) {
             ? <p className="px-3 py-2.5 text-body text-ash">{preview.error!.replace(/ is required\.?$/, "")} needed to preview the answer.</p>
             : preview.error
             ? <p className="px-3 py-2.5 text-body text-bad">Can't answer like this yet: {preview.error}</p>
-            : <pre className="m-0 max-h-[260px] overflow-auto px-3 py-2 font-mono text-body leading-[1.125rem] break-all whitespace-pre-wrap text-bone">{preview.raw ?? " "}</pre>}
+            : <pre className="m-0 max-h-[260px] overflow-auto px-3 py-2 font-mono text-body leading-[1.125rem] break-all whitespace-pre-wrap text-bone">{previewLines(preview.raw, p.tag)}</pre>}
         </div>
 
         <div className="rounded-[3px] border border-rule bg-soot">
           <div className="flex h-7 items-center gap-2 border-b border-rule-2 px-3 text-body font-[650]">Rule history<span className="truncate text-label font-normal text-ash">each hit records the version that answered it</span></div>
-          <ol className="m-0 list-none py-1">
+          <ol className="m-0 list-none">
             {(rs?.history ?? []).map((v, n, all) => <HistoryRow key={v.version} v={v} prev={all[n + 1]} live={live} current={v.version === rs?.active?.version} onLoad={() => { setDraft(norm(v.rule)); setHop(1); }} />)}
             {(live || !!rs?.defaultHits) && (
-              <li className="grid grid-cols-[22px_44px_minmax(0,1fr)_auto] items-baseline gap-2.5 px-3 py-[5px] text-body">
-                <span className="text-label text-ash">—</span><span className="font-semibold text-smoke">{dayOrTime(p.plantedAt)}</span><span className="truncate text-smoke">Default reply from Colluder (no rule)</span>
-                <span className="text-label text-ash">answered {plural(rs?.defaultHits ?? 0, "hit")}</span>
+              <li className={HIST_ROW}>
+                <span className="flex items-baseline gap-2"><span className={HIST_V}>—</span><span className="min-w-0 flex-1 truncate text-body text-smoke">Default reply from Colluder (no rule)</span><span className={HIST_WHEN}>{dayOrTime(p.plantedAt)}</span></span>
+                <span className={HIST_META}>answered {plural(rs?.defaultHits ?? 0, "hit")}</span>
               </li>
             )}
             {!!rs?.interactshHits && (
-              <li className="grid grid-cols-[22px_44px_minmax(0,1fr)_auto] items-baseline gap-2.5 px-3 py-[5px] text-body">
-                <span /><span /><span className="truncate text-smoke">Answered by interactsh (before the edge)</span>
-                <span className="text-label text-ash">{plural(rs.interactshHits, "hit")}</span>
+              <li className={HIST_ROW}>
+                <span className="flex items-baseline gap-2"><span className={HIST_V} /><span className="min-w-0 flex-1 truncate text-body text-smoke">Answered by interactsh (before the edge)</span></span>
+                <span className={HIST_META}>{plural(rs.interactshHits, "hit")}</span>
               </li>
             )}
           </ol>
         </div>
       </aside>
 
-      <div className={cn("sticky bottom-0 col-span-full flex flex-wrap items-center gap-2 border-t border-rule bg-soot py-3 max-[820px]:bottom-7", !dirty && "max-[820px]:static")}>
+      <div ref={foot} className={cn("sticky bottom-0 z-10 col-span-full -mx-6 flex flex-wrap items-center gap-2 border-t border-rule bg-soot-1 px-6 py-3 max-[820px]:bottom-7 max-[820px]:-mx-3.5 max-[820px]:px-3.5", !dirty && "max-[820px]:static")}>
         {dirty && <span className="mr-1 flex items-center gap-1.5 text-body text-smoke"><i className="inline-block size-1.5 rounded-full border-[1.5px] border-smoke" />Unsaved changes</span>}
         <Button disabled={!dirty || saving || !!preview.error} onClick={save} title={`Save (${/Mac|iP(hone|ad)/.test(navigator.platform) ? "⌘S" : "Ctrl+S"})`}>Save as v{nextVersion}</Button>
         <Button variant="quiet" disabled={!dirty || saving} onClick={() => { setDraft(base); setHop(1); }}>Discard</Button>
@@ -499,16 +517,41 @@ function HistoryRow({ v, prev, current, live, onLoad }: { v: RuleVersion; prev?:
   const codes = Array.isArray(r.hopStatuses) && r.hopStatuses.length ? ` (${r.hopStatuses.join("/")})` : "";
   const what = (r.mode === "default" ? "Default reply" : r.mode === "redirect" ? `Redirect ${r.status} → ${r.location}${r.loop ? `, loop ×${r.loop}${codes}` : ""}`
     : r.mode === "file" ? `Hosted file, ${r.contentType}` : r.mode === "preset" ? `XXE preset, reads ${r.params?.file}` : `Custom ${r.status}`) + (r.decoy ? ", with a decoy" : "");
-  const depth = r.mode === "redirect" && r.loop && v.maxHop ? ` · deepest hop ${v.maxHop}/${r.loop + 1}${(v.clients?.length ?? 0) > 1 ? ` (${v.clients!.length} clients)` : ""}` : "";
-  const decoys = v.decoys ? ` · ${v.decoys} decoy` : "";
+  const depth = r.mode === "redirect" && r.loop && v.maxHop ? `deepest hop ${v.maxHop}/${r.loop + 1}${(v.clients?.length ?? 0) > 1 ? ` (${v.clients!.length} clients)` : ""}` : "";
+  const decoys = v.decoys ? `${v.decoys} decoy` : "";
+  const state = current ? (live ? "active" : "saved · not served yet") : null;
+  const meta = [v.savedBy === "claude" && "by Claude", `answered ${plural(v.hits ?? 0, "hit")}`, decoys, depth].filter(Boolean) as string[];
   return (
-    <li className={cn("grid grid-cols-[22px_44px_minmax(0,1fr)_auto] items-baseline gap-2.5 px-3 py-[5px] text-body", current && "bg-soot-2")}>
-      <span className="text-label text-smoke">v{v.version}</span>
-      <span className="font-semibold">{dayOrTime(v.createdAt)}</span>
-      <button type="button" className="min-w-0 cursor-pointer truncate text-left text-smoke hover:text-bone" title={`Load v${v.version} into the editor${prev ? `\nChanged from v${prev.version}: ${changed.length ? changed.join(", ") : "nothing"}` : ""}`} onClick={onLoad}>
-        {what}{prev && changed.length > 0 && <span className="text-ash"> · changed {changed.join(", ")}</span>}
+    <li className={cn(HIST_ROW, current && "bg-soot-2")}>
+      <button type="button" className="group flex min-w-0 cursor-pointer items-baseline gap-2 text-left" title={`Load v${v.version} into the editor${prev ? `\nChanged from v${prev.version}: ${changed.length ? changed.join(", ") : "nothing"}` : ""}`} onClick={onLoad}>
+        <span className={HIST_V}>v{v.version}</span>
+        <span className={cn("min-w-0 flex-1 truncate text-body group-hover:text-bone", current ? "text-bone" : "text-smoke")}>{what}</span>
+        <span className={HIST_WHEN} title={exact(v.createdAt)}>{dayOrTime(v.createdAt)}</span>
       </button>
-      <span className="text-label whitespace-nowrap text-ash">{current ? (live ? "active · " : "saved · not served yet · ") : ""}{v.savedBy === "claude" ? "by Claude · " : ""}answered {plural(v.hits ?? 0, "hit")}{decoys}{depth}</span>
+      <span className={HIST_META}>
+        {state && <span className={live ? "font-[650] text-smoke" : undefined}>{state}</span>}
+        {meta.map((m) => <span key={m}>{m}</span>)}
+        {prev && changed.length > 0 && <span className="min-w-0 truncate">changed {changed.join(", ")}</span>}
+      </span>
     </li>
   );
+}
+
+// a history row: the version, what it answers and when on one line; its state and counts under it
+const HIST_ROW = "flex flex-col gap-0.5 border-b border-rule-2 px-3 py-1.5 last:border-b-0";
+const HIST_V = "w-[26px] flex-none font-mono text-label font-semibold text-smoke";
+const HIST_WHEN = "flex-none text-label whitespace-nowrap text-ash";
+const HIST_META = "flex min-w-0 flex-wrap gap-x-1.5 pl-[34px] text-label text-ash [&>*+*]:before:mr-1.5 [&>*+*]:before:content-['·']";
+
+// the answer as the edge would send it, tinted like a hit's raw response: status, then header names
+// until the first blank line
+function previewLines(raw: string | undefined, tag: string) {
+  if (!raw) return " ";
+  let inHead = true;
+  // the last line break ends the last line; it isn't a line of its own
+  return raw.replace(/\r?\n$/, "").split(/\r?\n/).map((ln, idx) => {
+    const head = inHead;
+    if (inHead && ln === "" && idx > 0) inHead = false;
+    return <span key={idx} className="block min-h-[18px]"><ExactLine ln={ln} idx={idx} inHead={head} tag={tag} /></span>;
+  });
 }
