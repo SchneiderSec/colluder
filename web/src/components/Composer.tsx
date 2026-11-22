@@ -230,7 +230,7 @@ export function Composer() {
     catch (ex) { setErr((ex as Error).message); }
   }
 
-  const fld = "flex h-9 items-center gap-[9px] overflow-hidden rounded-[3px] border border-rule bg-soot px-3 whitespace-nowrap transition-colors focus-within:border-smoke";
+  const fld = "flex h-9 items-center gap-[9px] overflow-hidden rounded-[3px] border border-rule bg-well px-3 whitespace-nowrap transition-colors focus-within:border-smoke";
   return (
     <section aria-label="Plant a probe" className="grid grid-cols-[132px_minmax(0,1fr)_auto] gap-x-0 gap-y-2.5 mx-2 mt-2 rounded-md border border-rule bg-soot-1 px-5 pt-3.5 pb-3 max-[820px]:mx-1.5 max-[820px]:grid-cols-[minmax(0,1fr)_auto] max-[820px]:px-3.5"
       onKeyDown={(e) => { if (e.key === "Escape" && !tag && !target && !empty) cancelPlanting(); }}>
@@ -281,7 +281,7 @@ export function Composer() {
               <SelectContent>{XXE_FILES.map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}</SelectContent>
             </Select>
             {xxeFile === "custom" && (
-              <label className="flex h-8 w-[280px] items-center rounded-[3px] border border-rule bg-soot px-2.5 focus-within:border-smoke">
+              <label className="flex h-8 w-[280px] items-center rounded-[3px] border border-rule bg-well px-2.5 focus-within:border-smoke">
                 <input aria-label="Path of the file to read" spellCheck={false} value={xxeCustom} onChange={(e) => setXxeCustom(e.target.value)} placeholder="/etc/issue or file:///…"
                   className="min-w-0 flex-1 bg-transparent font-mono text-body text-bone outline-none placeholder:font-sans placeholder:text-ash" />
               </label>
