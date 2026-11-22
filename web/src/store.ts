@@ -140,6 +140,16 @@ export function totalUnread(s: AppState) {
   for (const p of s.probes.values()) if (!hiddenRetired(p)) t += unreadFor(s, p.tag);
   return t;
 }
+// back from a fuzzer run: every probe (retired ones too) and the untagged hits marked read at once, the
+// open probe's rows included
+export function markAllSeen() {
+  const seen = { ...state.seen };
+  for (const i of state.list) { const k = keyOf(i); if (i.id > (seen[k] || 0)) seen[k] = i.id; }
+  save("colluder.seen", seen);
+  set({ seen, openSeen: {} });
+}
+export const anyUnread = (s: AppState) => totalUnread(s) + retiredUnread(s) > 0;
+
 // a retired probe sits in the collapsed Retired group until it hears something after retiring
 export const lateHit = (p: { retiredAt?: string | null; lastHitAt?: string | null }) => !!(p.retiredAt && p.lastHitAt && isoMs(p.lastHitAt) > isoMs(p.retiredAt));
 export const hiddenRetired = (p: { retiredAt?: string | null; lastHitAt?: string | null }) => !!p.retiredAt && !lateHit(p);

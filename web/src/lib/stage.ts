@@ -66,6 +66,22 @@ export function stageOf(h: Hit): string | null {
   return h.malformed ? (s ? `malformed request · ${s}` : "malformed request") : s;
 }
 
+// the same, short enough for a table row (the full sentence goes in its tooltip): a redirect as its
+// code and host ("hop 3 · → 302 169.254.169.254"), file data as a short preview
+export function stageShort(h: Hit): string | null {
+  if (h.answerMode === "tls") return "TLS handshake only";
+  const hop = h.hop && h.hop > 1 ? `hop ${h.hop} · ` : "";
+  let core: string | null;
+  if (!h.answerPart && !h.decoy && xxeData(h) === null && (h.answerTo || h.hop)) {
+    const host = h.answerTo ? (/^[a-z][\w+.-]*:\/\/([^/?#]+)/i.exec(h.answerTo)?.[1] ?? h.answerTo) : null;
+    core = host ? `${hop}→ ${h.answerCode ?? "redirect"} ${host}` : `hop ${h.hop} · ${h.hopCode ?? "redirect"}`;
+  } else {
+    const c = stageCore(h);
+    core = c && c.length > 48 ? `${c.slice(0, 47)}…` : c;
+  }
+  return h.malformed ? (core ? `malformed · ${core}` : "malformed request") : core;
+}
+
 function stageCore(h: Hit): string | null {
   if (h.answerPart) return `served ${h.answerPart}`;
   const data = xxeData(h);

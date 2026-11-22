@@ -39,6 +39,13 @@ export const clock = (t: string) => {
 export const hms = (ts?: string | null) => (ts ? clock(wall(ts).slice(11, upTo("s"))) : "");
 export const hmsms = (ts?: string | null) => (ts ? clock(wall(ts).slice(11, upTo("ms"))) : "");
 export const hm = (ts?: string | null) => (ts ? clock(wall(ts).slice(11, upTo("min"))) : "");
+// a table time in three parts, so the seconds can be quieter than the minute: ["16:57", ":14", ""] or
+// ["4:57", ":14", " PM"]
+export const hmParts = (ts: string): [string, string, string] => {
+  const t = clock(wall(ts).slice(11, upTo("s")));
+  const m = /^(\d{1,2}:\d\d)(:\d\d)(.*)$/.exec(t);
+  return m ? [m[1], m[2], m[3]] : [t, "", ""];
+};
 // the calendar day in the shown zone, "YYYY-MM-DD"
 export const dayKey = (ts: string) => wall(ts).slice(0, 10);
 // a full date and time with its zone: "2026-11-20 06:05 UTC" (to the minute), or to the second or millisecond
@@ -87,3 +94,14 @@ export const byteCount = (s: string) => new TextEncoder().encode(s || "").length
 // A deploy script as the operator runs it, by its path in this server's checkout.
 // the one command that sets up (or finishes setting up) the server, run as the operator from anywhere
 export const setupCmd = (app: string | undefined) => `${app ?? "."}/colluder setup`;
+
+// a burst's id range with the shared prefix said once: 3387–88, 3399–402 (the end keeps at least two
+// digits, so 7–9 and 40–41 stay whole)
+export function idRange(from: number, to: number): string {
+  const a = String(from), b = String(to);
+  if (a.length !== b.length) return `${a}–${b}`;
+  let k = 0;
+  while (k < a.length && a[k] === b[k]) k++;
+  const keep = Math.min(b.length, Math.max(2, b.length - k));
+  return `${a}–${b.slice(b.length - keep)}`;
+}

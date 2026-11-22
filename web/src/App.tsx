@@ -105,7 +105,7 @@ export default function App() {
           {route.view === "probes" ? (
             <>
               {planting && <Composer />}
-              <div className={cn("grid min-h-0 flex-1 gap-x-2 p-2 max-[820px]:flex max-[820px]:flex-col max-[820px]:gap-2 max-[820px]:p-1.5", folded ? "grid-cols-[minmax(0,1fr)]" : "grid-cols-[400px_minmax(0,1fr)] max-[1180px]:grid-cols-[320px_minmax(0,1fr)]")}>
+              <div className={cn("grid min-h-0 flex-1 gap-x-2 p-2 max-[820px]:flex max-[820px]:flex-col max-[820px]:gap-2 max-[820px]:p-1.5", folded ? "grid-cols-[minmax(0,1fr)]" : "grid-cols-[360px_minmax(0,1fr)] max-[1400px]:grid-cols-[320px_minmax(0,1fr)]")}>
                 {/* the list stays mounted while folded, so its filter, groups and scroll survive */}
                 <ProbeList hidden={folded} />
                 {/* one place in the tree for the pane, so folding never resets its filters or open hit */}
