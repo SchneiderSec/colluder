@@ -12,6 +12,7 @@ export function fileKind(contentType: string, body: string): FileKind {
   if (/dtd/.test(t) || /^\s*<!ENTITY/.test(b)) return { ext: ".dtd", scheme: "http", plant: (u) => [`<!DOCTYPE x SYSTEM "${u}">`, "DOCTYPE line"] };
   if (/svg/.test(t) || /^\s*(<\?xml[^>]*>\s*)?<svg\b/.test(b)) return { ext: ".svg", scheme: "https", plant: (u) => [`<img src="${u}">`, "image tag"] };
   if (/html/.test(t)) return { ext: ".html", scheme: "https", plant: (u) => [u, "page URL"] };
+  if (/javascript|ecmascript/.test(t)) return { ext: ".js", scheme: "https", plant: (u) => [`<script src="${u}"></script>`, "script tag"] };
   if (/json/.test(t)) return { ext: ".json", scheme: "https" };
   if (/xml/.test(t)) return { ext: ".xml", scheme: "https" };
   return { ext: "", scheme: "https" };

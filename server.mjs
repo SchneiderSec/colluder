@@ -695,6 +695,12 @@ const server = http.createServer(async (req, res) => {
         "x-content-type-options": "nosniff", "content-security-policy": "sandbox", "cache-control": "no-store" });
       return res.end(bytes);
     }
+    // search every probe's hits at once (q required; type=dns,http,https,smtp; up to 100)
+    if (req.method === "GET" && p === "/api/hits") {
+      const types = (url.searchParams.get("type") || "").split(",").filter((t) => ["dns", "http", "https", "smtp", "ldap", "ftp"].includes(t));
+      const rows = store.hitsAll({ q: (url.searchParams.get("q") || "").trim().slice(0, 200), types, limit: Number(url.searchParams.get("limit")) || 50 });
+      return json(res, 200, { hits: rows });
+    }
     // B4: a probe's older hits, search and filter (q, type=dns,http,https,smtp), and a JSONL export
     if (req.method === "GET" && (m = /^\/api\/probes\/([a-z0-9-]{1,32}|__untagged)\/hits$/.exec(p))) {
       const tag = m[1] === "__untagged" ? null : m[1];

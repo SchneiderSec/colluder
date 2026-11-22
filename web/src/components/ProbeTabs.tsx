@@ -1,8 +1,8 @@
 import { Fragment, useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
-import { Archive, ArchiveRestore, Bell, ChevronDown, ChevronRight, CircleStop, BellOff, CheckCheck, Eraser, ClipboardCopy, FileText, List, PanelLeftOpen, Pencil, Pin, PinOff, Plus, RotateCcw, Search, X } from "lucide-react";
+import { Archive, ArchiveRestore, Bell, CopyPlus, ChevronDown, ChevronRight, CircleStop, BellOff, CheckCheck, Eraser, ClipboardCopy, FileText, List, PanelLeftOpen, Pencil, Pin, PinOff, Plus, RotateCcw, Search, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { useApp, getState, select, unreadFor, lateHit, setPlanting, setDiscord, markSeen, fetchReport, clearProbe, restoreProbe, patchProbe, fetchRule, saveRule, type AppState } from "@/store";
-import { PROTOS, UNTAGGED, type HttpRule, type Probe } from "@/lib/types";
+import { useApp, getState, select, unreadFor, searchAllHits, openHit, cloneProbe, lateHit, setPlanting, setDiscord, markSeen, fetchReport, clearProbe, restoreProbe, patchProbe, fetchRule, saveRule, type AppState } from "@/store";
+import { PROTOS, UNTAGGED, type HttpRule, type Interaction, type Probe } from "@/lib/types";
 import { dayOrTime, isoMs, plural } from "@/lib/format";
 import { copy, toast } from "@/lib/toast";
 import { variants } from "@/lib/raw";
@@ -135,6 +135,61 @@ export function findProbe() {
   if (foldedNow && !matchMedia(PHONE).matches) setSwitcher(true);
   else document.querySelector<HTMLInputElement>('input[aria-label="Filter probes by tag, target or note"]')?.focus();
 }
+// Facets: narrow the list and the switcher to probes with news, with web hits (not DNS only), planted
+// by Claude, or answering HTTP with a rule. Shared by both, for the session (a reload starts unfiltered).
+export type Facet = "unread" | "web" | "claude" | "answering";
+export const FACETS: [Facet, string, string][] = [
+  ["unread", "Unread", "Probes with new hits"],
+  ["web", "Web hits", "Probes that got an HTTP or HTTPS hit, not DNS only"],
+  ["claude", "By Claude", "Probes Claude planted through the MCP"],
+  ["answering", "Answering HTTP", "Probes with a saved HTTP rule (not the default reply)"],
+];
+let facets: Facet[] = [];
+export const toggleFacet = (f: Facet) => { facets = facets.includes(f) ? facets.filter((x) => x !== f) : [...facets, f]; ping(); };
+export const clearFacets = () => { if (facets.length) { facets = []; ping(); } };
+export const useFacets = () => useSyncExternalStore(subscribe, () => facets);
+export const facetMatch = (p: Probe, s: AppState, fs: Facet[]) => fs.every((f) =>
+  f === "unread" ? unreadFor(s, p.tag) > 0 : f === "web" ? p.http + p.https > 0 : f === "claude" ? p.plantedBy === "claude" : !!p.httpRule && p.httpRule.mode !== "default");
+export function FacetChips({ className }: { className?: string }) {
+  const fs = useFacets();
+  return (
+    <div role="group" aria-label="Show only" className={cn("flex flex-wrap items-center gap-1", className)}>
+      {FACETS.map(([f, label, what]) => (
+        <button key={f} type="button" aria-pressed={fs.includes(f)} title={what} onMouseDown={(e) => e.preventDefault()} onClick={() => toggleFacet(f)}
+          className={cn("h-6 cursor-pointer rounded-[3px] border border-rule px-2 text-label text-smoke hover:text-bone", fs.includes(f) && "bg-soot-2 font-semibold text-bone")}>{label}</button>
+      ))}
+      {fs.length > 0 && <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={clearFacets} className="ml-1 cursor-pointer text-label text-ash underline decoration-rule underline-offset-2 hover:text-bone">Show all</button>}
+    </div>
+  );
+}
+
+// "Matching hits": the search run over every probe's stored hits (two characters or more, debounced)
+export function useHitSearch(needle: string) {
+  const [hits, setHits] = useState<Interaction[]>([]);
+  useEffect(() => {
+    if (needle.length < 2) { setHits([]); return; }
+    let live = true;
+    const t = setTimeout(() => searchAllHits(needle).then((h) => { if (live) setHits(h); }), 250);
+    return () => { live = false; clearTimeout(t); };
+  }, [needle]);
+  return hits;
+}
+// one matching hit: number, probe, type, source, what it asked for (text only: it came from outside)
+export function HitMatch({ i, active, id, onMouseMove, onPick }: { i: Interaction; active?: boolean; id?: string; onMouseMove?: () => void; onPick?: () => void }) {
+  const line = i.protocol === "dns" ? i.fullId : i.summary.split(" · ")[0];
+  return (
+    <div id={id} role="option" aria-selected={!!active} tabIndex={-1} onMouseMove={onMouseMove} onMouseDown={(e) => e.preventDefault()} onClick={() => { openHit(i); onPick?.(); }}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openHit(i); onPick?.(); } }}
+      aria-label={`Hit ${i.id} on ${i.tag ?? "no tag"}, ${i.protocol.toUpperCase()} from ${i.remoteAddress}`}
+      className={cn("grid h-8 cursor-pointer grid-cols-[auto_auto_auto_minmax(0,1fr)] items-center gap-2.5 rounded-sm px-2 text-body hover:bg-hover focus-visible:outline-[1.5px] focus-visible:-outline-offset-2 focus-visible:outline-bone", active && "bg-accent")}>
+      <span className="font-semibold text-smoke">#{i.id}</span>
+      <span className="max-w-[120px] truncate font-mono text-bone">{i.tag ?? "No tag"}</span>
+      <TypeChip proto={i.protocol} className="text-label" />
+      <span className="min-w-0 truncate font-mono text-label text-smoke" title={`${i.remoteAddress} · ${line}`}>{i.remoteAddress} · {line}</span>
+    </div>
+  );
+}
+
 // the id of a probe's tab, for the pane's aria-labelledby
 export const tabId = (k: string) => `ptab-${encodeURIComponent(k)}`;
 // Armed probes that never heard anything, planted over a day ago, and with nothing new: the list's
@@ -160,6 +215,12 @@ function moveTab(k: string, at: string, after: boolean) {
 }
 
 const PHONE = "(max-width: 820px)";
+// on a phone the list sits above the pane: picking a probe by tapping it scrolls down to its pane
+// (a tap has a click count; keyboard and arrow-key selection don't)
+export function openFromList(k: string, e: React.MouseEvent) {
+  select(k);
+  if (e.detail > 0 && matchMedia(PHONE).matches) requestAnimationFrame(() => document.querySelector("main section[aria-label^='Probe ']")?.scrollIntoView({ block: "start", behavior: "smooth" }));
+}
 const onPhone = (cb: () => void) => { const m = matchMedia(PHONE); m.addEventListener("change", cb); return () => m.removeEventListener("change", cb); };
 export const usePhone = () => useSyncExternalStore(onPhone, () => matchMedia(PHONE).matches);
 
@@ -453,6 +514,7 @@ export function ProbeActions({ s, k, extra, children }: { s: AppState; k: string
         {k !== UNTAGGED && <ContextMenuItem onSelect={() => copy(k, "tag")}><ClipboardCopy />Copy tag</ContextMenuItem>}
         {vs?.map((v) => <ContextMenuItem key={v.proto} onSelect={() => copy(v.value, `${v.proto.toUpperCase()} payload`)}><ClipboardCopy />Copy {v.proto.toUpperCase()} payload</ContextMenuItem>)}
         {p && <ContextMenuItem onSelect={() => fetchReport(k).then((md) => copy(md, `${k} report`), (e) => toast((e as Error).message, true))}><FileText />Copy report</ContextMenuItem>}
+        {p?.registered && <ContextMenuItem onSelect={() => void cloneProbe(k)}><CopyPlus />Clone probe…</ContextMenuItem>}
         {(!!hits || (p?.registered && k !== UNTAGGED)) && <ContextMenuSeparator />}
         {!!hits && <ContextMenuItem onSelect={() => quickClear(k)}><Eraser />Clear {plural(hits, "hit")}</ContextMenuItem>}
         {p?.registered && k !== UNTAGGED && (p.retiredAt
@@ -554,45 +616,50 @@ function Tab({ s, k, i, focus, last }: { s: AppState; k: string; i: number; focu
 // one), and one with a late hit is back under Active anyway. Silent folds to one row (following the
 // list's choice); a search opens it. The fold row is part of the arrow-key order: Enter, a click or
 // → opens it, ← closes it.
-type Row = { k: string; group: string; fold?: { n: number; open: boolean; news: number } };
+type Row = { k: string; group: string; fold?: { n: number; open: boolean; news: number }; hit?: Interaction };
 const FOLDS = ["Silent"];
 function Switcher({ s, onPick }: { s: AppState; onPick: () => void }) {
   const { tabs, names } = useSnap();
   const [q, setQ] = useState("");
   const [at, setAt] = useState(0);
   const listId = useId();
+  const fs = useFacets();
   const needle = q.trim().toLowerCase();
-  const match = (p: Probe) => !needle || [p.tag, p.target, p.note, names[p.tag]].some((x) => (x ?? "").toLowerCase().includes(needle));
+  // a facet narrows like a search: folded groups open, retired probes that match show
+  const searching = !!needle || fs.length > 0;
+  const match = (p: Probe) => facetMatch(p, s, fs) && (!needle || [p.tag, p.target, p.note, names[p.tag]].some((x) => (x ?? "").toLowerCase().includes(needle)));
   const byNews = (a: Probe, b: Probe) => Number(unreadFor(s, b.tag) > 0) - Number(unreadFor(s, a.tag) > 0) || activity(s, b.tag) - activity(s, a.tag);
   const every = [...s.probes.values()].filter((p) => (p.registered || p.hits > 0) && match(p));
   const live = every.filter((p) => !p.retiredAt || lateHit(p));
   const groups: [string, Probe[]][] = [
     ["Active", live.filter((p) => !isSilent(p, s)).sort(byNews)],
     ["Silent", live.filter((p) => isSilent(p, s)).sort(byNews)],
-    ["Retired", needle ? every.filter((p) => p.retiredAt && !lateHit(p)).sort(byNews) : []],
+    ["Retired", searching ? every.filter((p) => p.retiredAt && !lateHit(p)).sort(byNews) : []],
   ];
-  const retiredHidden = needle ? 0 : [...s.probes.values()].filter((p) => p.registered && p.retiredAt && !lateHit(p)).length;
+  const retiredHidden = searching ? 0 : [...s.probes.values()].filter((p) => p.registered && p.retiredAt && !lateHit(p)).length;
   const silentCount = silentProbes(s).length;
   const [opened, setOpened] = useState<Set<string>>(() => new Set(read<boolean>("colluder.silentOpen", false) ? ["Silent"] : []));
   const toggle = (g: string, v?: boolean) => setOpened((o) => { const n = new Set(o); if (v ?? !n.has(g)) n.add(g); else n.delete(g); return n; });
   const rows: Row[] = groups.flatMap(([g, ps]) => {
     if (!ps.length) return [];
     const items = ps.map((p) => ({ k: p.tag, group: g }));
-    if (!FOLDS.includes(g) || needle) return items;
+    if (!FOLDS.includes(g) || searching) return items;
     const open = opened.has(g);
     const head: Row = { k: `fold:${g}`, group: g, fold: { n: ps.length, open, news: ps.reduce((n, p) => n + unreadFor(s, p.tag), 0) } };
     return open ? [head, ...items] : [head];
   });
-  if (s.untagged?.hits && (!needle || "no tag".includes(needle))) rows.push({ k: UNTAGGED, group: "No tag" });
+  if (s.untagged?.hits && !fs.length && (!needle || "no tag".includes(needle))) rows.push({ k: UNTAGGED, group: "No tag" });
+  const found = useHitSearch(q.trim());
+  for (const h of found) rows.push({ k: `hit:${h.id}`, group: "Matching hits", hit: h });
   const pick = (k: string) => { select(k); onPick(); };
   const crew = crewOf(s.probes);
   const d = s.status?.discord;
-  useEffect(() => setAt(0), [needle]);
+  useEffect(() => setAt(0), [needle, fs]);
   useEffect(() => { document.getElementById(`${listId}-${at}`)?.scrollIntoView({ block: "nearest" }); }, [at, listId]);
   const onKey = (e: React.KeyboardEvent) => {
     if (e.key === "ArrowDown") { e.preventDefault(); setAt((i) => Math.min(rows.length - 1, i + 1)); }
     else if (e.key === "ArrowUp") { e.preventDefault(); setAt((i) => Math.max(0, i - 1)); }
-    else if (e.key === "Enter" && rows[at]) { e.preventDefault(); if (rows[at].fold) toggle(rows[at].group); else pick(rows[at].k); }
+    else if (e.key === "Enter" && rows[at]) { e.preventDefault(); const r = rows[at]; if (r.fold) toggle(r.group); else if (r.hit) { openHit(r.hit); onPick(); } else pick(r.k); }
     else if ((e.key === "ArrowRight" || e.key === "ArrowLeft") && rows[at]?.fold && !q) { e.preventDefault(); toggle(rows[at].group, e.key === "ArrowRight"); }
   };
   return (
@@ -603,8 +670,9 @@ function Switcher({ s, onPick }: { s: AppState; onPick: () => void }) {
           role="combobox" aria-expanded="true" aria-controls={listId} aria-activedescendant={rows[at] ? `${listId}-${at}` : undefined} aria-label="Find a probe"
           className="min-w-0 flex-1 bg-transparent text-body text-bone outline-none placeholder:text-ash" />
       </label>
+      <FacetChips className="flex-none border-b border-rule px-2 py-1.5" />
       <div id={listId} role="listbox" aria-label="Probes" className="min-h-0 flex-1 overflow-y-auto p-1">
-        {!rows.length && <p className="px-2 py-3 text-body text-smoke">{needle ? `No probe matches “${q.trim()}”.` : "No live probes."}</p>}
+        {!rows.length && <p className="px-2 py-3 text-body text-smoke">{needle ? `No probe or hit matches “${q.trim()}”${fs.length ? " with these filters" : ""}.` : fs.length ? "No probe matches these filters." : "No live probes."}</p>}
         {rows.map((r, i) => {
           if (r.fold) {
             const f = r.fold;
@@ -618,6 +686,12 @@ function Switcher({ s, onPick }: { s: AppState; onPick: () => void }) {
               </div>
             );
           }
+          if (r.hit) return (
+            <Fragment key={r.k}>
+              {rows[i - 1]?.group !== r.group && <div className="px-2 pt-2 pb-1 text-label font-semibold text-smoke" aria-hidden="true">Matching hits <span className="font-medium text-ash">across every probe</span></div>}
+              <HitMatch i={r.hit} id={`${listId}-${i}`} active={i === at} onMouseMove={() => setAt(i)} onPick={onPick} />
+            </Fragment>
+          );
           const p = s.probes.get(r.k);
           const unread = unreadFor(s, r.k);
           const alias = names[r.k];

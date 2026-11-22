@@ -36,6 +36,7 @@ export interface AppState {
   pulse: number; // increments on every new hit (mark animation)
   planting: boolean; // the plant form is open (it folds away once a probe is planted)
   mailNew: number[]; // mail that arrived since the Mailbox was last open (the rail's badge)
+  cloneFrom: { tag: string; target: string; technique: string; rule: HttpRule | null; version: number | null } | null; // the plant form starts as a copy of this probe
 }
 
 function load<T>(k: string, d: T): T {
@@ -48,7 +49,7 @@ export function save(k: string, v: unknown) {
 let state: AppState = {
   loaded: false, loadError: null, status: null, probes: new Map(), untagged: null, list: [], details: new Map(), enrich: new Map(),
   seen: load<Record<string, number> | null>("colluder.seen", null) ?? {}, openSeen: {}, sel: null, hit: null, hitPicked: false, older: {}, olderDone: {}, tab: "hits", ruleDrafts: {}, ruleSeed: null,
-  stream: { state: "connecting", since: Date.now(), lastEventAt: 0 }, arrived: null, lit: null, pulse: 0, planting: false, mailNew: [],
+  stream: { state: "connecting", since: Date.now(), lastEventAt: 0 }, arrived: null, lit: null, pulse: 0, planting: false, mailNew: [], cloneFrom: null,
 };
 const firstVisit = load("colluder.seen", null) == null;
 const subs = new Set<() => void>();
@@ -191,6 +192,18 @@ export const setPlanting = (planting: boolean) => {
   if (planting) plantOpener = document.activeElement as HTMLElement | null;
   set({ planting });
 };
+// Clone: the plant form opens filled from a probe (target, technique, its saved answer)
+export async function cloneProbe(tag: string) {
+  const p = state.probes.get(tag);
+  if (!p) return;
+  let rule: HttpRule | null = null, version: number | null = null;
+  try { const r = await fetchRule(tag); if (r.active && r.active.rule.mode !== "default") { rule = r.active.rule; version = r.active.version; } } catch { /* plant without the answer */ }
+  if (location.hash && !location.hash.startsWith("#probes")) location.hash = "#probes";
+  set({ cloneFrom: { tag, target: p.target, technique: p.technique, rule, version } });
+  if (state.planting) set({ planting: false }); // remount the form so it reads the clone
+  requestAnimationFrame(() => setPlanting(true));
+}
+export const takeClone = () => { const c = state.cloneFrom; if (c) set({ cloneFrom: null }); return c; };
 export function cancelPlanting() {
   const back = plantOpener && plantOpener !== document.body && plantOpener.isConnected ? plantOpener
     : document.querySelector<HTMLElement>("[role=tab][aria-selected=true], [data-plant-new]");
@@ -261,6 +274,17 @@ export async function loadOlder(key: string, before: number) {
 }
 export const searchHits = (key: string, q: string, types: string[]) =>
   api<{ hits: Interaction[] }>(`${hitsPath(key)}/hits?limit=500&q=${encodeURIComponent(q)}&type=${types.join(",")}`).then((r) => r.hits);
+// every probe's hits at once (the switcher and the list filter's "Matching hits"); a server without the
+// endpoint (not restarted yet) just finds nothing
+export const searchAllHits = (q: string, limit = 8) =>
+  api<{ hits: Interaction[] }>(`/api/hits?limit=${limit}&q=${encodeURIComponent(q)}`).then((r) => r.hits, () => [] as Interaction[]);
+// open a hit wherever it is: its probe, the Hits tab, then the hit
+export function openHit(i: Interaction) {
+  if (location.hash && !location.hash.startsWith("#probes")) location.hash = "#probes";
+  setTab("hits", false);
+  select(keyOf(i));
+  selectHit(i.id);
+}
 export const fetchTrigger = (tag: string) => api<{ trigger: string }>(`/api/probes/${encodeURIComponent(tag)}/trigger`).then((r) => r.trigger);
 // C1: the probe report is built on the server from every stored hit; plain Markdown text
 export async function fetchReport(tag: string) {

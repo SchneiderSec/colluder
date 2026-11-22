@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowDown, ChevronRight, Copy, FileText, Search, Terminal, X } from "lucide-react";
-import { useApp, loadDetail, lookupAsn, save, chatterOf, setMine, selectHit, select, keyOf } from "@/store";
+import { ArrowDown, ChevronRight, Copy, Download, FileText, Search, Terminal, X } from "lucide-react";
+import { useApp, getState, loadDetail, lookupAsn, save, chatterOf, setMine, selectHit, select, keyOf } from "@/store";
 import { dnsSteps } from "@/lib/dns";
-import { stageOf } from "@/lib/stage";
+import { stageOf, xxeArrived, xxeValue } from "@/lib/stage";
 import { decodeLabels } from "@/lib/exfil";
+import { showControls } from "@/lib/query";
 import { variantOf, SECTION_LABEL } from "@/lib/kit";
 import { toCurl } from "@/lib/curl";
-import type { Enrich, InteractionDetail } from "@/lib/types";
-import { uaShort } from "@/lib/headers";
+import type { Enrich, Interaction, InteractionDetail } from "@/lib/types";
+import { hopDiff, hopWords, uaShort } from "@/lib/headers";
+import { typingOrModal } from "@/lib/shortcuts";
 import { byteCount, isoMs, lineCount, stamp } from "@/lib/format";
 import { answeredBy, decode, evidence } from "@/lib/raw";
 import { DnsLine, DnsNameMarked, ExactLine, HttpParsed, MailLine, parseHttp, type Parsed } from "./HttpView";
@@ -116,6 +118,52 @@ function What({ d }: { d: InteractionDetail }) {
 
 const segCls = "h-6 rounded-none px-2.5 text-label text-smoke data-[state=on]:bg-soot-2 data-[state=on]:font-semibold data-[state=on]:text-bone";
 
+// Decoded data (an XXE file read, DNS label exfil) in full: real newlines, other control characters
+// marked in Ash, inert text only. Copy and the download give the decoded text (labelled so); the exact
+// request stays in the Request pane and its copies.
+function Decoded({ title, how, text, name, wrap }: { title: string; how: string; text: string; name: string; wrap: boolean }) {
+  const download = () => {
+    const url = URL.createObjectURL(new Blob([text], { type: "text/plain;charset=utf-8" }));
+    const a = Object.assign(document.createElement("a"), { href: url, download: name });
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+  // \r\n reads as a line end; a lone \r, NUL and the rest are shown as markers
+  const parts = showControls(text.replace(/\r\n/g, "\n"));
+  return (
+    <section aria-label={title} className="flex max-h-[320px] min-h-0 flex-none flex-col rounded-[3px] border border-rule bg-well">
+      <div className="flex h-8 flex-none items-center gap-2 border-b border-rule-2 pr-1 pl-3">
+        <b className="text-body font-[650] text-bone">{title}</b>
+        <span className="min-w-0 truncate text-label text-ash">{how} · {byteCount(text).toLocaleString("en-US")} bytes · {lineCount(text.replace(/\r?\n$/, ""))} lines</span>
+        <span className="ml-auto flex flex-none items-center">
+          <Button variant="ghost" size="sm" onClick={() => copy(text, "decoded data")}><Copy />Copy decoded</Button>
+          <Button variant="ghost" size="sm" onClick={download}><Download />.txt</Button>
+        </span>
+      </div>
+      <pre className={cn("m-0 min-h-0 overflow-auto px-3 py-2 font-mono text-body leading-[1.125rem] text-bone", wrap ? "break-all whitespace-pre-wrap" : "whitespace-pre")}>
+        {parts.map(([k, t], n) => (k === "ctl" ? (t === "\\n" ? "\n" : t === "\\t" ? "\t" : <span key={n} className="text-ash">{t}</span>) : t))}
+      </pre>
+    </section>
+  );
+}
+
+// Redirect hops: what changed since the request before this one from the same client (same source and
+// User-Agent, within 10 s). Its detail loads once, for the comparison.
+function HopCompare({ d, prev }: { d: InteractionDetail; prev: Interaction }) {
+  const pd = useApp((x) => x.details.get(prev.id));
+  const [err, setErr] = useState(false);
+  useEffect(() => { if (!pd) loadDetail(prev.id).catch(() => setErr(true)); }, [prev.id, pd]);
+  const ms = isoMs(d.timestamp) - isoMs(prev.timestamp);
+  return (
+    <p className="flex flex-none flex-wrap items-baseline gap-x-2 text-body text-smoke">
+      <span className="text-label font-[550] tracking-[.03em] text-ash" title="Compared with the request before this one from the same source and User-Agent: header names only; each hit has the values">vs #{prev.id}</span>
+      {pd ? <span className="text-bone">{hopWords(hopDiff(pd.rawRequest, d.rawRequest))}</span> : <span className="text-ash">{err ? "couldn't load it" : "comparing…"}</span>}
+      <button type="button" onClick={() => { if (keyOf(prev) !== getState().sel) select(keyOf(prev)); selectHit(prev.id); }} className="cursor-pointer text-ash underline decoration-rule underline-offset-2 hover:text-bone">open #{prev.id}</button>
+      <span className="text-ash">{ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`} earlier</span>
+    </p>
+  );
+}
+
 export function HitDetail({ id }: { id: number }) {
   const s = useApp((x) => x);
   const [decoded, setDecoded] = useState(false);
@@ -143,11 +191,24 @@ export function HitDetail({ id }: { id: number }) {
     return () => removeEventListener("keydown", onKey);
   }, []);
 
+  // e copies the open hit as evidence, c as curl (a web hit); set below once the detail has loaded
+  const keys = useRef<{ evidence?: () => void; curl?: () => void }>({});
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (typingOrModal(e)) return;
+      const run = e.key === "e" ? keys.current.evidence : e.key === "c" ? keys.current.curl : undefined;
+      if (run) { e.preventDefault(); run(); }
+    };
+    addEventListener("keydown", onKey);
+    return () => removeEventListener("keydown", onKey);
+  }, []);
+
   // Strip Bay: the detail sits on the bay, as two strips: what happened (header, lead, fields, notes),
   // then the bytes (view controls, request and response, custody)
   const box = "@container/detail relative flex min-h-0 flex-col gap-2 overflow-auto border-t border-rule bg-bay p-2 max-[820px]:p-1.5";
   const strip = "flex flex-none flex-col gap-2.5 rounded-md border border-rule bg-soot py-3 pr-4 pl-5 max-[820px]:px-3";
   const d = s.details.get(id);
+  if (!d) keys.current = {}; // still loading: e and c wait for this hit, never copy the last one
   if (!d) return <article className={box}><p className={cn(strip, "text-ash")}>{err ? `Could not load #${id}: ${err}` : `Loading #${id}…`}</p></article>;
 
   const e: Partial<Enrich> = s.enrich.get(d.remoteAddress) ?? d.enrich ?? {};
@@ -161,7 +222,10 @@ export function HitDetail({ id }: { id: number }) {
   const mine = (s.status?.mineIps ?? []).includes(d.remoteAddress);
   const kit = variantOf(d);
   const a = d.answer;
-  const stage = a ? stageOf({ summary: d.summary, fullId: d.fullId, rawRequest: d.rawRequest, hop: a.hop, decoy: a.decoy, answerCode: a.code, answerTo: a.to, hopCode: a.status, answerPart: a.part, answerMode: a.mode, malformed: a.malformed }) : null;
+  // decoded data shown in full below: the file an XXE DTD read, and DNS labels that decode as text
+  const xv = d.protocol === "http" || d.protocol === "https" ? xxeValue(d) : null;
+  const labelData = d.extraLabels?.length ? decodeLabels(d.extraLabels) : [];
+  const stage = a && xv ? `${a.malformed ? "malformed request · " : ""}${xxeArrived(xv)}` : a ? stageOf({ summary: d.summary, fullId: d.fullId, rawRequest: d.rawRequest, hop: a.hop, decoy: a.decoy, answerCode: a.code, answerTo: a.to, hopCode: a.status, answerPart: a.part, answerMode: a.mode, malformed: a.malformed }) : null;
   const tlsOnly = a?.mode === "tls" ? a.tls : null;
   const curl = web && d.rawRequest ? toCurl(d.rawRequest, d.protocol === "https" ? "https" : "http", { id: d.id, normalised: !d.answer, truncated: d.answer?.droppedBytes ?? 0, binary: !!d.binary }) : null;
   // who wrote the bytes: the edge records them off the socket; interactsh re-serialises them
@@ -181,6 +245,13 @@ export function HitDetail({ id }: { id: number }) {
   // other web hits from this address within 10 s, in time order: one firing, step by step
   const near = web && !fromBox ? s.list.filter((i) => i.id !== d.id && (i.protocol === "http" || i.protocol === "https") && i.remoteAddress === d.remoteAddress
     && Math.abs(isoMs(i.timestamp) - isoMs(d.timestamp)) <= 10_000).sort((x, y) => isoMs(x.timestamp) - isoMs(y.timestamp)) : [];
+  // the request before this one from the same client, for the hop comparison (this box's own curl -L
+  // tests included: checking what your client forwards is the point)
+  const uaOf = (sum: string) => sum.split(" · ").slice(1).join(" · ");
+  const prevHop = web ? s.list.filter((i) => i.id !== d.id && (i.protocol === "http" || i.protocol === "https") && i.remoteAddress === d.remoteAddress && uaOf(i.summary) === uaOf(d.summary)
+    && isoMs(i.timestamp) <= isoMs(d.timestamp) && isoMs(d.timestamp) - isoMs(i.timestamp) <= 10_000 && (isoMs(i.timestamp) < isoMs(d.timestamp) || i.id < d.id))
+    .sort((x, y) => isoMs(y.timestamp) - isoMs(x.timestamp) || y.id - x.id)[0] : undefined;
+  keys.current = { evidence: () => copy(evidence(d, e, probe, s.status?.payload?.domain), "evidence block"), curl: curl ? () => copy(curl, "curl command") : undefined };
   const webSub = (t: string, pp: Parsed | null, who: string) => (parsed ? (pp ? `parsed · ${byteCount(t)} bytes` : `couldn't parse as HTTP · exact lines · ${size(t)}`) : `${who} · ${size(t)}`);
 
   return (
@@ -254,6 +325,7 @@ export function HitDetail({ id }: { id: number }) {
           {near.length > 4 && <span className="text-ash">+{near.length - 4} more</span>}
         </p>
       )}
+      {prevHop && <HopCompare key={prevHop.id} d={d} prev={prevHop} />}
       {chatter && (
         <p className="flex-none text-body text-smoke">
           <b className="font-semibold text-bone">Likely resolver chatter.</b> A lookup of the bare payload id within 10 s of a hit on <span className="font-mono text-bone">{chatter}</span>: a resolver walking the name label by label (QNAME minimisation), or a client resolving the HTTPS host. Kept, but not counted as new.
@@ -290,11 +362,15 @@ export function HitDetail({ id }: { id: number }) {
       {!step && !!d.extraLabels?.length && !(kit && d.extraLabels.length === 1) && (
         <p className="flex-none text-body text-smoke">
           Extra labels before the tag: <span className="font-mono text-bone">{d.extraLabels.join(".")}</span>
-          {decodeLabels(d.extraLabels).map(({ label, decoded }) => (
-            <span key={label}> · <span className="font-mono">{label}</span> decodes as {decoded.kind} to <span className="font-mono text-bone">{decoded.text.replace(/[\r\n\t]/g, (c) => (c === "\n" ? "\\n" : c === "\t" ? "\\t" : "\\r"))}</span></span>
-          ))}
+          {labelData.length > 0 && <span className="text-ash"> · {labelData.length === 1 ? "decoded below" : `${labelData.length} decoded below`}</span>}
         </p>
       )}
+      {xv && xv.text && !xv.binary && (
+        <Decoded title="File read through XXE" how={xv.base64 ? "base64-decoded from ?d=" : "as sent in ?d="} text={xv.text} name={`${d.tag ?? "hit"}-${d.id}-file.txt`} wrap={wrap} />
+      )}
+      {!step && labelData.map(({ label, decoded }) => (
+        <Decoded key={label} title="Decoded DNS data" how={`${decoded.kind} decoded from ${label.includes(".") ? `${label.split(".").length} labels` : "one label"}`} text={decoded.text} name={`${d.tag ?? "hit"}-${d.id}-dns.txt`} wrap={wrap} />
+      ))}
 
       </div>
       {/* no min-h-0: the strip never shrinks below its panes (it used to, and the panes spilled out of
