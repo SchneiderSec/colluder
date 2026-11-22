@@ -7,6 +7,8 @@ import { Copy, Plus, RotateCcw, Trash2, X } from "lucide-react";
 import { useApp, clearAll, restoreClear, setMine } from "@/store";
 import { AlertsSection, CheckSection, DisplaySection, Group, PayloadSection, Row, Section, THEME_NAMES, checkWord, fail } from "./SettingsParts";
 import { LineForm } from "./bits";
+import { Keys } from "./Shortcuts";
+import { SHORTCUTS } from "@/lib/shortcuts";
 import { plural, setupCmd } from "@/lib/format";
 import { copy, toast } from "@/lib/toast";
 import { useDisplay } from "@/lib/display";
@@ -90,7 +92,7 @@ function DataSection({ count, st }: { count: number; st: Status | null }) {
           <Button variant="destructive" disabled={!count} onClick={() => setConfirm(true)}><Trash2 />Clear all hits…</Button>
         </Row>
       </Group>
-      <div className="mt-5"><SelfTests st={st} /></div>
+      <SelfTests st={st} />
       <AlertDialog open={confirm} onOpenChange={setConfirm}>
         <AlertDialogContent className="max-w-[460px] border-rule bg-soot-1">
           <AlertDialogHeader>
@@ -109,17 +111,14 @@ function DataSection({ count, st }: { count: number; st: Status | null }) {
   );
 }
 
-const Kbd = ({ k }: { k: string }) => <kbd className="rounded-[3px] border border-rule bg-soot-2 px-1.5 font-mono text-label text-bone">{k}</kbd>;
 function KeyboardSection() {
   return (
-    <Section id="keyboard" title="Keyboard">
-      <Group>
-        {([[["p"], "Plant a probe (stays in the view you're in)"], [["/", "o"], "Find a probe: All probes in tabs, the filter with the list docked"], [["j", "k"], "Next / previous hit"], [["[", "]"], "Previous / next probe, wrapping round (tabs, or the list)"], [["n"], "Next probe with new hits"], [["1–8", "9"], "Probe tab by position, or the last"], [["\\"], "Switch between the probe tabs and the docked list"], [["Shift+T"], "Reopen the last closed tab"], [["F2"], "Rename the open probe"], [["←", "→"], "Move along the tab strip (when a tab has focus); Home and End go to the ends"], [["Delete"], "Close the focused tab"], [["Esc"], "Leave a field, close the plant form or a hit"]] as [string[], string][]).map(([keys, what]) => (
-          <Row dense key={what} label={<span className="flex items-center gap-1.5">{keys.map((k, i) => <span key={k} className="contents">{i > 0 && <span className="text-ash">or</span>}<Kbd k={k} /></span>)}</span>}>
-            <span className="text-bone">{what}</span>
-          </Row>
-        ))}
-      </Group>
+    <Section id="keyboard" title="Keyboard" desc="? shows the ones for the view you're in.">
+      {SHORTCUTS.map((g) => (
+        <Group key={g.title} title={g.title}>
+          {g.keys.map(([keys, what]) => <Row dense key={what} label={<Keys keys={keys} />}><span className="text-bone">{what}</span></Row>)}
+        </Group>
+      ))}
     </Section>
   );
 }

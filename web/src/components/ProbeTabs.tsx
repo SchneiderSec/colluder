@@ -215,6 +215,12 @@ function moveTab(k: string, at: string, after: boolean) {
 }
 
 const PHONE = "(max-width: 820px)";
+// on a phone the list sits above the pane: picking a probe by tapping it scrolls down to its pane
+// (a tap has a click count; keyboard and arrow-key selection don't)
+export function openFromList(k: string, e: React.MouseEvent) {
+  select(k);
+  if (e.detail > 0 && matchMedia(PHONE).matches) requestAnimationFrame(() => document.querySelector("main section[aria-label^='Probe ']")?.scrollIntoView({ block: "start", behavior: "smooth" }));
+}
 const onPhone = (cb: () => void) => { const m = matchMedia(PHONE); m.addEventListener("change", cb); return () => m.removeEventListener("change", cb); };
 export const usePhone = () => useSyncExternalStore(onPhone, () => matchMedia(PHONE).matches);
 

@@ -28,6 +28,7 @@ import { cn } from "@/lib/utils";
 import { shownId, tagged } from "@/lib/kit";
 import { hostedFile } from "@/lib/plant";
 import { useDisplay, type HitsHeight } from "@/lib/display";
+import { typingOrModal } from "@/lib/shortcuts";
 import { Ultra } from "@/components/Ultra";
 
 // Settings > Display > Hits list. Short keeps the open hit's detail in view on a laptop (docs/DESIGN.md);
@@ -328,7 +329,7 @@ function HitRow({ i, open, sel, arrived, child, chatter, inProbe, step, self, st
   const ref = useRef<HTMLTableRowElement>(null);
   useEffect(() => { if (sel && settled()) ref.current?.scrollIntoView({ block: "nearest" }); }, [sel]);
   return (
-    <tr ref={ref} tabIndex={sel || stop ? 0 : -1} aria-selected={sel} onClick={(e) => { e.stopPropagation(); onClick(); }} onKeyDown={rowKeys(onClick)}
+    <tr ref={ref} data-hit={i.id} tabIndex={sel || stop ? 0 : -1} aria-selected={sel} onClick={(e) => { e.stopPropagation(); onClick(); }} onKeyDown={rowKeys(onClick)}
       className={cn("group cursor-pointer", arrived && "[&>td]:animate-lit", child && "[&>td]:bg-child [&>td:first-child]:pl-11", (quiet || self) && !sel && "[&>td]:text-smoke [&_.text-bone]:text-smoke")}>
       <Td sel={sel} first><span className={cn("flex items-center gap-1.5 font-semibold", isNew ? "text-bone" : "text-smoke")}>{isNew ? <NewDot /> : <NilDot />}#{i.id}</span></Td>
       <Td sel={sel} title={exact(i.timestamp)}>{hm(i.timestamp)}</Td>
@@ -336,6 +337,8 @@ function HitRow({ i, open, sel, arrived, child, chatter, inProbe, step, self, st
       <Td sel={sel} className="font-mono text-body">
         <span className={cn(web && !self && !sel && "font-[550] text-bone")}>{i.remoteAddress}</span>
         {self && <span className="ml-2 font-sans" title="A self-test (the OOB box, or a source you marked as yours), not the target"><Chip grey>{self === "mine" ? "yours" : "this box"}</Chip></span>}
+        {/* phones: the Request column is hidden, so what arrived rides under the source */}
+        <span className="hidden truncate text-label text-smoke max-[820px]:block">{i.protocol === "dns" ? i.fullId : reqOf(i.summary).replace(/ HTTP\/[\d.]+$/, "")}{stageOf(i) ? <span className="font-sans"> · {stageOf(i)}</span> : null}</span>
       </Td>
       <Td sel={sel} last>{web || i.protocol === "smtp" ? <>{web ? <RequestLine line={reqOf(i.summary)} /> : <span className="font-mono text-body">{reqOf(i.summary)}</span>}{stageOf(i) && <span className="ml-2 text-label whitespace-nowrap text-smoke" title="What Colluder's edge answered. A redirect sent is not proof it was followed; a later hop is.">· {stageOf(i)}</span>}{after && <span className="ml-2 text-label whitespace-nowrap text-smoke" title={`Same source as #${after.id}, ${after.ms} ms later: most likely the same firing`}>· {after.ms < 1000 ? `${after.ms} ms` : `${(after.ms / 1000).toFixed(1)} s`} after #{after.id}</span>}{uaOf(i.summary) && <span className="ml-2 text-label text-ash" title={uaOf(i.summary)}>· {uaShort(uaOf(i.summary))}</span>}</> : i.protocol === "dns" ? <><DnsName i={i} />{chatter && <span className="text-label text-ash" title="A lookup of the bare payload id near this probe's hits: a resolver walking the name, or a client resolving the HTTPS host. Kept, never counted as new."> · resolver chatter{inProbe ? "" : ` around ${chatter}`}</span>}{step && <span className="text-label text-ash" title={`The resolver asked for this on its way to ${step} (QNAME minimisation). Not exfil data.`}> · resolver step toward <span className="font-mono">{labelsOf(step)}</span></span>}</> : <span className="text-label text-smoke">{i.summary}</span>}</Td>
     </tr>
@@ -403,6 +406,10 @@ export function ProbePane() {
   const tabsView = useTabsView();
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const hitsHeight = useDisplay().hits;
+  // the table's height while a hit is open: dragged (kept per browser), else the Settings preset
+  const tableBox = useRef<HTMLDivElement>(null);
+  const [hitsPx, setHitsPxState] = useState<number | null>(() => { try { const v = Number(localStorage.getItem("colluder.hitsPx")); return v > 0 ? v : null; } catch { return null; } });
+  const setHitsPx = (v: number | null) => { setHitsPxState(v); try { if (v == null) localStorage.removeItem("colluder.hitsPx"); else localStorage.setItem("colluder.hitsPx", String(v)); } catch { /* private mode */ } };
   const [q, setQ] = useState("");
   // the protocol filter and "hide self-tests" stay as you switch probes (triaging one kind of hit
   // across several probes); the search is about one probe, so it starts empty on each
@@ -438,6 +445,24 @@ export function ProbePane() {
   const selfCount = all.reduce((n, i) => n + (selfOf(i.remoteAddress) ? 1 : 0), 0);
   const hits = hideSelf && selfCount ? shownBefore.filter((i) => !selfOf(i.remoteAddress)) : shownBefore;
   const selfHidden = shownBefore.length - hits.length;
+
+  // keyboard: a switches Hits and Answer; f searches this probe's hits. An "a" right after "b" is the
+  // end of the Konami code (HitDetail's raccoon), not a tab switch.
+  useEffect(() => {
+    let last = "";
+    const onKey = (e: KeyboardEvent) => {
+      const prev = last;
+      last = e.key;
+      if (typingOrModal(e) || !s.sel) return;
+      if (e.key === "a" && prev !== "b" && s.sel !== UNTAGGED) { e.preventDefault(); setTab(s.tab === "hits" ? "http" : "hits"); return; }
+      if (e.key === "f" && (s.tab === "hits" || s.sel === UNTAGGED)) {
+        const el = document.querySelector<HTMLInputElement>('section[aria-label^="Probe "] input[aria-label^="Search "]');
+        if (el) { e.preventDefault(); el.focus(); el.select(); }
+      }
+    };
+    addEventListener("keydown", onKey);
+    return () => removeEventListener("keydown", onKey);
+  }, [s.sel, s.tab]);
 
   // keyboard: j / k move through hits
   useEffect(() => {
@@ -592,7 +617,7 @@ export function ProbePane() {
     const own = items.filter((i) => !chatter.has(i.id));
     const toggle = () => { const n = new Set(expanded); if (exp) n.delete(first.id); else n.add(first.id); setExpanded(n); };
     rows.push(
-      <tr key={`g${first.id}`} tabIndex={sel || takeStop() ? 0 : -1} aria-selected={sel} aria-expanded={exp} aria-label={`${items.length} DNS queries, ${exp ? "expanded" : "collapsed"}`} onClick={toggle} onKeyDown={rowKeys(toggle)} className={cn("group cursor-pointer", items.some((i) => i.id === s.arrived) && "[&>td]:animate-lit")}>
+      <tr key={`g${first.id}`} tabIndex={sel || takeStop() ? 0 : -1} aria-selected={sel} aria-expanded={exp} aria-label={`${items.length} DNS queries, ${exp ? "expanded" : "collapsed"}`} onClick={toggle} onKeyDown={(e) => { if ((e.key === "ArrowRight" && !exp) || (e.key === "ArrowLeft" && exp)) { e.preventDefault(); toggle(); } else rowKeys(toggle)(e); }} className={cn("group cursor-pointer", items.some((i) => i.id === s.arrived) && "[&>td]:animate-lit")}>
         <Td sel={sel} first>
           <span className={cn("flex items-center gap-1.5 font-semibold", anyNew ? "text-bone" : "text-smoke")}>
             {anyNew ? <NewDot /> : <NilDot />}
@@ -604,7 +629,9 @@ export function ProbePane() {
         </Td>
         <Td sel={sel} title={exact(first.timestamp)}>{hm(first.timestamp)}</Td>
         <Td sel={sel}><TypeChip proto="dns">DNS ×{own.length || items.length}</TypeChip>{own.length > 0 && own.length < items.length && <span className="ml-1.5 text-label text-ash" title="Lookups of the bare payload id near this probe's hits: resolver chatter, kept but not counted">+{items.length - own.length} chatter</span>}</Td>
-        <Td sel={sel}>{srcs.size === 1 ? <span className="font-mono text-body">{first.remoteAddress}</span> : `${srcs.size} resolvers`}</Td>
+        <Td sel={sel}>{srcs.size === 1 ? <span className="font-mono text-body">{first.remoteAddress}</span> : `${srcs.size} resolvers`}
+          <span className="hidden truncate font-mono text-label text-smoke max-[820px]:block">{top.fullId}{names > 1 ? ` +${names - 1}` : ""}</span>
+        </Td>
         <Td sel={sel} last>
           <DnsName i={top} />{names > 1 && <span className="text-label text-ash"> +{names - 1} {names === 2 ? "name" : "names"}</span>}<span className="text-label text-smoke"> · </span>
           <span className="text-label text-smoke">{qtypes} · {Math.max(...items.map((i) => isoMs(i.timestamp))) - Math.min(...items.map((i) => isoMs(i.timestamp)))} ms · </span>
@@ -646,22 +673,27 @@ export function ProbePane() {
       {/* the filters belong to the hits: their own row inside the Hits panel, never in the tab strip, where
           they read as more tabs */}
       <div className="flex flex-none flex-wrap items-center gap-x-2.5 gap-y-1.5 border-b border-rule py-2 pr-5 pl-6 max-[820px]:px-3.5">{filterBar}</div>
-      <div className={cn("min-h-0 overflow-auto max-[820px]:max-h-none", hitId != null && HITS_HEIGHT[hitsHeight])}>
+      <div ref={tableBox} style={hitId != null && hitsPx != null ? { maxHeight: hitsPx } : undefined}
+        className={cn("min-h-0 overflow-auto max-[820px]:max-h-none", hitId != null && hitsPx == null && HITS_HEIGHT[hitsHeight])}>
         <table className="w-full table-fixed border-collapse">
-          <colgroup><col className="w-[132px] max-[820px]:w-[84px]" /><col className="w-[116px] max-[820px]:w-[96px]" /><col className="w-[106px] max-[820px]:w-[96px]" /><col className="w-[198px] max-[820px]:w-auto" /><col className="max-[820px]:w-0" /></colgroup>
+          <colgroup><col className="w-[132px] max-[820px]:w-[80px]" /><col className="w-[92px] max-[820px]:w-[56px]" /><col className="w-[100px] max-[820px]:w-[84px]" /><col className="w-[198px] max-[820px]:w-auto" /><col className="max-[820px]:w-0" /></colgroup>
           <thead>
             <tr>{["#", `Time (${zoneName()})`, "Type", "Source", "Request"].map((t, i) => (
               <th key={t} scope="col" className={cn("sticky top-0 z-[1] border-b border-rule bg-band px-2.5 py-[5px] text-left text-label font-semibold tracking-[.03em] text-smoke [&:not(:last-child)]:border-r [&:not(:last-child)]:border-r-rule-2", i === 0 && "pl-6 max-[820px]:pl-3.5", i === 4 && "max-[820px]:hidden")}>{t}</th>
             ))}</tr>
           </thead>
           <tbody onKeyDown={(e) => {
-            // one tab stop for the table; arrows move between rows (j/k work anywhere)
-            if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+            // one tab stop for the table; arrows move between rows (j/k work anywhere), Home and End go
+            // to the ends. Landing on a hit opens it; landing on a DNS burst only focuses it (Enter, → and ←
+            // open and fold it), so moving past a burst never expands it.
+            if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) return;
             const trs = [...e.currentTarget.querySelectorAll<HTMLTableRowElement>("tr[tabindex]")];
             const at = trs.indexOf(document.activeElement as HTMLTableRowElement);
-            const el = trs[at + (e.key === "ArrowDown" ? 1 : -1)];
-            if (at === -1 || !el) return;
-            e.preventDefault(); el.focus(); el.click();
+            const el = e.key === "Home" ? trs[0] : e.key === "End" ? trs.at(-1) : trs[at + (e.key === "ArrowDown" ? 1 : -1)];
+            if (at === -1 || !el || el === trs[at]) return;
+            e.preventDefault(); el.focus();
+            const id = Number(el.dataset.hit);
+            if (id) selectHit(id);
           }}>
             {rows}
             {(filtering ? results !== null : selfHidden > 0) && hits.length === 0 && (
@@ -687,9 +719,43 @@ export function ProbePane() {
           <hr className="flex-1 border-0 border-t border-rule-2" />
         </div>
       </div>
+      {hitId != null && <Splitter box={tableBox} px={hitsPx} onChange={setHitsPx} />}
       </div>
       {hitId != null && <HitDetail id={hitId} />}
     </section>
+  );
+}
+
+// The border between the hits table and the open hit: drag it, or focus it and use the arrows (Home and
+// End go to the ends); a double-click goes back to the Settings preset. Not on phones, where the pane
+// scrolls as one.
+const MIN_TABLE = 72;
+function Splitter({ box, px, onChange }: { box: React.RefObject<HTMLDivElement | null>; px: number | null; onChange: (v: number | null) => void }) {
+  const max = () => Math.max(MIN_TABLE, (box.current?.closest("section")?.clientHeight ?? 800) - 260);
+  const clamp = (v: number) => Math.round(Math.min(Math.max(v, MIN_TABLE), max()));
+  const now = () => box.current?.getBoundingClientRect().height ?? 200;
+  const onPointerDown = (e: React.PointerEvent) => {
+    e.preventDefault();
+    const y0 = e.clientY, h0 = now();
+    const el = e.currentTarget as HTMLElement;
+    try { el.setPointerCapture(e.pointerId); } catch { /* a pointer the browser no longer tracks */ }
+    const move = (m: PointerEvent) => onChange(clamp(h0 + m.clientY - y0));
+    const up = () => { el.removeEventListener("pointermove", move); el.removeEventListener("pointerup", up); el.removeEventListener("pointercancel", up); };
+    el.addEventListener("pointermove", move); el.addEventListener("pointerup", up); el.addEventListener("pointercancel", up);
+  };
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    const step = e.shiftKey ? 96 : 24;
+    const to = e.key === "ArrowUp" ? now() - step : e.key === "ArrowDown" ? now() + step : e.key === "Home" ? MIN_TABLE : e.key === "End" ? max() : null;
+    if (to == null) return;
+    e.preventDefault();
+    onChange(clamp(to));
+  };
+  return (
+    <div role="separator" aria-orientation="horizontal" aria-label="Resize the hits list" aria-valuemin={MIN_TABLE} aria-valuenow={Math.round(px ?? now())} tabIndex={0}
+      title="Drag to resize; double-click for the Settings height" onPointerDown={onPointerDown} onKeyDown={onKeyDown} onDoubleClick={() => onChange(null)}
+      className="group relative h-0 flex-none cursor-row-resize touch-none outline-none max-[820px]:hidden">
+      <span className="absolute inset-x-0 -top-1.5 z-10 h-3 group-hover:bg-rule-2/60 group-focus-visible:bg-smoke/40" />
+    </div>
   );
 }
 
