@@ -3,7 +3,8 @@
 // Display only: copies always come from the exact bytes.
 import { useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Copy } from "lucide-react";
+import { copy } from "@/lib/toast";
 import { isStandardHeader } from "@/lib/headers";
 import { layoutJson } from "@/lib/jsonview";
 import { decodedQuery, showControls } from "@/lib/query";
@@ -119,16 +120,27 @@ function Section({ title, meta, children }: { title?: string; meta?: ReactNode; 
   );
 }
 
-function Pairs({ rows, note }: { rows: [string, ReactNode | null][]; note?: (name: string) => string | undefined }) {
+// Name / value rows. Side by side unless the pane is very narrow (a phone). A row with a copy value
+// gets a quiet Copy on hover or focus (always shown on touch screens), labelled with what it copies:
+// one value, never the request, so the pane's exact-bytes Copy stays the evidence copy.
+type Pair = [name: string, value: ReactNode | null, copy?: { text: string; decoded?: boolean }];
+function Pairs({ rows, note }: { rows: Pair[]; note?: (name: string) => string | undefined }) {
   return (
-    <dl className="m-0 grid grid-cols-[fit-content(24ch)_minmax(0,1fr)] gap-x-4 gap-y-[3px] @max-[440px]/pane:grid-cols-1 @max-[440px]/pane:gap-y-0">
-      {rows.map(([k, v], n) => {
+    <dl className="m-0 grid grid-cols-[fit-content(18ch)_minmax(0,1fr)] gap-x-3 gap-y-[2px] @max-[310px]/pane:grid-cols-1 @max-[310px]/pane:gap-y-0">
+      {rows.map(([k, v, c], n) => {
         const w = note?.(k);
+        const what = `${k} value${c?.decoded ? ", decoded" : ""}`;
         return [
-          <dt key={`k${n}`} className="min-w-0 text-syn-name [overflow-wrap:anywhere] @max-[440px]/pane:mt-1.5">{k}</dt>,
-          <dd key={`v${n}`} className="m-0 min-w-0 [overflow-wrap:anywhere]">
+          <dt key={`k${n}`} className="min-w-0 text-syn-name [overflow-wrap:anywhere] @max-[310px]/pane:mt-1.5">{k}</dt>,
+          <dd key={`v${n}`} className="group/pair m-0 min-w-0 [overflow-wrap:anywhere]">
             {v === "" || v === null ? <span className="font-sans text-ash">{v === null ? "no value" : "empty"}</span> : v}
             {w && <Pill strong={w === "credential"}>{w}</Pill>}
+            {c && c.text !== "" && (
+              <button type="button" aria-label={`Copy ${what}`} title={`Copy ${what}`} onClick={() => copy(c.text, what)}
+                className="ml-1 inline-flex size-5 cursor-pointer items-center justify-center rounded-[3px] align-middle text-ash opacity-0 outline-none group-hover/pair:opacity-100 hover:bg-soot-2 hover:text-bone focus-visible:opacity-100 focus-visible:ring-1 focus-visible:ring-smoke [@media(hover:none)]:opacity-100">
+                <Copy className="size-3" />
+              </button>
+            )}
           </dd>,
         ];
       })}
@@ -160,7 +172,7 @@ function MarkupBody({ text }: { text: string }) {
 function Body({ text, type }: { text: string; type: string }) {
   const t = type.toLowerCase();
   if (t.includes("x-www-form-urlencoded")) {
-    return <Pairs rows={text.split("&").filter(Boolean).map((kv) => { const e = kv.indexOf("="); const dec = (s: string) => safeDecode(s.replace(/\+/g, " ")); return [dec(e < 0 ? kv : kv.slice(0, e)), e < 0 ? null : <span className="text-syn-value"><Visible text={dec(kv.slice(e + 1))} /></span>]; })} />;
+    return <Pairs rows={text.split("&").filter(Boolean).map((kv) => { const e = kv.indexOf("="); const dec = (s: string) => safeDecode(s.replace(/\+/g, " ")); return [dec(e < 0 ? kv : kv.slice(0, e)), e < 0 ? null : <span className="text-syn-value"><Visible text={dec(kv.slice(e + 1))} /></span>, e < 0 ? undefined : { text: dec(kv.slice(e + 1)), decoded: dec(kv.slice(e + 1)) !== kv.slice(e + 1) }] as Pair; })} />;
   }
   if (t.includes("json") || /^\s*[[{]/.test(text)) { const j = JsonBody({ text }); if (j) return j; }
   if (/html|xml|svg/.test(t) || /^\s*</.test(text)) return <MarkupBody text={text} />;
@@ -202,11 +214,11 @@ export function HttpParsed({ p, tag, domain, capture, clientHttp2 }: { p: Parsed
         <Section title="Query" meta={`${q.length} ${q.length === 1 ? "parameter" : "parameters"}, decoded`}>
           <Pairs rows={q.map((x) => [x.name, x.value === null ? null : (
             <span><span className="text-syn-value"><Clamp text={x.value}>{(t) => <Visible text={t} />}</Clamp></span>{x.changed && <Pill title={`As sent: ${x.raw}`}>decoded</Pill>}<Exfil value={x.value} /></span>
-          )])} />
+          ), x.value === null ? undefined : { text: x.value, decoded: x.changed }] as Pair)} />
         </Section>
       )}
       <Section title="Headers" meta={`${p.headers.length}, ${order}`}>
-        <Pairs note={(k) => NOTE[k.toLowerCase()]} rows={shownHeaders.map(([k, v]) => [k, k.toLowerCase() === "host" ? <Host value={v} tag={tag} domain={domain} /> : v === "" ? "" : <Clamp text={v}>{(t) => t}</Clamp>])} />
+        <Pairs note={(k) => NOTE[k.toLowerCase()]} rows={shownHeaders.map(([k, v]) => [k, k.toLowerCase() === "host" ? <Host value={v} tag={tag} domain={domain} /> : v === "" ? "" : <Clamp text={v}>{(t) => t}</Clamp>, { text: v }] as Pair)} />
         {folding && (
           <button type="button" onClick={() => setStd(!std)} title={std ? undefined : boiler.map(([k]) => k).join(", ")}
             className="mt-1 flex cursor-pointer items-center gap-1 font-sans text-label text-smoke hover:text-bone">

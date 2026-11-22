@@ -891,3 +891,11 @@ Investigated what leaving probes up costs. Load is not it: a probe is a row (the
 - **Facets** (Unread, Web hits, By Claude, Answering HTTP) are toggle chips: bordered, Soot 2 and Bone when on. They narrow the list and the switcher alike and open folded groups, like a search.
 - **Copy encodings** are one picker everywhere (as is, URL, URL ×2, JSON, XML), back to "as is" on reload.
 - **Keys:** `?` opens the sheet for the current view (one list in `lib/shortcuts.ts`, also Settings › Keyboard). Probe keys only act on the Probes view.
+
+## Visual pass, batch 1 (2026-11-22, `docs/UI-VISUAL-PASS.md`)
+
+- **A missing rule is caution, not amber.** "Default reply until you save its redirect" sits on caution ground with caution ink and a "Set up its redirect →" link to the Answer tab.
+- **Name/value rows stay side by side** down to a 310px pane (a phone); the name track is `fit-content(18ch)`. Each value has a quiet Copy on hover or focus (always on touch screens) that copies that one value and says so ("User-Agent value", "q value, decoded"); the pane's Copy stays the exact-bytes copy.
+- **Copies name their encoding.** Any copy made with an encoding other than "as is" says which in its toast ("HTTP, URL ×2"), in the Payload kit as everywhere else. Kit rows highlight on hover.
+- **The table/detail splitter shows a grip** at rest (a 36×3 Rule pill on the seam, Smoke on hover, Bone on focus).
+- **Mailbox:** a message is one scroll (header, code and link stay; the body fills the rest); an unread dot clears when that message is opened; labels use the hit detail's label grammar (label size, 550, Ash).

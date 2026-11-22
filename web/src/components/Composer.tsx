@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { ArrowDownToLine, ChevronDown, Copy, Dices, RefreshCw, X } from "lucide-react";
-import { useApp, plant, save, setPlanting, cancelPlanting, takeClone } from "@/store";
+import { useApp, getState, plant, save, select, setTab, setPlanting, cancelPlanting, takeClone } from "@/store";
 import { cloneTag, retarget } from "@/lib/ruleDraft";
 import { TAG_RE } from "@/lib/types";
 import { quickTag } from "@/lib/quicktag";
@@ -98,7 +98,13 @@ export function PayloadRows({ tag, previewTechnique, className, compact }: { tag
   const fold = reading && pinned && !preview ? <Button variant="ghost" size="sm" className="text-ash" onClick={() => setPinned(false)}>Fold payloads</Button> : null;
   return (
     <div data-payloads className={cn("min-w-0", className)}>
-      {unsaved && <p className="mb-1 text-label text-amber" title="Planted, but its rule isn't saved yet: payloads copied now get the default reply">Default reply until you save its {unsaved}.</p>}
+      {unsaved && (
+        <p className="mb-1.5 flex w-fit max-w-full flex-wrap items-center gap-x-2 rounded-[3px] border border-caution-border bg-caution-ground px-2 py-0.5 text-label text-caution-ink" title="Planted, but its rule isn't saved yet: payloads copied now get the default reply">
+          <span>Default reply until you save its {unsaved}.</span>
+          <button type="button" onClick={() => { if (getState().sel !== probe!.tag) select(probe!.tag); setTab("http"); }}
+            className="cursor-pointer font-[650] underline decoration-caution-border underline-offset-2 hover:decoration-caution-ink">Set up its {unsaved} →</button>
+        </p>
+      )}
       {presetRows && !plain ? (
         <div className={cn("grid min-w-0 items-center gap-x-2.5 gap-y-0.5 max-[820px]:grid-cols-[minmax(0,1fr)_28px]", compact ? "grid-cols-[164px_minmax(0,1fr)_28px]" : "grid-cols-[164px_minmax(0,max-content)_28px_minmax(0,1fr)]")}>
           {(allRows ? presetRows : presetRows.slice(0, 3)).map((p) => (
